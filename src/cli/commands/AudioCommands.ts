@@ -1,0 +1,67 @@
+import { Command } from "commander";
+import { AudioService } from "../../services";
+import { ScriptService } from "../../services";
+import {
+  ScriptRepository,
+  SpeakerRepository,
+  MaterialRepository,
+} from "../../repositories";
+import { VocalProviderName } from "../../types";
+import { logger } from "../../utils/logger";
+
+export function createAudioCommands(): Command {
+  const audioCommand = new Command("audio");
+
+  const scriptRepository = new ScriptRepository();
+  const speakerRepository = new SpeakerRepository();
+  const materialRepository = new MaterialRepository();
+  const scriptService = new ScriptService(
+    scriptRepository,
+    speakerRepository,
+    materialRepository
+  );
+  const audioService = new AudioService();
+
+  audioCommand.description("Generate audio from scripts").alias("a");
+
+  audioCommand
+    .command("generate <scriptId>")
+    .description("Generate audio from a script")
+    .option("-o, --output <path>", "Output file path")
+    .option(
+      "-p, --provider <provider>",
+      "Voice provider (elevenlabs, openai)",
+      "elevenlabs"
+    )
+    .action(async (scriptId, options) => {
+      try {
+        logger.progress(`Generating audio for script ${scriptId}...`);
+
+        const script = await scriptService.getScript(scriptId);
+        const outputPath = options.output || `podcast-${scriptId}.mp3`;
+
+        await audioService.generateAudio(script.speeches, outputPath);
+
+        logger.success(`Audio generated: ${outputPath}`);
+      } catch (error) {
+        logger.error("Failed to generate audio:", error);
+      }
+    });
+
+  audioCommand
+    .command("process <input> <output>")
+    .description("Process an audio file (normalize, remove silence)")
+    .action(async (input, output) => {
+      try {
+        logger.progress(`Processing audio: ${input} -> ${output}`);
+
+        await audioService.processAudioFile(input, output);
+
+        logger.success(`Audio processed: ${output}`);
+      } catch (error) {
+        logger.error("Failed to process audio:", error);
+      }
+    });
+
+  return audioCommand;
+}
