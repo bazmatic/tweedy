@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 
 export enum SpeakerAgentToolName {
   SPEAK = "speak",
@@ -68,7 +68,7 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   },
 ];
 
-export function toAnthropicTools(): Anthropic.Tool[] {
+export function toAnthropicTools(): Tool[] {
   return SPEAKER_TOOL_DEFINITIONS.map((definition) => ({
     name: definition.name,
     description: definition.toolDescription,
