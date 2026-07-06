@@ -1,3 +1,5 @@
+import { SpeakerAgentToolName } from "../agents/speaker-tools";
+
 // Core Enums
 export enum SourceType {
   Claude = "claude",
@@ -66,6 +68,7 @@ export interface Speech {
   voice: Voice;
   voiceStyle: string;
   timestamp: Date;
+  tool?: SpeakerAgentToolName;
 }
 
 export interface PodcastMaterial {
