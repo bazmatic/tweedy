@@ -6,7 +6,13 @@ let pipelinePromise: Promise<FeatureExtractionPipeline> | undefined;
 
 function getPipeline(): Promise<FeatureExtractionPipeline> {
   if (!pipelinePromise) {
-    pipelinePromise = pipeline('feature-extraction', MODEL_NAME) as Promise<FeatureExtractionPipeline>;
+    pipelinePromise = (pipeline('feature-extraction', MODEL_NAME) as Promise<FeatureExtractionPipeline>).catch(
+      (error) => {
+        // Allow retry on the next call instead of permanently caching a failed load.
+        pipelinePromise = undefined;
+        throw error;
+      }
+    );
   }
   return pipelinePromise;
 }

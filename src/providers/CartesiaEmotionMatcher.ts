@@ -1,5 +1,8 @@
 import { EmbeddingService } from '../types';
 
+// Empirically, direct keyword overlap (e.g. "excited" -> excited) scores ~0.75-0.8
+// with MiniLM, while vague/paraphrased styles top out around 0.4-0.6 even against
+// their best candidate. 0.75 favors precision: only confident matches apply.
 const EMOTION_MATCH_THRESHOLD = 0.75;
 
 // Full list of Cartesia's supported emotion words, verbatim from
