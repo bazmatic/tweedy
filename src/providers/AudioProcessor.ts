@@ -1,4 +1,5 @@
 import ffmpeg from "fluent-ffmpeg";
+import type { FfprobeData } from "fluent-ffmpeg";
 import * as path from "path";
 import * as fs from "fs-extra";
 import { logger } from "../utils/logger";
@@ -103,7 +104,7 @@ export class AudioProcessor {
 
   static async getAudioDuration(filePath: string): Promise<number> {
     return new Promise((resolve, reject) => {
-      ffmpeg.ffprobe(filePath, (err: any, metadata: any) => {
+      ffmpeg.ffprobe(filePath, (err: unknown, metadata: FfprobeData) => {
         if (err) {
           reject(err);
         } else {
