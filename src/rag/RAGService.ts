@@ -1,15 +1,12 @@
-import { VectorStore, EmbeddingService, Document, PodcastMaterial } from '../types';
+import { VectorStore, Document, PodcastMaterial } from '../types';
 import { LangChainVectorStore } from './VectorStore';
-import { LangChainEmbeddingService } from './EmbeddingService';
 import { logger } from '../utils/logger';
 
 export class RAGService {
   private vectorStore: VectorStore;
-  private embeddingService: EmbeddingService;
 
   constructor() {
     this.vectorStore = new LangChainVectorStore();
-    this.embeddingService = new LangChainEmbeddingService();
   }
 
   async addMaterials(materials: PodcastMaterial[]): Promise<void> {
