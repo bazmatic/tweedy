@@ -48,7 +48,7 @@ Tweedy is a command-line application that generates AI-powered podcasts from var
 ### Prerequisites
 
 - **Node.js**: Version 18.0.0 or higher
-- **npm**: Comes with Node.js
+- **pnpm**: Package manager used by this project ([install guide](https://pnpm.io/installation))
 - **FFmpeg**: Required for audio processing
 
 #### Installing FFmpeg
@@ -81,16 +81,24 @@ cd tweedy
 2. **Install dependencies:**
 
 ```bash
-npm install
+pnpm install
 ```
 
 3. **Build the project:**
 
 ```bash
-npm run build
+pnpm build
 ```
 
-4. **Set up environment variables:**
+4. **Make the `tweedy` command available globally (optional but recommended):**
+
+```bash
+pnpm link --global
+```
+
+This symlinks the CLI into your global pnpm bin directory, so you can run `tweedy` directly instead of `node dist/index.js`. Because it's a symlink, it always reflects the latest build — just re-run `pnpm build` after making changes. (Without this step, replace `tweedy` with `node dist/index.js` in the commands below.)
+
+5. **Set up environment variables:**
 
 ```bash
 cp env.example .env
@@ -119,7 +127,7 @@ ELEVENLABS_API_KEY=your_elevenlabs_key_here  # Optional
 Run the built-in quick start guide:
 
 ```bash
-npx tweedy quickstart
+tweedy quickstart
 ```
 
 This displays a step-by-step guide for creating your first podcast.
@@ -129,7 +137,7 @@ This displays a step-by-step guide for creating your first podcast.
 Verify your installation and configuration:
 
 ```bash
-npx tweedy status
+tweedy status
 ```
 
 This shows:
@@ -143,7 +151,7 @@ This shows:
 **Step 1: Import Voices**
 
 ```bash
-npx tweedy voice import --provider elevenlabs
+tweedy voice import --provider elevenlabs
 ```
 
 This imports all available voices from ElevenLabs into your system.
@@ -151,7 +159,7 @@ This imports all available voices from ElevenLabs into your system.
 **Step 2: List Available Voices**
 
 ```bash
-npx tweedy voice list
+tweedy voice list
 ```
 
 Note the voice IDs you want to use.
@@ -159,7 +167,7 @@ Note the voice IDs you want to use.
 **Step 3: Create a Speaker**
 
 ```bash
-npx tweedy speaker add \
+tweedy speaker add \
   --name "Alex" \
   --personality "Friendly tech enthusiast who loves explaining complex topics simply" \
   --voice-id "voice-id-from-step-2" \
@@ -169,7 +177,7 @@ npx tweedy speaker add \
 **Step 4: Add Content Material**
 
 ```bash
-npx tweedy material add \
+tweedy material add \
   --file "research-paper.pdf" \
   --name "AI Research Paper"
 ```
@@ -177,7 +185,7 @@ npx tweedy material add \
 **Step 5: Generate a Script**
 
 ```bash
-npx tweedy script generate \
+tweedy script generate \
   --title "Understanding AI" \
   --description "A discussion about recent AI developments" \
   --speakers "speaker-id-from-step-3" \
@@ -188,7 +196,7 @@ npx tweedy script generate \
 **Step 6: Generate Audio**
 
 ```bash
-npx tweedy audio generate script-id --output my-first-podcast.mp3
+tweedy audio generate script-id --output my-first-podcast.mp3
 ```
 
 Congratulations! You've created your first AI-generated podcast.
@@ -267,7 +275,7 @@ Available for all commands:
 List all available voices in your system.
 
 ```bash
-npx tweedy voice list
+tweedy voice list
 ```
 
 **Example Output:**
@@ -284,7 +292,7 @@ Available Voices:
 Manually add a voice.
 
 ```bash
-npx tweedy voice add \
+tweedy voice add \
   --name "Sarah" \
   --description "Professional narrator" \
   --provider elevenlabs \
@@ -303,7 +311,7 @@ npx tweedy voice add \
 Import all voices from a provider.
 
 ```bash
-npx tweedy voice import --provider elevenlabs
+tweedy voice import --provider elevenlabs
 ```
 
 **Options:**
@@ -321,7 +329,7 @@ npx tweedy voice import --provider elevenlabs
 Delete a voice.
 
 ```bash
-npx tweedy voice delete voice-id
+tweedy voice delete voice-id
 ```
 
 ---
@@ -333,7 +341,7 @@ npx tweedy voice delete voice-id
 List all speakers.
 
 ```bash
-npx tweedy speaker list
+tweedy speaker list
 ```
 
 **Example Output:**
@@ -354,7 +362,7 @@ Available Speakers:
 Create a new speaker.
 
 ```bash
-npx tweedy speaker add \
+tweedy speaker add \
   --name "Alex" \
   --personality "Tech expert who loves explaining complex topics" \
   --voice-id "voice-id" \
@@ -381,7 +389,7 @@ npx tweedy speaker add \
 Update an existing speaker.
 
 ```bash
-npx tweedy speaker update speaker-id \
+tweedy speaker update speaker-id \
   --personality "Updated personality" \
   --expert
 ```
@@ -400,7 +408,7 @@ npx tweedy speaker update speaker-id \
 Delete a speaker.
 
 ```bash
-npx tweedy speaker delete speaker-id
+tweedy speaker delete speaker-id
 ```
 
 ---
@@ -412,13 +420,13 @@ npx tweedy speaker delete speaker-id
 List all materials.
 
 ```bash
-npx tweedy material list
+tweedy material list
 ```
 
 **With filters:**
 
 ```bash
-npx tweedy material list --source "research" --type document
+tweedy material list --source "research" --type document
 ```
 
 **Options:**
@@ -433,7 +441,7 @@ Add material from various sources.
 **From file:**
 
 ```bash
-npx tweedy material add \
+tweedy material add \
   --file "research-paper.pdf" \
   --name "AI Research 2024"
 ```
@@ -441,7 +449,7 @@ npx tweedy material add \
 **From URL:**
 
 ```bash
-npx tweedy material add \
+tweedy material add \
   --url "https://example.com/article" \
   --name "Web Article"
 ```
@@ -449,7 +457,7 @@ npx tweedy material add \
 **From text:**
 
 ```bash
-npx tweedy material add \
+tweedy material add \
   --text "Your content here..." \
   --name "Custom Content"
 ```
@@ -473,7 +481,7 @@ npx tweedy material add \
 Search materials using semantic search.
 
 ```bash
-npx tweedy material search "machine learning algorithms" --limit 5
+tweedy material search "machine learning algorithms" --limit 5
 ```
 
 **Options:**
@@ -491,7 +499,7 @@ npx tweedy material search "machine learning algorithms" --limit 5
 Delete a material.
 
 ```bash
-npx tweedy material delete material-id
+tweedy material delete material-id
 ```
 
 ---
@@ -503,7 +511,7 @@ npx tweedy material delete material-id
 List all generated scripts.
 
 ```bash
-npx tweedy script list
+tweedy script list
 ```
 
 **Example Output:**
@@ -523,7 +531,7 @@ Available Scripts:
 Generate a new podcast script.
 
 ```bash
-npx tweedy script generate \
+tweedy script generate \
   --title "Tech Talk" \
   --description "Discussion about emerging technologies" \
   --speakers "speaker-id-1,speaker-id-2" \
@@ -561,7 +569,7 @@ npx tweedy script generate \
 Show detailed script content.
 
 ```bash
-npx tweedy script show script-id
+tweedy script show script-id
 ```
 
 Displays:
@@ -575,7 +583,7 @@ Displays:
 Delete a script.
 
 ```bash
-npx tweedy script delete script-id
+tweedy script delete script-id
 ```
 
 ---
@@ -587,7 +595,7 @@ npx tweedy script delete script-id
 Generate audio from a script.
 
 ```bash
-npx tweedy audio generate script-id \
+tweedy audio generate script-id \
   --output podcast.mp3 \
   --provider elevenlabs
 ```
@@ -616,7 +624,7 @@ npx tweedy audio generate script-id \
 Process an existing audio file.
 
 ```bash
-npx tweedy audio process input.mp3 output.mp3
+tweedy audio process input.mp3 output.mp3
 ```
 
 Applies:
@@ -635,30 +643,30 @@ Applies:
 
 ```bash
 # 1. Import voices
-npx tweedy voice import --provider openai
+tweedy voice import --provider openai
 
 # 2. List voices and note an ID
-npx tweedy voice list
+tweedy voice list
 
 # 3. Create a narrator speaker
-npx tweedy speaker add \
+tweedy speaker add \
   --name "Narrator" \
   --personality "Professional narrator with clear enunciation" \
   --voice-id "voice-id" \
   --expert
 
 # 4. Add your document
-npx tweedy material add --file book-chapter.pdf --name "Chapter 1"
+tweedy material add --file book-chapter.pdf --name "Chapter 1"
 
 # 5. Generate script
-npx tweedy script generate \
+tweedy script generate \
   --title "Chapter 1 Narration" \
   --speakers "speaker-id" \
   --materials "material-id" \
   --max-turns 20
 
 # 6. Generate audio
-npx tweedy audio generate script-id --output chapter1.mp3
+tweedy audio generate script-id --output chapter1.mp3
 ```
 
 ### Workflow 2: Interview-Style Podcast
@@ -667,24 +675,24 @@ npx tweedy audio generate script-id --output chapter1.mp3
 
 ```bash
 # 1. Create expert speaker
-npx tweedy speaker add \
+tweedy speaker add \
   --name "Dr. Smith" \
   --personality "AI researcher, enthusiastic about technology" \
   --voice-id "expert-voice-id" \
   --expert
 
 # 2. Create interviewer speaker
-npx tweedy speaker add \
+tweedy speaker add \
   --name "Jamie" \
   --personality "Curious journalist, asks insightful questions" \
   --voice-id "interviewer-voice-id"
 
 # 3. Add research materials
-npx tweedy material add --file research1.pdf --name "Study 1"
-npx tweedy material add --file research2.pdf --name "Study 2"
+tweedy material add --file research1.pdf --name "Study 1"
+tweedy material add --file research2.pdf --name "Study 2"
 
 # 4. Generate conversation
-npx tweedy script generate \
+tweedy script generate \
   --title "AI Research Discussion" \
   --description "Interview about recent AI developments" \
   --speakers "expert-id,interviewer-id" \
@@ -693,7 +701,7 @@ npx tweedy script generate \
   --allocation sequential
 
 # 5. Generate audio
-npx tweedy audio generate script-id --output interview.mp3
+tweedy audio generate script-id --output interview.mp3
 ```
 
 ### Workflow 3: Multi-Topic Podcast Series
@@ -702,20 +710,20 @@ npx tweedy audio generate script-id --output interview.mp3
 
 ```bash
 # 1. Set up speakers once
-npx tweedy speaker add --name "Host" ... # (host speaker)
-npx tweedy speaker add --name "Expert" ... # (expert speaker)
+tweedy speaker add --name "Host" ... # (host speaker)
+tweedy speaker add --name "Expert" ... # (expert speaker)
 
 # 2. For each episode:
 
 # Episode 1
-npx tweedy material add --file topic1.pdf --name "Topic 1"
-npx tweedy script generate --title "Episode 1" --speakers "..." --materials "..."
-npx tweedy audio generate script-id --output episode1.mp3
+tweedy material add --file topic1.pdf --name "Topic 1"
+tweedy script generate --title "Episode 1" --speakers "..." --materials "..."
+tweedy audio generate script-id --output episode1.mp3
 
 # Episode 2
-npx tweedy material add --file topic2.pdf --name "Topic 2"
-npx tweedy script generate --title "Episode 2" --speakers "..." --materials "..."
-npx tweedy audio generate script-id --output episode2.mp3
+tweedy material add --file topic2.pdf --name "Topic 2"
+tweedy script generate --title "Episode 2" --speakers "..." --materials "..."
+tweedy audio generate script-id --output episode2.mp3
 ```
 
 ### Workflow 4: Web Content to Podcast
@@ -724,26 +732,26 @@ npx tweedy audio generate script-id --output episode2.mp3
 
 ```bash
 # 1. Add materials from URLs
-npx tweedy material add \
+tweedy material add \
   --url "https://example.com/article1" \
   --name "Article 1"
 
-npx tweedy material add \
+tweedy material add \
   --url "https://example.com/article2" \
   --name "Article 2"
 
 # 2. Search materials to verify content
-npx tweedy material search "key topic"
+tweedy material search "key topic"
 
 # 3. Generate script with your speakers
-npx tweedy script generate \
+tweedy script generate \
   --title "Weekly News Roundup" \
   --speakers "speaker-id-1,speaker-id-2" \
   --materials "material-id-1,material-id-2" \
   --max-turns 15
 
 # 4. Generate audio
-npx tweedy audio generate script-id --output news-roundup.mp3
+tweedy audio generate script-id --output news-roundup.mp3
 ```
 
 ---
@@ -772,10 +780,10 @@ Tweedy uses Retrieval-Augmented Generation to intelligently find relevant conten
 
 ```bash
 # Add material
-npx tweedy material add --file large-document.pdf --name "Research"
+tweedy material add --file large-document.pdf --name "Research"
 
 # Search to see what AI will find
-npx tweedy material search "neural networks" --limit 5
+tweedy material search "neural networks" --limit 5
 
 # Results show most relevant sections
 ```
@@ -785,7 +793,7 @@ npx tweedy material search "neural networks" --limit 5
 When manually adding voices, customize their behavior:
 
 ```bash
-npx tweedy voice add \
+tweedy voice add \
   --name "CustomVoice" \
   --provider elevenlabs \
   --provider-id "voice-id"
@@ -811,7 +819,7 @@ Process multiple documents at once:
 ```bash
 # Create a script to batch add materials
 for file in documents/*.pdf; do
-  npx tweedy material add --file "$file" --name "$(basename "$file" .pdf)"
+  tweedy material add --file "$file" --name "$(basename "$file" .pdf)"
 done
 ```
 
@@ -821,10 +829,10 @@ For additional control, process audio separately:
 
 ```bash
 # Generate raw audio
-npx tweedy audio generate script-id --output raw.mp3
+tweedy audio generate script-id --output raw.mp3
 
 # Apply custom processing
-npx tweedy audio process raw.mp3 processed.mp3
+tweedy audio process raw.mp3 processed.mp3
 
 # Or use external tools
 ffmpeg -i processed.mp3 -af "highpass=f=200,lowpass=f=3000" final.mp3
@@ -845,7 +853,7 @@ ffmpeg -i processed.mp3 -af "highpass=f=200,lowpass=f=3000" final.mp3
 1. Check `.env` file exists
 2. Verify keys are set correctly
 3. Restart terminal after editing `.env`
-4. Run `npx tweedy status` to verify
+4. Run `tweedy status` to verify
 
 #### "Voice with id X not found"
 
@@ -855,10 +863,10 @@ ffmpeg -i processed.mp3 -af "highpass=f=200,lowpass=f=3000" final.mp3
 
 ```bash
 # List available voices
-npx tweedy voice list
+tweedy voice list
 
 # If none exist, import some
-npx tweedy voice import --provider elevenlabs
+tweedy voice import --provider elevenlabs
 
 # Use correct voice ID when creating speakers
 ```
@@ -913,7 +921,7 @@ ffmpeg -version
 Enable debug logging for detailed information:
 
 ```bash
-npx tweedy --debug script generate ...
+tweedy --debug script generate ...
 ```
 
 This shows:
@@ -927,11 +935,11 @@ This shows:
 
 ```bash
 # Global help
-npx tweedy --help
+tweedy --help
 
 # Command-specific help
-npx tweedy voice --help
-npx tweedy speaker add --help
+tweedy voice --help
+tweedy speaker add --help
 ```
 
 ---
@@ -1000,15 +1008,15 @@ project/
 
 ```bash
 # Check system status
-npx tweedy status
+tweedy status
 
 # Review and clean old scripts
-npx tweedy script list
-npx tweedy script delete old-script-id
+tweedy script list
+tweedy script delete old-script-id
 
 # Update materials
-npx tweedy material list
-npx tweedy material delete outdated-id
+tweedy material list
+tweedy material delete outdated-id
 ```
 
 ---
@@ -1086,7 +1094,7 @@ A:
 
 **Q: Can I preview scripts before generating audio?**
 
-A: Yes! Use `npx tweedy script show script-id` to review before audio generation.
+A: Yes! Use `tweedy script show script-id` to review before audio generation.
 
 ---
 
@@ -1140,32 +1148,32 @@ DEFAULT_CHUNK_OVERLAP=200
 
 ```bash
 # Status & Help
-npx tweedy status
-npx tweedy quickstart
-npx tweedy --help
+tweedy status
+tweedy quickstart
+tweedy --help
 
 # Voices
-npx tweedy voice list
-npx tweedy voice import --provider elevenlabs
-npx tweedy voice add -n "Name" --provider-id "id"
+tweedy voice list
+tweedy voice import --provider elevenlabs
+tweedy voice add -n "Name" --provider-id "id"
 
 # Speakers
-npx tweedy speaker list
-npx tweedy speaker add -n "Name" -p "Personality" -v "voice-id"
+tweedy speaker list
+tweedy speaker add -n "Name" -p "Personality" -v "voice-id"
 
 # Materials
-npx tweedy material list
-npx tweedy material add -f "file.pdf" -n "Name"
-npx tweedy material search "query"
+tweedy material list
+tweedy material add -f "file.pdf" -n "Name"
+tweedy material search "query"
 
 # Scripts
-npx tweedy script list
-npx tweedy script generate -t "Title" -s "id1,id2" -m "id1"
-npx tweedy script show script-id
+tweedy script list
+tweedy script generate -t "Title" -s "id1,id2" -m "id1"
+tweedy script show script-id
 
 # Audio
-npx tweedy audio generate script-id -o output.mp3
-npx tweedy audio process input.mp3 output.mp3
+tweedy audio generate script-id -o output.mp3
+tweedy audio process input.mp3 output.mp3
 ```
 
 ---

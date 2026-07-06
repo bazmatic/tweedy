@@ -50,13 +50,13 @@ cd tweedy
 2. Install dependencies:
 
 ```bash
-npm install
+pnpm install
 ```
 
 3. Build the project:
 
 ```bash
-npm run build
+pnpm build
 ```
 
 4. Set up environment variables:
@@ -65,6 +65,14 @@ npm run build
 cp env.example .env
 # Edit .env with your API keys
 ```
+
+5. (Optional) Make the `tweedy` command available globally:
+
+```bash
+pnpm link --global
+```
+
+This symlinks the built CLI into your global pnpm bin directory, so you can run `tweedy` from anywhere instead of `node dist/index.js`. Since it's a symlink, `tweedy` will always reflect the latest build — just re-run `pnpm build` after making changes.
 
 ## Configuration
 
