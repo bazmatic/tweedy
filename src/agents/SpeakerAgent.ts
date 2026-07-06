@@ -1,14 +1,8 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { ISpeakerAgent, PodcastScript, Speech, Speaker } from "../types";
 import { BaseAgent } from "./BaseAgent";
 import { logger } from "../utils/logger";
-
-export enum SpeakerAgentTool {
-  SPEAK = "speak",
-  INTERJECT = "interject",
-  ONE_LINER = "one_liner",
-  QUESTION = "question",
-  COMMENT = "comment",
-}
+import { SpeakerAgentToolName, toAnthropicTools } from "./speaker-tools";
 
 export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
   private speaker: Speaker;
@@ -29,20 +23,24 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
           attempt: attempts + 1,
         });
 
-        const speechText = await this.generateSpeech(script, direction);
+        const { toolName, message, style } = await this.generateSpeech(
+          script,
+          direction
+        );
 
         const speech: Speech = {
           id: this.generateId(),
           speaker: this.speaker,
-          message: speechText,
-          instructions: direction,
+          message,
+          instructions: style,
           voice: this.speaker.voice,
           voiceStyle: this.speaker.voiceStyle,
           timestamp: new Date(),
+          tool: toolName,
         };
 
         logger.info(
-          `Speech generated for ${this.speaker.name}: ${speechText.substring(
+          `Speech generated for ${this.speaker.name} (${toolName}): ${message.substring(
             0,
             100
           )}...`
@@ -64,11 +62,11 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
   private async generateSpeech(
     script: PodcastScript,
     direction: string
-  ): Promise<string> {
+  ): Promise<{ toolName: SpeakerAgentToolName; message: string; style: string }> {
     const conversationHistory = this.getConversationHistory(script);
     const relevantMaterials = this.getRelevantMaterials(script);
 
-    const messages = [
+    const messages: Anthropic.MessageParam[] = [
       {
         role: "user" as const,
         content: `You are ${
@@ -88,15 +86,25 @@ ${conversationHistory}
 Relevant Materials:
 ${relevantMaterials}
 
-Director's Direction: ${direction}
+Director's guidance: ${direction}
 
 Respond naturally as ${
           this.speaker.name
-        }. Keep your response conversational, engaging, and appropriate for a podcast. Be authentic to your personality and expertise level. Use ums and ahs. Do not include stage directions or emotes. Just output the speech text.`,
+        }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it. Be authentic to your personality and expertise level. Do not include stage directions, emotes, sound effects or physical actions in the message itself — those belong in the style argument.`,
       },
     ];
 
-    return await this.callClaude(messages, 200);
+    const result = await this.callClaudeWithTools(
+      messages,
+      toAnthropicTools(),
+      100
+    );
+
+    return {
+      toolName: result.toolName as SpeakerAgentToolName,
+      message: result.message,
+      style: result.style,
+    };
   }
 
   private getConversationHistory(script: PodcastScript): string {
