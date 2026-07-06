@@ -1,6 +1,8 @@
 import { IVocalProvider, VocalProviderName } from '../types';
 import { ElevenLabsProvider } from './ElevenLabsProvider';
 import { OpenAIProvider } from './OpenAIProvider';
+import { HumeProvider } from './HumeProvider';
+import { CartesiaProvider } from './CartesiaProvider';
 import { logger } from '../utils/logger';
 
 export class VocalProviderFactory {
@@ -16,7 +18,11 @@ export class VocalProviderFactory {
           this.providers.set(provider, new OpenAIProvider());
           break;
         case VocalProviderName.Hume:
-          throw new Error('Hume provider not implemented yet');
+          this.providers.set(provider, new HumeProvider());
+          break;
+        case VocalProviderName.Cartesia:
+          this.providers.set(provider, new CartesiaProvider());
+          break;
         default:
           throw new Error(`Unknown vocal provider: ${provider}`);
       }
