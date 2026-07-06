@@ -64,3 +64,4 @@ export class SpeakerRepository extends BaseRepository<SpeakerRecord> implements 
     return speakers.find(speaker => speaker.name === name) || null;
   }
 }
+

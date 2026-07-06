@@ -9,6 +9,8 @@ import {
   ScriptRepository,
   SpeakerRepository,
   MaterialRepository,
+  VoiceRepository,
+  SpeechRepository,
 } from "../repositories";
 import { DirectorAgent, SpeakerAgent } from "../agents";
 import { logger } from "../utils/logger";
@@ -17,7 +19,9 @@ export class ScriptService implements IScriptService {
   constructor(
     private readonly scriptRepository: ScriptRepository,
     private readonly speakerRepository: SpeakerRepository,
-    private readonly materialRepository: MaterialRepository
+    private readonly materialRepository: MaterialRepository,
+    private readonly voiceRepository: VoiceRepository,
+    private readonly speechRepository: SpeechRepository
   ) {}
 
   async generateScript(params: GenerateScriptParams): Promise<PodcastScript> {
@@ -30,7 +34,7 @@ export class ScriptService implements IScriptService {
 
       // Create initial script
       const script: PodcastScript = {
-        id: this.generateId(),
+        id: "",
         title: params.title,
         description: params.description,
         speakers,
@@ -95,19 +99,26 @@ export class ScriptService implements IScriptService {
       }
 
       // Load voice for speaker
-      const voiceRecord = await this.speakerRepository.getById(
+      const voiceRecord = await this.voiceRepository.getById(
         speakerRecord.voiceId
       );
       if (!voiceRecord) {
         throw new Error(`Voice for speaker ${speakerRecord.name} not found`);
       }
 
-      // This is a simplified version - in practice you'd need proper voice loading
+      // Create speaker with voice
       speakers.push({
         id: speakerRecord.id,
         name: speakerRecord.name,
         personality: speakerRecord.personality,
-        voice: {} as any, // Simplified for now
+        voice: {
+          id: voiceRecord.id,
+          name: voiceRecord.name,
+          description: voiceRecord.description,
+          provider: voiceRecord.provider,
+          providerId: voiceRecord.providerId,
+          settings: voiceRecord.settings,
+        },
         voiceStyle: speakerRecord.voiceStyle,
         isExpert: speakerRecord.isExpert,
       });
@@ -157,6 +168,19 @@ export class ScriptService implements IScriptService {
       const direction = await directorAgent.giveDirection(speakerAgent);
       const speech = await speakerAgent.speak(script, direction);
 
+      // Save speech to repository
+      const speechRecord = await this.speechRepository.create({
+        speakerId: speech.speaker.id,
+        message: speech.message,
+        instructions: speech.instructions,
+        voiceId: speech.voice.id,
+        voiceStyle: speech.voiceStyle,
+        timestamp: speech.timestamp,
+      });
+
+      // Update speech with saved ID
+      speech.id = speechRecord.id;
+
       script.speeches.push(speech);
       script.updatedAt = new Date();
 
@@ -175,8 +199,26 @@ export class ScriptService implements IScriptService {
       record.materialIds.map((id: string) => ({ id }))
     );
 
-    // Load speeches (simplified - in practice you'd need a speech repository)
-    const speeches: any[] = []; // Simplified for now
+    // Load speeches
+    const speeches: any[] = [];
+    for (const speechId of record.speechIds) {
+      const speechRecord = await this.speechRepository.getById(speechId);
+      if (speechRecord) {
+        // Find the speaker for this speech
+        const speaker = speakers.find((s) => s.id === speechRecord.speakerId);
+        if (speaker) {
+          speeches.push({
+            id: speechRecord.id,
+            speaker,
+            message: speechRecord.message,
+            instructions: speechRecord.instructions,
+            voice: speaker.voice,
+            voiceStyle: speechRecord.voiceStyle,
+            timestamp: speechRecord.timestamp,
+          });
+        }
+      }
+    }
 
     return {
       id: record.id,
@@ -185,8 +227,8 @@ export class ScriptService implements IScriptService {
       speakers,
       speeches,
       materials,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
+      createdAt: new Date(record.createdAt),
+      updatedAt: new Date(record.updatedAt),
     };
   }
 
@@ -199,10 +241,9 @@ export class ScriptService implements IScriptService {
       materialIds: script.materials.map((m) => m.id),
     };
 
-    await this.scriptRepository.create(record);
-  }
-
-  private generateId(): string {
-    return Math.random().toString(36).substr(2, 9);
+    const created = await this.scriptRepository.create(record);
+    script.id = created.id;
+    script.createdAt = created.createdAt;
+    script.updatedAt = created.updatedAt;
   }
 }

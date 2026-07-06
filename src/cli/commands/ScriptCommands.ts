@@ -4,6 +4,8 @@ import {
   ScriptRepository,
   SpeakerRepository,
   MaterialRepository,
+  VoiceRepository,
+  SpeechRepository,
 } from "../../repositories";
 import { SpeakerAllocation } from "../../types";
 import { logger } from "../../utils/logger";
@@ -14,10 +16,14 @@ export function createScriptCommands(): Command {
   const scriptRepository = new ScriptRepository();
   const speakerRepository = new SpeakerRepository();
   const materialRepository = new MaterialRepository();
+  const voiceRepository = new VoiceRepository();
+  const speechRepository = new SpeechRepository();
   const scriptService = new ScriptService(
     scriptRepository,
     speakerRepository,
-    materialRepository
+    materialRepository,
+    voiceRepository,
+    speechRepository
   );
 
   scriptCommand.description("Generate and manage podcast scripts").alias("s");

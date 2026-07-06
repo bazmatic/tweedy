@@ -67,3 +67,4 @@ export class MaterialRepository extends BaseRepository<MaterialRecord> implement
     return materials.filter(material => material.sourceType === sourceType);
   }
 }
+

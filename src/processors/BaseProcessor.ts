@@ -23,3 +23,4 @@ export abstract class BaseProcessor implements IDocumentProcessor {
     return filePath.split('/').pop()?.split('.')[0] || 'unknown';
   }
 }
+

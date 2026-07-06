@@ -50,19 +50,15 @@ export class AudioService implements IAudioService {
 
   private async generateSpeechAudio(speech: Speech): Promise<string> {
     const provider = VocalProviderFactory.getProvider(speech.voice.provider);
-    const outputFileName = `${speech.id}.mp3`;
-    const outputPath = path.join(
-      appConfig.audioDir,
-      "speeches",
-      outputFileName
-    );
+    const outputFileName = path.join("speeches", `${speech.id}.mp3`);
 
     await provider.tts({
       speech,
       voice: speech.voice,
-      outputFileName: outputPath,
+      outputFileName,
     });
 
+    const outputPath = path.join(appConfig.audioDir, outputFileName);
     return outputPath;
   }
 }

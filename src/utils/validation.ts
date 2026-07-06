@@ -85,3 +85,4 @@ export function validateMaterial(data: unknown) {
 export function validateScriptGeneration(data: unknown) {
   return scriptGenerationSchema.parse(data);
 }
+

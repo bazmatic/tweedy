@@ -64,3 +64,4 @@ export class ScriptRepository extends BaseRepository<ScriptRecord> implements IS
     return scripts.find(script => script.title === name) || null;
   }
 }
+

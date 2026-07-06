@@ -1,13 +1,13 @@
-import { ISpeakerAgent, PodcastScript, Speech, Speaker } from '../types';
-import { BaseAgent } from './BaseAgent';
-import { logger } from '../utils/logger';
+import { ISpeakerAgent, PodcastScript, Speech, Speaker } from "../types";
+import { BaseAgent } from "./BaseAgent";
+import { logger } from "../utils/logger";
 
 export enum SpeakerAgentTool {
-  SPEAK = 'speak',
-  INTERJECT = 'interject',
-  ONE_LINER = 'one_liner',
-  QUESTION = 'question',
-  COMMENT = 'comment',
+  SPEAK = "speak",
+  INTERJECT = "interject",
+  ONE_LINER = "one_liner",
+  QUESTION = "question",
+  COMMENT = "comment",
 }
 
 export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
@@ -21,13 +21,16 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
 
   async speak(script: PodcastScript, direction: string): Promise<Speech> {
     let attempts = 0;
-    
+
     while (attempts < this.maxAttempts) {
       try {
-        this.logAgentAction('Generating speech', { speaker: this.speaker.name, attempt: attempts + 1 });
+        this.logAgentAction("Generating speech", {
+          speaker: this.speaker.name,
+          attempt: attempts + 1,
+        });
 
         const speechText = await this.generateSpeech(script, direction);
-        
+
         const speech: Speech = {
           id: this.generateId(),
           speaker: this.speaker,
@@ -38,12 +41,17 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
           timestamp: new Date(),
         };
 
-        logger.info(`Speech generated for ${this.speaker.name}: ${speechText.substring(0, 100)}...`);
+        logger.info(
+          `Speech generated for ${this.speaker.name}: ${speechText.substring(
+            0,
+            100
+          )}...`
+        );
         return speech;
       } catch (error) {
         attempts++;
         logger.warn(`Speech generation attempt ${attempts} failed:`, error);
-        
+
         if (attempts >= this.maxAttempts) {
           return this.createFallbackSpeech();
         }
@@ -53,17 +61,22 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     return this.createFallbackSpeech();
   }
 
-  private async generateSpeech(script: PodcastScript, direction: string): Promise<string> {
+  private async generateSpeech(
+    script: PodcastScript,
+    direction: string
+  ): Promise<string> {
     const conversationHistory = this.getConversationHistory(script);
     const relevantMaterials = this.getRelevantMaterials(script);
 
     const messages = [
       {
-        role: 'user' as const,
-        content: `You are ${this.speaker.name}, a podcast speaker with the following characteristics:
+        role: "user" as const,
+        content: `You are ${
+          this.speaker.name
+        }, a podcast speaker with the following characteristics:
 - Personality: ${this.speaker.personality}
 - Voice Style: ${this.speaker.voiceStyle}
-- Expert Level: ${this.speaker.isExpert ? 'Expert' : 'General audience'}
+- Expert Level: ${this.speaker.isExpert ? "Expert" : "General audience"}
 
 Podcast Context:
 - Title: ${script.title}
@@ -77,25 +90,30 @@ ${relevantMaterials}
 
 Director's Direction: ${direction}
 
-Respond naturally as ${this.speaker.name}. Keep your response conversational, engaging, and appropriate for a podcast. Be authentic to your personality and expertise level.`
-      }
+Respond naturally as ${
+          this.speaker.name
+        }. Keep your response conversational, engaging, and appropriate for a podcast. Be authentic to your personality and expertise level. Use ums and ahs. Do not include stage directions or emotes. Just output the speech text.`,
+      },
     ];
 
-    return await this.callClaude(messages, 500);
+    return await this.callClaude(messages, 200);
   }
 
   private getConversationHistory(script: PodcastScript): string {
     return script.speeches
       .slice(-10) // Last 10 speeches
-      .map(speech => `${speech.speaker.name}: ${speech.message}`)
-      .join('\n');
+      .map((speech) => `${speech.speaker.name}: ${speech.message}`)
+      .join("\n");
   }
 
   private getRelevantMaterials(script: PodcastScript): string {
     return script.materials
       .slice(0, 3) // First 3 materials
-      .map(material => `${material.title}: ${material.content.substring(0, 200)}...`)
-      .join('\n\n');
+      .map(
+        (material) =>
+          `${material.title}: ${material.content.substring(0, 200)}...`
+      )
+      .join("\n\n");
   }
 
   private createFallbackSpeech(): Speech {
@@ -107,13 +125,14 @@ Respond naturally as ${this.speaker.name}. Keep your response conversational, en
       "That reminds me of something similar I heard about.",
     ];
 
-    const randomMessage = fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
+    const randomMessage =
+      fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
 
     return {
       id: this.generateId(),
       speaker: this.speaker,
       message: randomMessage,
-      instructions: 'Fallback response due to generation failure',
+      instructions: "Fallback response due to generation failure",
       voice: this.speaker.voice,
       voiceStyle: this.speaker.voiceStyle,
       timestamp: new Date(),
@@ -124,3 +143,4 @@ Respond naturally as ${this.speaker.name}. Keep your response conversational, en
     return Math.random().toString(36).substr(2, 9);
   }
 }
+

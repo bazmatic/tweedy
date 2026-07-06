@@ -45,7 +45,9 @@ export class AudioProcessor {
 
       // Create a temporary file list for ffmpeg
       const listPath = path.join(path.dirname(outputPath), "concat_list.txt");
-      const listContent = inputFiles.map((file) => `file '${file}'`).join("\n");
+      const listContent = inputFiles
+        .map((file) => `file '${path.resolve(file)}'`)
+        .join("\n");
       await fs.writeFile(listPath, listContent);
 
       return new Promise((resolve, reject) => {

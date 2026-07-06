@@ -35,3 +35,4 @@ export abstract class BaseVocalProvider implements IVocalProvider {
     logger.error(`TTS failed for ${this.getProviderName()}:`, error);
   }
 }
+

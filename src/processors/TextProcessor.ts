@@ -36,3 +36,4 @@ export class TextProcessor extends BaseProcessor {
     }
   }
 }
+

@@ -44,7 +44,9 @@ export function createMaterialCommands(): Command {
 
         console.log("\nAvailable Materials:");
         materials.forEach((material) => {
-          console.log(`  ${material.title} (${material.sourceType})`);
+          console.log(
+            `  [ID: ${material.id}] ${material.title} (${material.sourceType})`
+          );
           console.log(`    Source: ${material.source}`);
           console.log(`    Content: ${material.content.substring(0, 100)}...`);
           console.log("");

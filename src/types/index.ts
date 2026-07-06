@@ -155,41 +155,78 @@ export interface MaterialRecord {
   createdAt: Date;
 }
 
+export interface SpeechRecord {
+  id: string;
+  speakerId: string;
+  message: string;
+  instructions: string;
+  voiceId: string;
+  voiceStyle: string;
+  timestamp: Date;
+}
+
 // Service Interfaces
 export interface IVoiceRepository {
-  create(voice: Omit<VoiceRecord, "id" | "createdAt" | "updatedAt">): Promise<VoiceRecord>;
+  create(
+    voice: Omit<VoiceRecord, "id" | "createdAt" | "updatedAt">
+  ): Promise<VoiceRecord>;
   getById(id: string): Promise<VoiceRecord | null>;
   getAll(): Promise<VoiceRecord[]>;
-  update(id: string, voice: Partial<Omit<VoiceRecord, "id" | "createdAt" | "updatedAt">>): Promise<VoiceRecord | null>;
+  update(
+    id: string,
+    voice: Partial<Omit<VoiceRecord, "id" | "createdAt" | "updatedAt">>
+  ): Promise<VoiceRecord | null>;
   delete(id: string): Promise<boolean>;
   findByName(name: string): Promise<VoiceRecord | null>;
 }
 
 export interface ISpeakerRepository {
-  create(speaker: Omit<SpeakerRecord, "id" | "createdAt" | "updatedAt">): Promise<SpeakerRecord>;
+  create(
+    speaker: Omit<SpeakerRecord, "id" | "createdAt" | "updatedAt">
+  ): Promise<SpeakerRecord>;
   getById(id: string): Promise<SpeakerRecord | null>;
   getAll(): Promise<SpeakerRecord[]>;
-  update(id: string, speaker: Partial<Omit<SpeakerRecord, "id" | "createdAt" | "updatedAt">>): Promise<SpeakerRecord | null>;
+  update(
+    id: string,
+    speaker: Partial<Omit<SpeakerRecord, "id" | "createdAt" | "updatedAt">>
+  ): Promise<SpeakerRecord | null>;
   delete(id: string): Promise<boolean>;
   findByName(name: string): Promise<SpeakerRecord | null>;
 }
 
 export interface IScriptRepository {
-  create(script: Omit<ScriptRecord, "id" | "createdAt" | "updatedAt">): Promise<ScriptRecord>;
+  create(
+    script: Omit<ScriptRecord, "id" | "createdAt" | "updatedAt">
+  ): Promise<ScriptRecord>;
   getById(id: string): Promise<ScriptRecord | null>;
   getAll(): Promise<ScriptRecord[]>;
-  update(id: string, script: Partial<Omit<ScriptRecord, "id" | "createdAt" | "updatedAt">>): Promise<ScriptRecord | null>;
+  update(
+    id: string,
+    script: Partial<Omit<ScriptRecord, "id" | "createdAt" | "updatedAt">>
+  ): Promise<ScriptRecord | null>;
   delete(id: string): Promise<boolean>;
   findByName(name: string): Promise<ScriptRecord | null>;
 }
 
 export interface IMaterialRepository {
-  create(material: Omit<MaterialRecord, "id" | "createdAt">): Promise<MaterialRecord>;
+  create(
+    material: Omit<MaterialRecord, "id" | "createdAt">
+  ): Promise<MaterialRecord>;
   getById(id: string): Promise<MaterialRecord | null>;
   getAll(): Promise<MaterialRecord[]>;
-  update(id: string, material: Partial<Omit<MaterialRecord, "id" | "createdAt">>): Promise<MaterialRecord | null>;
+  update(
+    id: string,
+    material: Partial<Omit<MaterialRecord, "id" | "createdAt">>
+  ): Promise<MaterialRecord | null>;
   delete(id: string): Promise<boolean>;
   findBySource(source: string): Promise<MaterialRecord[]>;
+}
+
+export interface ISpeechRepository {
+  create(speech: Omit<SpeechRecord, "id">): Promise<SpeechRecord>;
+  getById(id: string): Promise<SpeechRecord | null>;
+  getAll(): Promise<SpeechRecord[]>;
+  delete(id: string): Promise<boolean>;
 }
 
 // Provider Interfaces
@@ -226,18 +263,28 @@ export interface IDirectorAgent {
 
 // Service Interfaces
 export interface IVoiceService {
-  createVoice(voice: Omit<VoiceRecord, "id" | "createdAt" | "updatedAt">): Promise<Voice>;
+  createVoice(
+    voice: Omit<VoiceRecord, "id" | "createdAt" | "updatedAt">
+  ): Promise<Voice>;
   getVoice(id: string): Promise<Voice>;
   getAllVoices(): Promise<Voice[]>;
-  updateVoice(id: string, voice: Partial<Omit<VoiceRecord, "id" | "createdAt" | "updatedAt">>): Promise<Voice>;
+  updateVoice(
+    id: string,
+    voice: Partial<Omit<VoiceRecord, "id" | "createdAt" | "updatedAt">>
+  ): Promise<Voice>;
   deleteVoice(id: string): Promise<void>;
 }
 
 export interface ISpeakerService {
-  createSpeaker(speaker: Omit<SpeakerRecord, "id" | "createdAt" | "updatedAt">): Promise<Speaker>;
+  createSpeaker(
+    speaker: Omit<SpeakerRecord, "id" | "createdAt" | "updatedAt">
+  ): Promise<Speaker>;
   getSpeaker(id: string): Promise<Speaker>;
   getAllSpeakers(): Promise<Speaker[]>;
-  updateSpeaker(id: string, speaker: Partial<Omit<SpeakerRecord, "id" | "createdAt" | "updatedAt">>): Promise<Speaker>;
+  updateSpeaker(
+    id: string,
+    speaker: Partial<Omit<SpeakerRecord, "id" | "createdAt" | "updatedAt">>
+  ): Promise<Speaker>;
   deleteSpeaker(id: string): Promise<void>;
 }
 
@@ -249,7 +296,9 @@ export interface IScriptService {
 }
 
 export interface IMaterialService {
-  addMaterial(material: Omit<MaterialRecord, "id" | "createdAt">): Promise<PodcastMaterial>;
+  addMaterial(
+    material: Omit<MaterialRecord, "id" | "createdAt">
+  ): Promise<PodcastMaterial>;
   getMaterial(id: string): Promise<PodcastMaterial>;
   getAllMaterials(): Promise<PodcastMaterial[]>;
   deleteMaterial(id: string): Promise<void>;

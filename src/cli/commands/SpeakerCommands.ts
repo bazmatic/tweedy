@@ -30,7 +30,7 @@ export function createSpeakerCommands(): Command {
         console.log("\nAvailable Speakers:");
         speakers.forEach((speaker) => {
           console.log(
-            `  ${speaker.name} (${speaker.voice.name}) - ${speaker.personality}`
+            `  [ID: ${speaker.id}] ${speaker.name} (${speaker.voice.name}) - ${speaker.personality}`
           );
           console.log(`    Expert: ${speaker.isExpert ? "Yes" : "No"}`);
           console.log(`    Voice Style: ${speaker.voiceStyle}`);

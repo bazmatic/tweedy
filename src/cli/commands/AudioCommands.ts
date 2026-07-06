@@ -1,3 +1,4 @@
+import * as path from "path";
 import { Command } from "commander";
 import { AudioService } from "../../services";
 import { ScriptService } from "../../services";
@@ -5,9 +6,12 @@ import {
   ScriptRepository,
   SpeakerRepository,
   MaterialRepository,
+  VoiceRepository,
+  SpeechRepository,
 } from "../../repositories";
 import { VocalProviderName } from "../../types";
 import { logger } from "../../utils/logger";
+import { appConfig } from "../../utils/config";
 
 export function createAudioCommands(): Command {
   const audioCommand = new Command("audio");
@@ -15,10 +19,14 @@ export function createAudioCommands(): Command {
   const scriptRepository = new ScriptRepository();
   const speakerRepository = new SpeakerRepository();
   const materialRepository = new MaterialRepository();
+  const voiceRepository = new VoiceRepository();
+  const speechRepository = new SpeechRepository();
   const scriptService = new ScriptService(
     scriptRepository,
     speakerRepository,
-    materialRepository
+    materialRepository,
+    voiceRepository,
+    speechRepository
   );
   const audioService = new AudioService();
 
@@ -38,7 +46,9 @@ export function createAudioCommands(): Command {
         logger.progress(`Generating audio for script ${scriptId}...`);
 
         const script = await scriptService.getScript(scriptId);
-        const outputPath = options.output || `podcast-${scriptId}.mp3`;
+        const outputPath =
+          options.output ||
+          path.join(appConfig.audioDir, `podcast-${scriptId}.mp3`);
 
         await audioService.generateAudio(script.speeches, outputPath);
 

@@ -29,7 +29,7 @@ export function createVoiceCommands(): Command {
         console.log("\nAvailable Voices:");
         voices.forEach((voice) => {
           console.log(
-            `  ${voice.name} (${voice.provider}) - ${voice.description}`
+            `  [ID: ${voice.id}] ${voice.name} (${voice.provider}) - ${voice.description}`
           );
         });
       } catch (error) {

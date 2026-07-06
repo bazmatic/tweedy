@@ -64,3 +64,4 @@ export class VoiceRepository extends BaseRepository<VoiceRecord> implements IVoi
     return voices.find(voice => voice.name === name) || null;
   }
 }
+
