@@ -84,6 +84,8 @@ Required environment variables:
 Optional environment variables:
 
 - `ELEVENLABS_API_KEY`: ElevenLabs API key for premium voices
+- `HUME_API_KEY`: Hume API key for premium voices
+- `CARTESIA_API_KEY`: Cartesia API key for premium voices
 - `DATA_DIR`: Data directory (default: ./data)
 - `AUDIO_DIR`: Audio output directory (default: ./audio)
 - `SCRIPTS_DIR`: Scripts directory (default: ./scripts)
