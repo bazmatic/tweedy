@@ -15,7 +15,7 @@ export class AudioService implements IAudioService {
       logger.info(`Generating audio for ${speeches.length} speeches`);
 
       const audioFiles: string[] = [];
-      const batchSize = 3;
+      const batchSize = 1;
 
       // Process speeches in batches
       for (let i = 0; i < speeches.length; i += batchSize) {
