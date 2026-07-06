@@ -1,5 +1,5 @@
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
-import { OpenAIEmbeddings } from "@langchain/openai";
+import { LocalLangChainEmbeddings } from "./LocalLangChainEmbeddings";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { Document } from "langchain/document";
 import * as fs from "fs-extra";
@@ -14,7 +14,7 @@ import { logger } from "../utils/logger";
 
 export class LangChainVectorStore implements VectorStore {
   private vectorStore?: MemoryVectorStore;
-  private embeddings?: OpenAIEmbeddings;
+  private embeddings?: LocalLangChainEmbeddings;
   private textSplitter: RecursiveCharacterTextSplitter;
   private storePath: string;
 
@@ -29,15 +29,7 @@ export class LangChainVectorStore implements VectorStore {
 
   private ensureInitialized(): void {
     if (!this.embeddings) {
-      if (!process.env.OPENAI_API_KEY) {
-        throw new Error(
-          "OPENAI_API_KEY environment variable is required for RAG functionality"
-        );
-      }
-      this.embeddings = new OpenAIEmbeddings({
-        modelName: appConfig.defaultEmbeddingModel,
-        openAIApiKey: process.env.OPENAI_API_KEY!,
-      });
+      this.embeddings = new LocalLangChainEmbeddings();
       this.vectorStore = new MemoryVectorStore(this.embeddings);
     }
   }
