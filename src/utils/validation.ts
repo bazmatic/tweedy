@@ -11,7 +11,6 @@ export const envSchema = z.object({
   SCRIPTS_DIR: z.string().optional(),
   EMBEDDINGS_DIR: z.string().optional(),
   DEFAULT_VOICE_PROVIDER: z.nativeEnum(VocalProviderName).optional(),
-  DEFAULT_EMBEDDING_MODEL: z.string().optional(),
   DEFAULT_CHUNK_SIZE: z.string().optional(),
   DEFAULT_CHUNK_OVERLAP: z.string().optional(),
 });
