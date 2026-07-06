@@ -18,6 +18,7 @@ export enum VocalProviderName {
   ElevenLabs = "elevenlabs",
   OpenAI = "openai",
   Hume = "hume",
+  Cartesia = "cartesia",
 }
 
 export enum DocumentType {
@@ -49,6 +50,9 @@ export interface VoiceSettings {
   similarityBoost?: number;
   style?: string;
   instructions?: string;
+  /** Provider-specific TTS options that don't have a shared equivalent
+   * (e.g. Cartesia's `emotion`/`volume`, either provider's `speed`). */
+  providerOptions?: Record<string, unknown>;
 }
 
 export interface Speaker {
