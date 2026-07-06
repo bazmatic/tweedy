@@ -2,6 +2,7 @@ import { VocalProviderFactory, AudioProcessor } from "../providers";
 import { VocalProviderName, Speech, Voice } from "../types";
 import { appConfig } from "../utils/config";
 import { logger } from "../utils/logger";
+import { SpeakerAgentToolName } from "../agents/speaker-tools";
 import * as path from "path";
 
 export interface IAudioService {
@@ -27,8 +28,13 @@ export class AudioService implements IAudioService {
         audioFiles.push(...batchResults);
       }
 
-      // Concatenate all audio files
-      await AudioProcessor.concatenateAudio(audioFiles, outputPath);
+      const isInterjection = speeches.map(
+        (speech) => speech.tool === SpeakerAgentToolName.INTERJECT
+      );
+
+      // Concatenate all audio files, overlapping interjections with the
+      // preceding clip so they sound like a natural cut-in.
+      await AudioProcessor.concatenateAudio(audioFiles, outputPath, isInterjection);
 
       logger.success(`Audio generated: ${outputPath}`);
       return outputPath;
