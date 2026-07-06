@@ -103,7 +103,6 @@ export interface AppConfig {
   scriptsDir: string;
   embeddingsDir: string;
   defaultVoiceProvider: VocalProviderName;
-  defaultEmbeddingModel: string;
   defaultChunkSize: number;
   defaultChunkOverlap: number;
 }
