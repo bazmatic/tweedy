@@ -22,6 +22,13 @@ export class HumeProvider extends BaseVocalProvider {
     return 'Hume';
   }
 
+  private buildDescription(params: VocalProviderTtsParams): string | undefined {
+    const parts = [params.voice.settings.instructions, params.speech.instructions].filter(
+      (part): part is string => Boolean(part && part.trim().length > 0)
+    );
+    return parts.length > 0 ? parts.join('. ') : undefined;
+  }
+
   async tts(params: VocalProviderTtsParams): Promise<string> {
     this.validateParams(params);
     this.logTtsRequest(params);
@@ -39,7 +46,7 @@ export class HumeProvider extends BaseVocalProvider {
             {
               text: params.speech.message,
               voice: { id: params.voice.providerId },
-              description: params.voice.settings.instructions,
+              description: this.buildDescription(params),
               ...(speed !== undefined ? { speed } : {}),
             },
           ],
