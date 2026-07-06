@@ -75,16 +75,14 @@ export class AudioProcessor {
           // would quietly attenuate every clip, not just overlapping ones.
           // loudnorm below re-normalizes levels anyway, so skip amix's own scaling.
           `${mixInputs}amix=inputs=${inputFiles.length}:dropout_transition=0:normalize=0[mixed]`,
+          // Simple (-af) and complex (-filter_complex) filtering can't target the
+          // same output stream, so loudnorm/silenceremove have to be chained onto
+          // the end of the complex filtergraph instead of passed as -af.
+          "[mixed]loudnorm=I=-16:LRA=11:TP=-1.5,silenceremove=1:0:-50dB:1:0:-50dB[out]",
         ].join(";");
 
         command
-          .complexFilter(filterGraph, "mixed")
-          .outputOptions([
-            // A single -af with both filters comma-separated — passing -af twice
-            // means ffmpeg only honours the last one, silently dropping loudnorm.
-            "-af",
-            "loudnorm=I=-16:LRA=11:TP=-1.5,silenceremove=1:0:-50dB:1:0:-50dB",
-          ])
+          .complexFilter(filterGraph, "out")
           .output(outputPath)
           .on("end", () => {
             logger.info(`Audio concatenated: ${outputPath}`);
