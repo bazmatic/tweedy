@@ -2,6 +2,8 @@ import axios from 'axios';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { BaseVocalProvider } from './BaseVocalProvider';
+import { CartesiaEmotionMatcher } from './CartesiaEmotionMatcher';
+import { LocalEmbeddingService } from '../rag/LocalEmbeddingService';
 import { VocalProviderTtsParams, Voice, VocalProviderName } from '../types';
 import { appConfig } from '../utils/config';
 import { logger } from '../utils/logger';
@@ -11,6 +13,7 @@ const CARTESIA_API_VERSION = '2025-04-16';
 export class CartesiaProvider extends BaseVocalProvider {
   private apiKey: string;
   private baseUrl = 'https://api.cartesia.ai';
+  private emotionMatcher: CartesiaEmotionMatcher;
 
   constructor() {
     super();
@@ -18,6 +21,7 @@ export class CartesiaProvider extends BaseVocalProvider {
     if (!this.apiKey) {
       throw new Error('CARTESIA_API_KEY environment variable is required');
     }
+    this.emotionMatcher = new CartesiaEmotionMatcher(new LocalEmbeddingService());
   }
 
   protected getProviderName(): string {
@@ -41,8 +45,11 @@ export class CartesiaProvider extends BaseVocalProvider {
       await fs.ensureDir(path.dirname(outputPath));
 
       const options = params.voice.settings.providerOptions || {};
+      const matchedEmotion = await this.emotionMatcher.match(params.speech.instructions);
+      const emotion = matchedEmotion ?? options.emotion;
+
       const generationConfig: Record<string, unknown> = {};
-      if (options.emotion !== undefined) generationConfig.emotion = options.emotion;
+      if (emotion !== undefined) generationConfig.emotion = emotion;
       if (options.speed !== undefined) generationConfig.speed = options.speed;
       if (options.volume !== undefined) generationConfig.volume = options.volume;
 
