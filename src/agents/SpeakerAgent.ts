@@ -97,7 +97,7 @@ Respond naturally as ${
     const result = await this.callClaudeWithTools(
       messages,
       toAnthropicTools(),
-      100
+      300
     );
 
     return {
