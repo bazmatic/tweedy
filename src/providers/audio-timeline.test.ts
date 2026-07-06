@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { computeClipOffsets, OVERLAP_SECONDS, ClipTiming } from "./audio-timeline";
+import { computeClipOffsets, OVERLAP_SECONDS } from "./audio-timeline";
+import type { ClipTiming } from "./audio-timeline";
 
 describe("computeClipOffsets", () => {
   it("places sequential clips back-to-back when none are interjections", () => {
