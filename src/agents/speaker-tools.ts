@@ -68,8 +68,21 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   },
 ];
 
-export function toAnthropicTools(): Tool[] {
-  return SPEAKER_TOOL_DEFINITIONS.map((definition) => ({
+export const SHORT_REACTION_TOOLS: SpeakerAgentToolName[] = [
+  SpeakerAgentToolName.INTERJECT,
+  SpeakerAgentToolName.FILLER_COMMENT,
+  SpeakerAgentToolName.SHORT_QUESTION,
+  SpeakerAgentToolName.ONE_LINER,
+];
+
+export function toAnthropicTools(only?: SpeakerAgentToolName[]): Tool[] {
+  const definitions = only
+    ? SPEAKER_TOOL_DEFINITIONS.filter((definition) =>
+        only.includes(definition.name)
+      )
+    : SPEAKER_TOOL_DEFINITIONS;
+
+  return definitions.map((definition) => ({
     name: definition.name,
     description: definition.toolDescription,
     input_schema: {

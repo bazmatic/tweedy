@@ -7,7 +7,7 @@ A TypeScript CLI application that generates podcasts from various inputs using R
 - **RAG-Enhanced Content Generation**: Uses semantic search to retrieve relevant content
 - **Multiple Input Sources**: Claude queries, document folders, web pages
 - **AI Agent System**: Director and Speaker agents for natural conversation flow
-- **Voice Management**: Support for ElevenLabs, OpenAI, and Hume TTS providers
+- **Voice Management**: Support for ElevenLabs, OpenAI, Hume, and Cartesia TTS providers
 - **Document Processing**: PDF, text, markdown, and HTML support
 - **Audio Processing**: FFmpeg integration for high-quality audio output
 
@@ -32,7 +32,7 @@ The system follows a clean architecture pattern with clear separation of concern
 │        Provider Layer               │
 │  ┌─────────────────────────────────┐│
 │  │    AI Providers (Claude)       ││
-│  │    TTS Providers (ElevenLabs)   ││
+│  │    TTS Providers (4 vendors)   ││
 │  │    Document Loaders            ││
 │  └─────────────────────────────────┘│
 └─────────────────────────────────────┘
@@ -84,6 +84,8 @@ Required environment variables:
 Optional environment variables:
 
 - `ELEVENLABS_API_KEY`: ElevenLabs API key for premium voices
+- `HUME_API_KEY`: Hume API key for premium voices
+- `CARTESIA_API_KEY`: Cartesia API key for premium voices
 - `DATA_DIR`: Data directory (default: ./data)
 - `AUDIO_DIR`: Audio output directory (default: ./audio)
 - `SCRIPTS_DIR`: Scripts directory (default: ./scripts)
@@ -107,7 +109,7 @@ npx tweedy status
 # List available voices
 npx tweedy voice list
 
-# Import voices from ElevenLabs
+# Import voices from a provider (elevenlabs, openai, hume, cartesia)
 npx tweedy voice import --provider elevenlabs
 
 # Add a custom voice
@@ -234,7 +236,7 @@ The system uses LangChain for document processing and semantic search:
 
 ## Audio Processing
 
-- **TTS Providers**: ElevenLabs, OpenAI, Hume
+- **TTS Providers**: ElevenLabs, OpenAI, Hume, Cartesia
 - **Audio Processing**: FFmpeg for normalization and silence removal
 - **Batch Processing**: Efficient parallel audio generation
 - **Quality Enhancement**: Audio normalization and cleanup

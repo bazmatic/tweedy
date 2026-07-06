@@ -44,7 +44,7 @@ export function createVoiceCommands(): Command {
     .option("-d, --description <description>", "Voice description")
     .option(
       "-p, --provider <provider>",
-      "Voice provider (elevenlabs, openai)",
+      "Voice provider (elevenlabs, openai, hume, cartesia)",
       "elevenlabs"
     )
     .option("--provider-id <id>", "Provider-specific voice ID")
@@ -74,7 +74,7 @@ export function createVoiceCommands(): Command {
     .description("Import voices from a provider")
     .option(
       "-p, --provider <provider>",
-      "Provider to import from (elevenlabs, openai)",
+      "Provider to import from (elevenlabs, openai, hume, cartesia)",
       "elevenlabs"
     )
     .action(async (options) => {

@@ -13,8 +13,6 @@ export function loadConfig(): AppConfig {
     defaultVoiceProvider:
       (process.env.DEFAULT_VOICE_PROVIDER as VocalProviderName) ||
       VocalProviderName.ElevenLabs,
-    defaultEmbeddingModel:
-      process.env.DEFAULT_EMBEDDING_MODEL || "text-embedding-3-small",
     defaultChunkSize: parseInt(process.env.DEFAULT_CHUNK_SIZE || "1000"),
     defaultChunkOverlap: parseInt(process.env.DEFAULT_CHUNK_OVERLAP || "200"),
   };

@@ -4,6 +4,7 @@ import {
   GenerateScriptParams,
   Speaker,
   PodcastMaterial,
+  Speech,
 } from "../types";
 import {
   ScriptRepository,
@@ -13,6 +14,7 @@ import {
   SpeechRepository,
 } from "../repositories";
 import { DirectorAgent, SpeakerAgent } from "../agents";
+import { SpeakerAgentToolName } from "../agents/speaker-tools";
 import { logger } from "../utils/logger";
 
 export class ScriptService implements IScriptService {
@@ -159,33 +161,61 @@ export class ScriptService implements IScriptService {
     const directorAgent = new DirectorAgent(script);
     await directorAgent.createPodcastPlan();
 
-    let currentSpeakerIndex = 0;
+    const INTERJECTION_LENGTH_THRESHOLD = 150;
+    const INTERJECTION_CHANCE = 0.5;
 
     for (let turn = 0; turn < params.maxTurns; turn++) {
-      const speaker = script.speakers[currentSpeakerIndex];
+      const { speaker, direction } = await directorAgent.chooseNextSpeaker(
+        script
+      );
       const speakerAgent = new SpeakerAgent(speaker);
 
-      const direction = await directorAgent.giveDirection(speakerAgent);
       const speech = await speakerAgent.speak(script, direction);
+      await this.persistSpeech(script, speech);
 
-      // Save speech to repository
-      const speechRecord = await this.speechRepository.create({
-        speakerId: speech.speaker.id,
-        message: speech.message,
-        instructions: speech.instructions,
-        voiceId: speech.voice.id,
-        voiceStyle: speech.voiceStyle,
-        timestamp: speech.timestamp,
-      });
+      // If that turn ran long, let a different speaker chime in with a quick
+      // reaction before the director picks the next real turn — real overlap
+      // instead of relying on the speaker to self-select a short tool.
+      const ranLong =
+        speech.tool === SpeakerAgentToolName.SPEAK &&
+        speech.message.length > INTERJECTION_LENGTH_THRESHOLD;
 
-      // Update speech with saved ID
-      speech.id = speechRecord.id;
-
-      script.speeches.push(speech);
-      script.updatedAt = new Date();
-
-      currentSpeakerIndex = (currentSpeakerIndex + 1) % script.speakers.length;
+      if (
+        ranLong &&
+        script.speakers.length > 1 &&
+        Math.random() < INTERJECTION_CHANCE
+      ) {
+        const eligibleInterjectors = script.speakers.filter(
+          (s) => s.id !== speaker.id
+        );
+        const interjector =
+          eligibleInterjectors[
+            Math.floor(Math.random() * eligibleInterjectors.length)
+          ];
+        const interjectionAgent = new SpeakerAgent(interjector);
+        const interjection = await interjectionAgent.interject(script);
+        await this.persistSpeech(script, interjection);
+      }
     }
+  }
+
+  private async persistSpeech(
+    script: PodcastScript,
+    speech: Speech
+  ): Promise<void> {
+    const speechRecord = await this.speechRepository.create({
+      speakerId: speech.speaker.id,
+      message: speech.message,
+      instructions: speech.instructions,
+      voiceId: speech.voice.id,
+      voiceStyle: speech.voiceStyle,
+      timestamp: speech.timestamp,
+    });
+
+    speech.id = speechRecord.id;
+
+    script.speeches.push(speech);
+    script.updatedAt = new Date();
   }
 
   private async loadScriptFromRecord(record: any): Promise<PodcastScript> {

@@ -85,9 +85,6 @@ export function createCLI(): Command {
       console.log(
         `  Default Voice Provider: ${appConfig.defaultVoiceProvider}`
       );
-      console.log(
-        `  Default Embedding Model: ${appConfig.defaultEmbeddingModel}`
-      );
       console.log("");
 
       // Check environment variables
