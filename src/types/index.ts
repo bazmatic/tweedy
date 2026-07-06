@@ -264,7 +264,9 @@ export interface ISpeakerAgent {
 
 export interface IDirectorAgent {
   createPodcastPlan(script: PodcastScript): Promise<string>;
-  giveDirection(speakerAgent: ISpeakerAgent): Promise<string>;
+  chooseNextSpeaker(
+    script: PodcastScript
+  ): Promise<{ speaker: Speaker; direction: string }>;
 }
 
 // Service Interfaces
