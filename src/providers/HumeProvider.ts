@@ -73,6 +73,9 @@ export class HumeProvider extends BaseVocalProvider {
         headers: {
           'X-Hume-Api-Key': this.apiKey,
         },
+        params: {
+          provider: 'HUME_AI',
+        },
       });
 
       const voices = response.data.voices_page ?? response.data.voices ?? [];
