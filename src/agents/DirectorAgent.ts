@@ -1,6 +1,10 @@
-import { IDirectorAgent, PodcastScript, ISpeakerAgent } from '../types';
+import { IDirectorAgent, PodcastScript, Speaker } from '../types';
 import { BaseAgent } from './BaseAgent';
 import { logger } from '../utils/logger';
+import {
+  SelectNextSpeakerInput,
+  toSelectNextSpeakerTool,
+} from './director-tools';
 
 export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private script: PodcastScript;
@@ -52,12 +56,22 @@ Keep it engaging and natural, with clear direction for each speaker.`
     }
   }
 
-  async giveDirection(speakerAgent: ISpeakerAgent): Promise<string> {
+  async chooseNextSpeaker(
+    script: PodcastScript
+  ): Promise<{ speaker: Speaker; direction: string }> {
     try {
-      this.logAgentAction('Giving direction to speaker');
+      this.logAgentAction('Choosing next speaker');
 
-      const progress = this.calculateProgress();
-      const history = this.getConversationHistory();
+      const progress = this.calculateProgress(script);
+      const history = this.getConversationHistory(script);
+      const speakerDescriptions = script.speakers
+        .map(
+          (speaker) =>
+            `- ${speaker.name} (id: ${speaker.id}, ${
+              speaker.isExpert ? 'expert' : 'interviewer'
+            }): ${speaker.personality}`
+        )
+        .join('\n');
 
       const messages = [
         {
@@ -67,33 +81,84 @@ Keep it engaging and natural, with clear direction for each speaker.`
 Podcast Plan: ${this.podcastPlan}
 
 Progress: ${progress}% complete
+
+Speakers:
+${speakerDescriptions}
+
 Conversation so far:
-${history}
+${history || '(nothing said yet — this is the opening of the episode)'}
 
-Current speaker: ${(speakerAgent as any).speaker?.name || 'Unknown'}
-
-Give clear, specific direction to the current speaker about what they should say next. Be conversational and natural in your direction.`
+Decide which speaker should talk next and give them clear, specific, conversational direction about what they should say. On the opening of the episode, this should usually be the interviewer.${this.getPacingNote(
+            script
+          )}`
         }
       ];
 
-      const direction = await this.callClaude(messages, 300);
-      logger.debug(`Direction given: ${direction}`);
-      
-      return direction;
+      const tools = [toSelectNextSpeakerTool(script.speakers)];
+      const { speakerId, direction } =
+        await this.callClaudeForToolInput<SelectNextSpeakerInput>(
+          messages,
+          tools,
+          300
+        );
+
+      const speaker = script.speakers.find((s) => s.id === speakerId);
+      if (!speaker) {
+        logger.warn(
+          `Director chose unknown speakerId "${speakerId}"; falling back to alternating speaker`
+        );
+        return {
+          speaker: this.fallbackSpeaker(script),
+          direction,
+        };
+      }
+
+      logger.debug(`Director chose ${speaker.name}: ${direction}`);
+      return { speaker, direction };
     } catch (error) {
-      logger.error('Failed to give direction:', error);
+      logger.error('Failed to choose next speaker:', error);
       throw error;
     }
   }
 
-  private calculateProgress(): number {
-    const totalExpectedTurns = this.script.speeches.length;
-    const currentTurns = this.script.speeches.length;
+  private fallbackSpeaker(script: PodcastScript): Speaker {
+    const lastSpeaker = script.speeches[script.speeches.length - 1]?.speaker;
+    const eligible = script.speakers.filter((s) => s.id !== lastSpeaker?.id);
+    if (eligible.length === 0) {
+      return script.speakers[0];
+    }
+    return eligible[Math.floor(Math.random() * eligible.length)];
+  }
+
+  private calculateProgress(script: PodcastScript): number {
+    const totalExpectedTurns = script.speeches.length;
+    const currentTurns = script.speeches.length;
     return Math.min(100, Math.round((currentTurns / totalExpectedTurns) * 100));
   }
 
-  private getConversationHistory(): string {
-    return this.script.speeches
+  /**
+   * If recent turns have run long, tell the director to call for a short,
+   * reactive turn instead of another explanation — keeps the back-and-forth alive.
+   */
+  private getPacingNote(script: PodcastScript): string {
+    const recentSpeeches = script.speeches.slice(-3);
+    if (recentSpeeches.length === 0) {
+      return '';
+    }
+
+    const averageLength =
+      recentSpeeches.reduce((sum, speech) => sum + speech.message.length, 0) /
+      recentSpeeches.length;
+
+    if (averageLength > 150) {
+      return ' The last few turns have been long explanations — direct this speaker to give a short, punchy reaction or a quick pointed question instead of another lengthy point.';
+    }
+
+    return '';
+  }
+
+  private getConversationHistory(script: PodcastScript): string {
+    return script.speeches
       .slice(-5) // Last 5 speeches
       .map(speech => `${speech.speaker.name}: ${speech.message}`)
       .join('\n');
