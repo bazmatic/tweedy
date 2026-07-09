@@ -5,4 +5,5 @@ export { HumeProvider } from './HumeProvider';
 export { CartesiaProvider } from './CartesiaProvider';
 export { VocalProviderFactory } from './VocalProviderFactory';
 export { AudioProcessor } from './AudioProcessor';
+export { AiModelFactory } from './AiModelFactory';
 
