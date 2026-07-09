@@ -1,11 +1,16 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { ISpeakerAgent, PodcastScript, Speech, Speaker } from "../types";
+import {
+  ISpeakerAgent,
+  LlmMessage,
+  PodcastScript,
+  Speech,
+  Speaker,
+} from "../types";
 import { BaseAgent } from "./BaseAgent";
 import { logger } from "../utils/logger";
 import {
   SHORT_REACTION_TOOLS,
   SpeakerAgentToolName,
-  toAnthropicTools,
+  toLlmTools,
 } from "./speaker-tools";
 
 export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
@@ -71,7 +76,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     try {
       const lastSpeech = script.speeches[script.speeches.length - 1];
 
-      const messages: Anthropic.MessageParam[] = [
+      const messages: LlmMessage[] = [
         {
           role: "user" as const,
           content: `You are ${this.speaker.name}, a podcast speaker with the following characteristics:
@@ -84,9 +89,9 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
         },
       ];
 
-      const result = await this.callClaudeWithTools(
+      const result = await this.callModelWithTools(
         messages,
-        toAnthropicTools(SHORT_REACTION_TOOLS.slice(0, 2)),
+        toLlmTools(SHORT_REACTION_TOOLS.slice(0, 2)),
         80
       );
 
@@ -113,7 +118,7 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
     const conversationHistory = this.getConversationHistory(script);
     const relevantMaterials = this.getRelevantMaterials(script);
 
-    const messages: Anthropic.MessageParam[] = [
+    const messages: LlmMessage[] = [
       {
         role: "user" as const,
         content: `You are ${
@@ -143,9 +148,9 @@ Respond naturally as ${
       },
     ];
 
-    const result = await this.callClaudeWithTools(
+    const result = await this.callModelWithTools(
       messages,
-      toAnthropicTools(),
+      toLlmTools(),
       300
     );
 
