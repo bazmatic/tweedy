@@ -30,16 +30,22 @@ export class ElevenLabsProvider extends BaseVocalProvider {
       const outputPath = path.join(appConfig.audioDir, params.outputFileName);
       await fs.ensureDir(path.dirname(outputPath));
 
+      // v3 only accepts discrete stability presets (0 Creative / 0.5 Natural / 1 Robust)
+      // and has no speaker boost, unlike the older multilingual/turbo/flash models.
+      const rawStability = params.voice.settings.stability ?? 0.5;
+      const stability = [0, 0.5, 1].reduce((closest, preset) =>
+        Math.abs(preset - rawStability) < Math.abs(closest - rawStability) ? preset : closest
+      );
+
       const response = await axios.post(
         `${this.baseUrl}/text-to-speech/${params.voice.providerId}`,
         {
           text: params.speech.message,
-          model_id: 'eleven_multilingual_v2',
+          model_id: 'eleven_v3',
           voice_settings: {
-            stability: params.voice.settings.stability || 0.5,
+            stability,
             similarity_boost: params.voice.settings.similarityBoost || 0.5,
             style: params.voice.settings.style || 0.0,
-            use_speaker_boost: true,
           },
         },
         {
