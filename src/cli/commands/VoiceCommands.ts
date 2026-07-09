@@ -48,6 +48,10 @@ export function createVoiceCommands(): Command {
       "elevenlabs"
     )
     .option("--provider-id <id>", "Provider-specific voice ID")
+    .option(
+      "--accent <accent>",
+      "Accent to pin via audio tags (ElevenLabs v3 only, e.g. \"American\")"
+    )
     .action(async (options) => {
       try {
         if (!options.name || !options.providerId) {
@@ -60,7 +64,9 @@ export function createVoiceCommands(): Command {
           description: options.description || options.name,
           provider: options.provider as VocalProviderName,
           providerId: options.providerId,
-          settings: {},
+          settings: options.accent
+            ? { providerOptions: { accent: options.accent } }
+            : {},
         });
 
         logger.success(`Voice created: ${voice.name}`);

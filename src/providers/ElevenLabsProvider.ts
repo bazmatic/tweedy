@@ -1,4 +1,5 @@
 import axios from 'axios';
+import * as crypto from 'crypto';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { BaseVocalProvider } from './BaseVocalProvider';
@@ -22,6 +23,13 @@ export class ElevenLabsProvider extends BaseVocalProvider {
     return 'ElevenLabs';
   }
 
+  // previous_request_ids stitching isn't supported on eleven_v3, so consistency
+  // instead comes from a deterministic per-voice seed plus a Robust-leaning default.
+  private seedForVoice(providerId: string): number {
+    const hash = crypto.createHash('md5').update(providerId).digest();
+    return hash.readUInt32BE(0);
+  }
+
   async tts(params: VocalProviderTtsParams): Promise<string> {
     this.validateParams(params);
     this.logTtsRequest(params);
@@ -32,20 +40,27 @@ export class ElevenLabsProvider extends BaseVocalProvider {
 
       // v3 only accepts discrete stability presets (0 Creative / 0.5 Natural / 1 Robust)
       // and has no speaker boost, unlike the older multilingual/turbo/flash models.
-      const rawStability = params.voice.settings.stability ?? 0.5;
+      // Default leans Robust (1) rather than Natural (0.5) for better accent consistency.
+      const rawStability = params.voice.settings.stability ?? 1;
       const stability = [0, 0.5, 1].reduce((closest, preset) =>
         Math.abs(preset - rawStability) < Math.abs(closest - rawStability) ? preset : closest
       );
 
+      const accent = params.voice.settings.providerOptions?.accent;
+      const text = typeof accent === 'string' && accent.length > 0
+        ? `[${accent} accent] ${params.speech.message}`
+        : params.speech.message;
+
       const response = await axios.post(
         `${this.baseUrl}/text-to-speech/${params.voice.providerId}`,
         {
-          text: params.speech.message,
+          text,
           model_id: 'eleven_v3',
+          seed: this.seedForVoice(params.voice.providerId),
           voice_settings: {
             stability,
-            similarity_boost: params.voice.settings.similarityBoost || 0.5,
-            style: params.voice.settings.style || 0.0,
+            similarity_boost: params.voice.settings.similarityBoost || 0.75,
+            //style: params.voice.settings.style || 0.0,
           },
         },
         {
