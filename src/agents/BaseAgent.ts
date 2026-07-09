@@ -1,97 +1,100 @@
-import Anthropic from "@anthropic-ai/sdk";
+import {
+  AIMessage,
+  BaseMessage,
+  HumanMessage,
+  SystemMessage,
+} from "@langchain/core/messages";
+import { AiModelFactory } from "../providers/AiModelFactory";
+import { appConfig } from "../utils/config";
+import { LlmMessage, LlmTool } from "../types";
 import { logger } from "../utils/logger";
 
-export abstract class BaseAgent {
-  protected client: Anthropic;
-
-  constructor() {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error("ANTHROPIC_API_KEY environment variable is required");
+function toBaseMessages(messages: LlmMessage[]): BaseMessage[] {
+  return messages.map((message) => {
+    switch (message.role) {
+      case "assistant":
+        return new AIMessage(message.content);
+      case "system":
+        return new SystemMessage(message.content);
+      default:
+        return new HumanMessage(message.content);
     }
-    this.client = new Anthropic({ apiKey });
-  }
+  });
+}
 
-  protected async callClaude(
-    messages: any[],
+export abstract class BaseAgent {
+  protected async callModel(
+    messages: LlmMessage[],
     maxTokens: number = 200
   ): Promise<string> {
     try {
-      const response = await this.client.messages.create({
-        model: "claude-sonnet-4-5",
-        max_tokens: maxTokens,
-        messages,
-      });
+      const model = AiModelFactory.getModel(
+        appConfig.defaultAiProvider,
+        maxTokens
+      );
+      const response = await model.invoke(toBaseMessages(messages));
 
-      return response.content[0].type === "text"
-        ? response.content[0].text
-        : "";
+      return typeof response.content === "string" ? response.content : "";
     } catch (error) {
-      logger.error("Claude API call failed:", error);
+      logger.error("AI model call failed:", error);
       throw error;
     }
   }
 
-  protected async callClaudeWithTools(
-    messages: Anthropic.MessageParam[],
-    tools: Anthropic.Tool[],
+  protected async callModelWithTools(
+    messages: LlmMessage[],
+    tools: LlmTool[],
     maxTokens: number = 200
   ): Promise<{ toolName: string; message: string; style: string }> {
     try {
-      const response = await this.client.messages.create({
-        model: "claude-sonnet-4-5",
-        max_tokens: maxTokens,
-        messages,
-        tools,
-        tool_choice: { type: "any" },
-      });
-
-      const toolUseBlock = response.content.find(
-        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
+      const model = AiModelFactory.getModel(
+        appConfig.defaultAiProvider,
+        maxTokens
       );
+      const response = (await model
+        .bindTools!(tools, { tool_choice: "any" })
+        .invoke(toBaseMessages(messages))) as AIMessage;
 
-      if (!toolUseBlock) {
-        throw new Error("Claude response did not include a tool_use block");
+      const toolCall = response.tool_calls?.[0];
+      if (!toolCall) {
+        throw new Error("AI model response did not include a tool call");
       }
 
-      const input = toolUseBlock.input as { message: string; style: string };
+      const input = toolCall.args as { message: string; style: string };
 
       return {
-        toolName: toolUseBlock.name,
+        toolName: toolCall.name,
         message: input.message,
         style: input.style,
       };
     } catch (error) {
-      logger.error("Claude tool-use API call failed:", error);
+      logger.error("AI model tool-use call failed:", error);
       throw error;
     }
   }
 
-  protected async callClaudeForToolInput<T>(
-    messages: Anthropic.MessageParam[],
-    tools: Anthropic.Tool[],
+  protected async callModelForToolInput<T>(
+    messages: LlmMessage[],
+    tools: LlmTool[],
     maxTokens: number = 200
   ): Promise<T> {
     try {
-      const response = await this.client.messages.create({
-        model: "claude-sonnet-4-5",
-        max_tokens: maxTokens,
-        messages,
-        tools,
-        tool_choice: { type: "any" },
-      });
-
-      const toolUseBlock = response.content.find(
-        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
+      const model = AiModelFactory.getModel(
+        appConfig.defaultAiProvider,
+        maxTokens
       );
+      const response = (await model
+        .bindTools!(tools, { tool_choice: "any" })
+        .invoke(toBaseMessages(messages))) as AIMessage;
 
-      if (!toolUseBlock) {
-        throw new Error("Claude response did not include a tool_use block");
+      const toolCall = response.tool_calls?.[0];
+      if (!toolCall) {
+        throw new Error("AI model response did not include a tool call");
       }
 
-      return toolUseBlock.input as T;
+      return toolCall.args as T;
     } catch (error) {
-      logger.error("Claude tool-use API call failed:", error);
+      logger.error("AI model tool-use call failed:", error);
       throw error;
     }
   }
