@@ -1,5 +1,4 @@
-import type { Tool } from "@anthropic-ai/sdk/resources/messages";
-import { Speaker } from "../types";
+import { LlmTool, Speaker } from "../types";
 
 export const SELECT_NEXT_SPEAKER_TOOL_NAME = "select_next_speaker";
 
@@ -8,7 +7,7 @@ export interface SelectNextSpeakerInput {
   direction: string;
 }
 
-export function toSelectNextSpeakerTool(speakers: Speaker[]): Tool {
+export function toSelectNextSpeakerTool(speakers: Speaker[]): LlmTool {
   return {
     name: SELECT_NEXT_SPEAKER_TOOL_NAME,
     description:
