@@ -46,7 +46,7 @@ Keep it engaging and natural, with clear direction for each speaker.`
         }
       ];
 
-      this.podcastPlan = await this.callClaude(messages, 800);
+      this.podcastPlan = await this.callModel(messages, 800);
       logger.info('Podcast plan created successfully');
       
       return this.podcastPlan;
@@ -96,7 +96,7 @@ Decide which speaker should talk next and give them clear, specific, conversatio
 
       const tools = [toSelectNextSpeakerTool(script.speakers)];
       const { speakerId, direction } =
-        await this.callClaudeForToolInput<SelectNextSpeakerInput>(
+        await this.callModelForToolInput<SelectNextSpeakerInput>(
           messages,
           tools,
           300
