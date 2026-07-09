@@ -1,4 +1,4 @@
-import type { Tool } from "@anthropic-ai/sdk/resources/messages";
+import { LlmTool } from "../types";
 
 export enum SpeakerAgentToolName {
   SPEAK = "speak",
@@ -75,7 +75,7 @@ export const SHORT_REACTION_TOOLS: SpeakerAgentToolName[] = [
   SpeakerAgentToolName.ONE_LINER,
 ];
 
-export function toAnthropicTools(only?: SpeakerAgentToolName[]): Tool[] {
+export function toLlmTools(only?: SpeakerAgentToolName[]): LlmTool[] {
   const definitions = only
     ? SPEAKER_TOOL_DEFINITIONS.filter((definition) =>
         only.includes(definition.name)
