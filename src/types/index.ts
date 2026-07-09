@@ -21,6 +21,10 @@ export enum VocalProviderName {
   Cartesia = "cartesia",
 }
 
+export enum AiProviderName {
+  Anthropic = "anthropic",
+}
+
 export enum DocumentType {
   PDF = "pdf",
   TXT = "txt",
@@ -103,6 +107,7 @@ export interface AppConfig {
   scriptsDir: string;
   embeddingsDir: string;
   defaultVoiceProvider: VocalProviderName;
+  defaultAiProvider: AiProviderName;
   defaultChunkSize: number;
   defaultChunkOverlap: number;
 }
@@ -236,6 +241,21 @@ export interface ISpeechRepository {
 }
 
 // Provider Interfaces
+export interface LlmMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+export interface LlmTool {
+  name: string;
+  description: string;
+  input_schema: {
+    type: "object";
+    properties: Record<string, unknown>;
+    required: string[];
+  };
+}
+
 export interface IVocalProvider {
   tts(params: VocalProviderTtsParams): Promise<string>;
   getVoices(): Promise<Voice[]>;

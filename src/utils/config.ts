@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-import { AppConfig, VocalProviderName } from "../types";
+import { AiProviderName, AppConfig, VocalProviderName } from "../types";
 
 // Load environment variables
 config();
@@ -13,6 +13,9 @@ export function loadConfig(): AppConfig {
     defaultVoiceProvider:
       (process.env.DEFAULT_VOICE_PROVIDER as VocalProviderName) ||
       VocalProviderName.ElevenLabs,
+    defaultAiProvider:
+      (process.env.DEFAULT_AI_PROVIDER as AiProviderName) ||
+      AiProviderName.Anthropic,
     defaultChunkSize: parseInt(process.env.DEFAULT_CHUNK_SIZE || "1000"),
     defaultChunkOverlap: parseInt(process.env.DEFAULT_CHUNK_OVERLAP || "200"),
   };
