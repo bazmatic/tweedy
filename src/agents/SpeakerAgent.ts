@@ -80,7 +80,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
 
 ${lastSpeech.speaker.name} just said: "${lastSpeech.message}"
 
-Give a brief, natural reaction to cut in with — a quick interjection or filler comment. Do not summarize or explain, just react in the moment.`,
+Give a brief, natural reaction to cut in with — a quick interjection or filler comment. If ${lastSpeech.speaker.name}'s line trails off or stops mid-sentence (e.g. ends with "..." or an unfinished thought), you can jump in and complete their sentence for them instead of just reacting. Do not summarize or explain, just react in the moment.`,
         },
       ];
 
@@ -139,7 +139,7 @@ Respond naturally as ${
           this.speaker.name
         }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getBrevityNudge(
           script
-        )} Be authentic to your personality and expertise level. Do not include stage directions, emotes, sound effects or physical actions in the message itself — those belong in the style argument.`,
+        )} Be authentic to your personality and expertise level. Make the speech sound like real, unscripted talk, not a written passage: sprinkle in filler words (um, uh, er, like, you know), false starts and self-corrections ("it was — actually, no, it was..."), and the occasional stammer. Use ellipsis ("...") often to show trailing off, hesitation, or a pause before continuing a thought. Sometimes stop mid-sentence as if you've lost the word or the thread entirely — trail off with "..." and don't finish the thought; your co-host may jump in and finish it for you. Do not include stage directions, emotes, sound effects or physical actions in the message itself — those belong in the style argument.`,
       },
     ];
 

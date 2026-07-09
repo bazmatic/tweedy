@@ -161,8 +161,8 @@ export class ScriptService implements IScriptService {
     const directorAgent = new DirectorAgent(script);
     await directorAgent.createPodcastPlan();
 
-    const INTERJECTION_LENGTH_THRESHOLD = 150;
-    const INTERJECTION_CHANCE = 0.5;
+    const INTERJECTION_LENGTH_THRESHOLD = 80;
+    const INTERJECTION_CHANCE = 0.8;
 
     for (let turn = 0; turn < params.maxTurns; turn++) {
       const { speaker, direction } = await directorAgent.chooseNextSpeaker(
