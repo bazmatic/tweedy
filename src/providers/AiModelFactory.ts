@@ -50,7 +50,7 @@ export class AiModelFactory {
           // these short conversational turns don't need reasoning.
           const model = new ChatOpenAI({
             apiKey,
-            model: "deepseek-v4-flash",
+            model: "deepseek-v4-pro",
             maxTokens,
             configuration: { baseURL: "https://api.deepseek.com" },
             modelKwargs: { thinking: { type: "disabled" } },
