@@ -3,11 +3,15 @@ import axios from "axios";
 import * as fs from "fs-extra";
 import { GrokProvider } from "./GrokProvider";
 import { VocalProviderName } from "../types";
+import { AiModelFactory } from "../providers/AiModelFactory";
 
 vi.mock("axios");
 vi.mock("fs-extra", () => ({
   ensureDir: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../providers/AiModelFactory", () => ({
+  AiModelFactory: { getModel: vi.fn() },
 }));
 
 describe("GrokProvider", () => {
@@ -167,5 +171,83 @@ describe("GrokProvider", () => {
 
     expect(voices).toHaveLength(1);
     expect(voices[0].id).toBe("ara");
+  });
+
+  it("sends LLM-tagged text to the TTS endpoint instead of the raw message", async () => {
+    const arrayBuffer = new TextEncoder().encode("audio-bytes").buffer;
+    (axios.post as any).mockResolvedValue({ data: arrayBuffer });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi.fn().mockResolvedValue({ content: "Hello [pause] there." }),
+    });
+
+    const provider = new GrokProvider();
+    const voice = {
+      id: "v1",
+      name: "Eve",
+      description: "Eve",
+      provider: VocalProviderName.Grok,
+      providerId: "eve",
+      settings: {},
+    };
+    const speech = {
+      id: "s1",
+      speaker: {} as any,
+      message: "Hello there.",
+      instructions: "",
+      voice,
+      voiceStyle: "",
+      timestamp: new Date(),
+    };
+
+    await provider.tts({
+      speech: speech as any,
+      voice: voice as any,
+      outputFileName: "tagged.mp3",
+    });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://api.x.ai/v1/tts",
+      expect.objectContaining({ text: "Hello [pause] there." }),
+      expect.any(Object)
+    );
+  });
+
+  it("falls back to the original message when tag injection fails", async () => {
+    const arrayBuffer = new TextEncoder().encode("audio-bytes").buffer;
+    (axios.post as any).mockResolvedValue({ data: arrayBuffer });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi.fn().mockRejectedValue(new Error("model unavailable")),
+    });
+
+    const provider = new GrokProvider();
+    const voice = {
+      id: "v1",
+      name: "Eve",
+      description: "Eve",
+      provider: VocalProviderName.Grok,
+      providerId: "eve",
+      settings: {},
+    };
+    const speech = {
+      id: "s1",
+      speaker: {} as any,
+      message: "Hello there.",
+      instructions: "",
+      voice,
+      voiceStyle: "",
+      timestamp: new Date(),
+    };
+
+    await provider.tts({
+      speech: speech as any,
+      voice: voice as any,
+      outputFileName: "fallback.mp3",
+    });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://api.x.ai/v1/tts",
+      expect.objectContaining({ text: "Hello there." }),
+      expect.any(Object)
+    );
   });
 });
