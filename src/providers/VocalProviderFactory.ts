@@ -3,6 +3,7 @@ import { ElevenLabsProvider } from './ElevenLabsProvider';
 import { OpenAIProvider } from './OpenAIProvider';
 import { HumeProvider } from './HumeProvider';
 import { CartesiaProvider } from './CartesiaProvider';
+import { KokoroProvider } from './KokoroProvider';
 import { logger } from '../utils/logger';
 
 export class VocalProviderFactory {
@@ -22,6 +23,9 @@ export class VocalProviderFactory {
           break;
         case VocalProviderName.Cartesia:
           this.providers.set(provider, new CartesiaProvider());
+          break;
+        case VocalProviderName.Kokoro:
+          this.providers.set(provider, new KokoroProvider());
           break;
         default:
           throw new Error(`Unknown vocal provider: ${provider}`);
