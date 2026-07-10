@@ -21,6 +21,7 @@ export enum VocalProviderName {
   Hume = "hume",
   Cartesia = "cartesia",
   Kokoro = "kokoro",
+  Grok = "grok",
 }
 
 export enum AiProviderName {
