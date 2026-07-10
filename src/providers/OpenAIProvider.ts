@@ -30,12 +30,16 @@ export class OpenAIProvider extends BaseVocalProvider {
       const outputPath = path.join(appConfig.audioDir, params.outputFileName);
       await fs.ensureDir(path.dirname(outputPath));
 
+      const options = params.voice.settings.providerOptions || {};
+
       const response = await this.client.audio.speech.create({
-        model: 'tts-1',
+        model: 'gpt-4o-mini-tts',
         voice: params.voice.providerId as any,
         input: params.speech.message,
+        instructions: params.speech.instructions || params.voice.settings.instructions,
         response_format: 'mp3',
-      });
+        ...(options.speed !== undefined ? { speed: options.speed } : {}),
+      } as any);
 
       const buffer = Buffer.from(await response.arrayBuffer());
       await fs.writeFile(outputPath, buffer);
@@ -52,11 +56,16 @@ export class OpenAIProvider extends BaseVocalProvider {
     // OpenAI TTS has predefined voices
     const voices = [
       { id: 'alloy', name: 'Alloy', description: 'Neutral, balanced voice' },
+      { id: 'ash', name: 'Ash', description: 'Confident, direct voice' },
+      { id: 'ballad', name: 'Ballad', description: 'Smooth, storytelling voice' },
+      { id: 'coral', name: 'Coral', description: 'Warm, friendly voice' },
       { id: 'echo', name: 'Echo', description: 'Clear, confident voice' },
       { id: 'fable', name: 'Fable', description: 'Warm, expressive voice' },
       { id: 'onyx', name: 'Onyx', description: 'Deep, authoritative voice' },
       { id: 'nova', name: 'Nova', description: 'Bright, energetic voice' },
+      { id: 'sage', name: 'Sage', description: 'Calm, measured voice' },
       { id: 'shimmer', name: 'Shimmer', description: 'Soft, gentle voice' },
+      { id: 'verse', name: 'Verse', description: 'Versatile, natural voice' },
     ];
 
     return voices.map(voice => ({
