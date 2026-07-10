@@ -19,6 +19,19 @@ function normalizeWhitespace(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+function hasMidWordTag(tagged: string): boolean {
+  const pattern = new RegExp(VALID_TAG_PATTERN.source, 'g');
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(tagged))) {
+    const before = tagged[match.index - 1];
+    const after = tagged[match.index + match[0].length];
+    if (before && after && /\w/.test(before) && /\w/.test(after)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export class GrokProvider extends BaseVocalProvider {
   private apiKey: string;
   private baseUrl = 'https://api.x.ai/v1';
@@ -73,6 +86,13 @@ export class GrokProvider extends BaseVocalProvider {
       if (normalizeWhitespace(strippedOfValidTags) !== normalizeWhitespace(text)) {
         logger.warn(
           'Grok effect-tagged text failed validation (malformed tags or altered wording), using original text'
+        );
+        return text;
+      }
+
+      if (hasMidWordTag(tagged)) {
+        logger.warn(
+          'Grok effect-tagged text failed validation (tag inserted mid-word), using original text'
         );
         return text;
       }

@@ -330,4 +330,47 @@ describe("GrokProvider", () => {
       expect.any(Object)
     );
   });
+
+  it("falls back to the original message when a tag is inserted mid-word", async () => {
+    const arrayBuffer = new TextEncoder().encode("audio-bytes").buffer;
+    (axios.post as any).mockResolvedValue({ data: arrayBuffer });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi
+        .fn()
+        .mockResolvedValue({
+          content: "There's your book deal, Archi[laugh]e.",
+        }),
+    });
+
+    const provider = new GrokProvider();
+    const voice = {
+      id: "v1",
+      name: "Eve",
+      description: "Eve",
+      provider: VocalProviderName.Grok,
+      providerId: "eve",
+      settings: {},
+    };
+    const speech = {
+      id: "s1",
+      speaker: {} as any,
+      message: "There's your book deal, Archie.",
+      instructions: "",
+      voice,
+      voiceStyle: "",
+      timestamp: new Date(),
+    };
+
+    await provider.tts({
+      speech: speech as any,
+      voice: voice as any,
+      outputFileName: "midword.mp3",
+    });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://api.x.ai/v1/tts",
+      expect.objectContaining({ text: "There's your book deal, Archie." }),
+      expect.any(Object)
+    );
+  });
 });
