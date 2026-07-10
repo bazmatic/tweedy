@@ -6,6 +6,7 @@ export enum SourceType {
   Document = "document",
   Web = "web",
   Manual = "manual",
+  Research = "research",
 }
 
 export enum SpeakerAllocation {
@@ -25,6 +26,10 @@ export enum VocalProviderName {
 export enum AiProviderName {
   Anthropic = "anthropic",
   DeepSeek = "deepseek",
+}
+
+export enum ResearchProviderName {
+  Perplexity = "perplexity",
 }
 
 export enum DocumentType {
@@ -181,6 +186,7 @@ export interface SpeechRecord {
   voiceId: string;
   voiceStyle: string;
   timestamp: Date;
+  tool?: SpeakerAgentToolName;
   stopReason?: StopReason;
 }
 
@@ -285,6 +291,18 @@ export interface ProcessedDocument {
   title: string;
   content: string;
   metadata: Record<string, any>;
+}
+
+export interface ResearchMaterial {
+  title: string;
+  content: string;
+  source: string;
+  sourceType: SourceType;
+  metadata: Record<string, any>;
+}
+
+export interface IResearchProvider {
+  research(query: string): Promise<ResearchMaterial[]>;
 }
 
 // Agent Interfaces
