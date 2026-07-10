@@ -7,7 +7,7 @@ import {
   VocalProviderName,
 } from "../types";
 
-function makeSpeaker(id: string): Speaker {
+function makeSpeaker(id: string, isExpert = false): Speaker {
   return {
     id,
     slug: id,
@@ -22,7 +22,7 @@ function makeSpeaker(id: string): Speaker {
       settings: {},
     },
     voiceStyle: "neutral",
-    isExpert: false,
+    isExpert,
   };
 }
 
@@ -109,5 +109,38 @@ describe("SpeakerAgent.interject tool set", () => {
       SpeakerAgentToolName.FILLER_COMMENT,
       SpeakerAgentToolName.CHALLENGE,
     ]);
+  });
+});
+
+describe("SpeakerAgent expertise nudge", () => {
+  it("tells experts to favor the speak tool", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1", true));
+    const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "hello there",
+      style: "calm",
+      stopReason: "stop",
+    });
+
+    await agent.speak(makeScript(), "talk about x");
+
+    const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
+    expect(prompt).toContain("favor the speak tool");
+  });
+
+  it("tells non-experts to favor short tools and use speak rarely", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1", false));
+    const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "hello there",
+      style: "calm",
+      stopReason: "stop",
+    });
+
+    await agent.speak(makeScript(), "talk about x");
+
+    const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
+    expect(prompt).toContain("favor short tools");
+    expect(prompt).toContain("reserve speak for the occasional genuine point");
   });
 });

@@ -170,19 +170,28 @@ export class ScriptService implements IScriptService {
     await directorAgent.createPodcastPlan();
 
     for (let turn = 0; turn < params.maxTurns; turn++) {
-      const { speaker, direction } = await directorAgent.chooseNextSpeaker(
-        script
-      );
+      const { speaker, direction, timeStatus, forceNearlyOutOfTime } =
+        await directorAgent.chooseNextSpeaker(script);
       const speakerAgent = new SpeakerAgent(speaker);
 
-      const speech = await speakerAgent.speak(script, direction);
+      const speech = await speakerAgent.speak(
+        script,
+        direction,
+        timeStatus,
+        forceNearlyOutOfTime
+      );
       await this.persistSpeech(script, speech);
 
       // If that turn ran long — or was cut off by the token limit — let a
       // different speaker chime in with a quick reaction before the director
       // picks the next real turn — real overlap instead of relying on the
-      // speaker to self-select a short tool.
-      if (shouldInterject(speech, script.speakers.length, Math.random())) {
+      // speaker to self-select a short tool. Skip on the final turn so the
+      // closing statement is the last thing said, not a context-blind reaction.
+      const isFinalTurn = turn === params.maxTurns - 1;
+      if (
+        !isFinalTurn &&
+        shouldInterject(speech, script.speakers.length, Math.random())
+      ) {
         const eligibleInterjectors = script.speakers.filter(
           (s) => s.id !== speaker.id
         );

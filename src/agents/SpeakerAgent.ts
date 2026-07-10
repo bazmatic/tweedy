@@ -16,10 +16,10 @@ import {
 } from "./speaker-tools";
 
 export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
-  private static readonly SPEECH_MAX_TOKENS = 80;
+  private static readonly SPEECH_MAX_TOKENS = 150;
   // Tight on purpose: interjections are meant to be 1-10 words, and a shared
   // budget with SPEAK-length turns let the model ramble well past that.
-  private static readonly INTERJECTION_MAX_TOKENS = 30;
+  private static readonly INTERJECTION_MAX_TOKENS = 40;
 
   private speaker: Speaker;
   private maxAttempts = 3;
@@ -29,7 +29,12 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     this.speaker = speaker;
   }
 
-  async speak(script: PodcastScript, direction: string): Promise<Speech> {
+  async speak(
+    script: PodcastScript,
+    direction: string,
+    timeStatus = "",
+    forceNearlyOutOfTime = false
+  ): Promise<Speech> {
     let attempts = 0;
 
     while (attempts < this.maxAttempts) {
@@ -40,7 +45,12 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
         });
 
         const { toolName, message, style, stopReason } =
-          await this.generateSpeech(script, direction);
+          await this.generateSpeech(
+            script,
+            direction,
+            timeStatus,
+            forceNearlyOutOfTime
+          );
 
         const speech: Speech = {
           id: this.generateId(),
@@ -120,7 +130,9 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
 
   private async generateSpeech(
     script: PodcastScript,
-    direction: string
+    direction: string,
+    timeStatus: string,
+    forceNearlyOutOfTime: boolean
   ): Promise<{
     toolName: SpeakerAgentToolName;
     message: string;
@@ -152,19 +164,27 @@ Podcast Context:
 Conversation History (speaker: message [tool used]):
 ${conversationHistory}${materialsSection}
 
-Director's guidance: ${direction}
+Director's guidance: ${direction}${
+          timeStatus
+            ? forceNearlyOutOfTime
+              ? `\n\nTime status: ${timeStatus} You must use the nearly_out_of_time tool this turn to tell your co-hosts you're running low on time.`
+              : `\n\nTime status: ${timeStatus} If it fits naturally, you can use the nearly_out_of_time tool to flag the time to your co-hosts.`
+            : ""
+        }
 
 Respond naturally as ${
           this.speaker.name
         }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getBrevityNudge(
           script
-        )} Get ONE idea out and then stop — a single point, fact, or beat per turn, not a multi-part explanation. Trust your co-host to ask a follow-up if they want more; don't pre-empt their next question by answering it yourself in the same turn. Be authentic to your personality and expertise level. Make the speech sound like real, unscripted talk, not a written passage: sprinkle in filler words (um, uh, er, like, you know), false starts and self-corrections ("it was — actually, no, it was..."), and the occasional stammer. Use ellipsis ("...") often to show trailing off, hesitation, or a pause before continuing a thought. Sometimes stop mid-sentence as if you've lost the word or the thread entirely — trail off with "..." and don't finish the thought; your co-host may jump in and finish it for you. Do not include stage directions, emotes, sound effects or physical actions in the message itself — those belong in the style argument.`,
+        )}${this.getExpertiseNudge()} Get ONE idea out and then stop — a single point, fact, or beat per turn, not a multi-part explanation. Trust your co-host to ask a follow-up if they want more; don't pre-empt their next question by answering it yourself in the same turn. Be authentic to your personality and expertise level. Make the speech sound like real, unscripted talk, not a written passage: sprinkle in filler words (um, uh, er, like, you know), false starts and self-corrections ("it was — actually, no, it was..."), and the occasional stammer. Use ellipsis ("...") often to show trailing off, hesitation, or a pause before continuing a thought. Sometimes stop mid-sentence as if you've lost the word or the thread entirely — trail off with "..." and don't finish the thought; your co-host may jump in and finish it for you. Do not include stage directions, emotes, sound effects or physical actions in the message itself — those belong in the style argument.`,
       },
     ];
 
     const result = await this.callModelWithTools(
       messages,
-      toLlmTools(),
+      forceNearlyOutOfTime
+        ? toLlmTools([SpeakerAgentToolName.NEARLY_OUT_OF_TIME])
+        : toLlmTools(),
       SpeakerAgent.SPEECH_MAX_TOKENS
     );
 
@@ -209,6 +229,21 @@ Respond naturally as ${
     }
 
     return "";
+  }
+
+  /**
+   * Steers tool choice by expertise: experts have the material and should
+   * carry the substantive explaining, non-experts are the audience surrogate
+   * and should mostly react/question rather than hold forth.
+   */
+  private getExpertiseNudge(): string {
+    if (this.speaker.isExpert) {
+      return " As the expert here with access to the material, favor the speak tool to carry the substantive explanation — that's your role in this conversation.";
+    }
+
+    return ` As a non-expert, you rarely have new information to add — favor short tools (${SHORT_REACTION_TOOLS.join(
+      ", "
+    )}) most turns, and reserve speak for the occasional genuine point.`;
   }
 
   private getRelevantMaterials(script: PodcastScript): string {

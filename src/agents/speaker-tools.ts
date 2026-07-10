@@ -28,14 +28,14 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.INTERJECT,
     toolDescription:
-      "Make a brief, emotional reaction sound or very short response (maximum 1-10 words) to show engagement. Use for natural conversational responses like surprise, agreement, or interest. Keep it spontaneous and authentic.",
+      "Make a brief, emotional reaction sound or very short response (maximum 1-10 words) to show engagement. Use for natural conversational responses like surprise, agreement, or interest. Keep it spontaneous and authentic. Don't interrupt and then ramble. That would be rude. Example: 'Hang on, so it was a mistake?'",
     styleDescription:
       "How to deliver the interjection. Include emotional context and delivery style. Example: 'Genuine surprise, slightly higher pitch, quick delivery'",
   },
   {
     name: SpeakerAgentToolName.ONE_LINER,
     toolDescription:
-      "Deliver a witty, insightful, or thought-provoking single sentence that adds value to the conversation. Use for clever observations, gentle challenges, or memorable statements. Keep it concise and impactful.",
+      "Deliver a witty, insightful, or thought-provoking single sentence that adds value to the conversation. Use for clever observations, gentle challenges, or memorable statements. Keep it concise and impactful. Example: 'So it's kind of the opposite!'",
     styleDescription:
       "How to deliver the one-liner. Include timing, tone, and emphasis. Example: 'Pause slightly before speaking, use a thoughtful tone, emphasize \"perspective\"'",
   },

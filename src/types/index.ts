@@ -309,14 +309,22 @@ export interface IResearchProvider {
 
 // Agent Interfaces
 export interface ISpeakerAgent {
-  speak(script: PodcastScript, direction: string): Promise<Speech>;
+  speak(
+    script: PodcastScript,
+    direction: string,
+    timeStatus?: string,
+    forceNearlyOutOfTime?: boolean
+  ): Promise<Speech>;
 }
 
 export interface IDirectorAgent {
   createPodcastPlan(script: PodcastScript): Promise<string>;
-  chooseNextSpeaker(
-    script: PodcastScript
-  ): Promise<{ speaker: Speaker; direction: string }>;
+  chooseNextSpeaker(script: PodcastScript): Promise<{
+    speaker: Speaker;
+    direction: string;
+    timeStatus: string;
+    forceNearlyOutOfTime: boolean;
+  }>;
 }
 
 // Service Interfaces

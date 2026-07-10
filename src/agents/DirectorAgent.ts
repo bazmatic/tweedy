@@ -14,6 +14,7 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private maxTurns: number;
   private maxDuration: number;
   private turnsUsed = 0;
+  private hasForcedTimeWarning = false;
 
   constructor(
     script: PodcastScript,
@@ -66,14 +67,31 @@ Keep it engaging and natural, with clear direction for each speaker.`
     }
   }
 
-  async chooseNextSpeaker(
-    script: PodcastScript
-  ): Promise<{ speaker: Speaker; direction: string }> {
+  async chooseNextSpeaker(script: PodcastScript): Promise<{
+    speaker: Speaker;
+    direction: string;
+    timeStatus: string;
+    forceNearlyOutOfTime: boolean;
+  }> {
     try {
       this.logAgentAction('Choosing next speaker');
 
       this.turnsUsed++;
       const progress = this.calculateProgress(script);
+      const wrapUpNote = this.getWrapUpNote(progress);
+
+      // Force exactly one explicit "we're almost out of time" tool call the
+      // first time the episode crosses into the almost-out-of-time band,
+      // rather than just hoping the speaker picks it up from prose — a soft
+      // suggestion was easy for the model to skip and then never revisit.
+      const forceNearlyOutOfTime =
+        progress >= 85 &&
+        this.turnsUsed < this.maxTurns &&
+        !this.hasForcedTimeWarning;
+      if (forceNearlyOutOfTime) {
+        this.hasForcedTimeWarning = true;
+      }
+
       const history = this.getConversationHistory(script);
       const speakerDescriptions = script.speakers
         .map(
@@ -101,7 +119,7 @@ ${history || '(nothing said yet — this is the opening of the episode)'}
 
 Decide which speaker should talk next and give them clear, specific, conversational direction about what they should say. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. On the opening of the episode, this should usually be the interviewer.${this.getPacingNote(
             script
-          )}${this.getWrapUpNote(progress)}`
+          )}${wrapUpNote}`
         }
       ];
 
@@ -121,11 +139,13 @@ Decide which speaker should talk next and give them clear, specific, conversatio
         return {
           speaker: this.fallbackSpeaker(script),
           direction,
+          timeStatus: wrapUpNote,
+          forceNearlyOutOfTime,
         };
       }
 
       logger.debug(`Director chose ${speaker.name}: ${direction}`);
-      return { speaker, direction };
+      return { speaker, direction, timeStatus: wrapUpNote, forceNearlyOutOfTime };
     } catch (error) {
       logger.error('Failed to choose next speaker:', error);
       throw error;
