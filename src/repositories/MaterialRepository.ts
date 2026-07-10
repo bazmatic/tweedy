@@ -57,6 +57,14 @@ export class MaterialRepository extends BaseRepository<MaterialRecord> implement
     return true;
   }
 
+  async deleteAll(): Promise<number> {
+    const materials = await this.getAll();
+    for (const material of materials) {
+      await this.deleteRecord(material.id);
+    }
+    return materials.length;
+  }
+
   async findBySource(source: string): Promise<MaterialRecord[]> {
     const materials = await this.getAll();
     return materials.filter(material => material.source === source);

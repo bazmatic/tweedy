@@ -246,6 +246,7 @@ export interface IMaterialRepository {
     material: Partial<Omit<MaterialRecord, "id" | "createdAt">>
   ): Promise<MaterialRecord | null>;
   delete(id: string): Promise<boolean>;
+  deleteAll(): Promise<number>;
   findBySource(source: string): Promise<MaterialRecord[]>;
 }
 
