@@ -153,4 +153,19 @@ describe('KokoroProvider', () => {
     const provider = new KokoroProvider();
     await expect(provider.getVoices()).rejects.toThrow('503');
   });
+
+  it('throws a clear error when the voices response body is missing a voices array', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({}),
+      })
+    );
+
+    const provider = new KokoroProvider();
+    await expect(provider.getVoices()).rejects.toThrow(
+      'Kokoro voices response missing a "voices" array'
+    );
+  });
 });

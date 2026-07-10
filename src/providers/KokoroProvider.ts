@@ -32,6 +32,7 @@ export class KokoroProvider extends BaseVocalProvider {
         voice: params.voice.providerId as any,
         input: params.speech.message,
         response_format: 'mp3',
+        // Note: providerOptions is spread last, so a stray key (e.g. an accidental `input`) will silently override the fields above.
         ...(params.voice.settings.providerOptions || {}),
       } as any);
 
@@ -47,21 +48,30 @@ export class KokoroProvider extends BaseVocalProvider {
   }
 
   async getVoices(): Promise<Voice[]> {
-    const response = await fetch(`${this.baseUrl}/audio/voices`);
-    if (!response.ok) {
-      throw new Error(
-        `Failed to fetch Kokoro voices: ${response.status} ${response.statusText}`
-      );
-    }
-    const data = (await response.json()) as { voices: string[] };
+    try {
+      const response = await fetch(`${this.baseUrl}/audio/voices`);
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch Kokoro voices: ${response.status} ${response.statusText}`
+        );
+      }
+      const data = (await response.json()) as { voices: unknown };
 
-    return data.voices.map((name) => ({
-      id: name,
-      name,
-      description: name,
-      provider: VocalProviderName.Kokoro,
-      providerId: name,
-      settings: {},
-    }));
+      if (!Array.isArray(data.voices)) {
+        throw new Error('Kokoro voices response missing a "voices" array');
+      }
+
+      return (data.voices as string[]).map((name) => ({
+        id: name,
+        name,
+        description: name,
+        provider: VocalProviderName.Kokoro,
+        providerId: name,
+        settings: {},
+      }));
+    } catch (error) {
+      this.logTtsError(error);
+      throw error;
+    }
   }
 }
