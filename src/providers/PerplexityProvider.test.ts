@@ -2,13 +2,14 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import axios from "axios";
 import { PerplexityProvider } from "./PerplexityProvider";
 import { SourceType } from "../types";
-import * as processors from "../processors";
+
+const mockProcess = vi.fn();
 
 vi.mock("axios");
 vi.mock("../processors", () => ({
-  DocumentProcessorFactory: {
-    processDocument: vi.fn(),
-  },
+  HTMLProcessor: vi.fn().mockImplementation(function (this: any) {
+    this.process = mockProcess;
+  }),
 }));
 
 describe("PerplexityProvider", () => {
@@ -39,7 +40,7 @@ describe("PerplexityProvider", () => {
       },
     });
 
-    (processors.DocumentProcessorFactory.processDocument as any)
+    mockProcess
       .mockResolvedValueOnce({
         title: "Page A",
         content: "Content A",
@@ -88,7 +89,7 @@ describe("PerplexityProvider", () => {
       },
     });
 
-    (processors.DocumentProcessorFactory.processDocument as any)
+    mockProcess
       .mockRejectedValueOnce(new Error("404"))
       .mockResolvedValueOnce({
         title: "Page OK",
@@ -104,5 +105,28 @@ describe("PerplexityProvider", () => {
       title: "Page OK",
       source: "https://example.com/ok",
     });
+  });
+
+  it("throws a sanitized error and never leaks the API key when the Perplexity API call fails", async () => {
+    const axiosError = new Error("Request failed with status code 401") as any;
+    axiosError.config = {
+      headers: {
+        Authorization: "Bearer test-key",
+      },
+    };
+    (axios.post as any).mockRejectedValue(axiosError);
+
+    const provider = new PerplexityProvider();
+
+    await expect(provider.research("query")).rejects.toThrow();
+
+    try {
+      await provider.research("query");
+      throw new Error("expected research() to throw");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).not.toContain("test-key");
+      expect(message).not.toContain("Authorization");
+    }
   });
 });

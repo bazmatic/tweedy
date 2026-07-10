@@ -1,6 +1,6 @@
 import axios from "axios";
 import { IResearchProvider, ResearchMaterial, SourceType } from "../types";
-import { DocumentProcessorFactory } from "../processors";
+import { HTMLProcessor } from "../processors";
 import { logger } from "../utils/logger";
 
 const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
@@ -17,19 +17,26 @@ export class PerplexityProvider implements IResearchProvider {
   }
 
   async research(query: string): Promise<ResearchMaterial[]> {
-    const response = await axios.post(
-      PERPLEXITY_API_URL,
-      {
-        model: "sonar",
-        messages: [{ role: "user", content: query }],
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
+    let response;
+    try {
+      response = await axios.post(
+        PERPLEXITY_API_URL,
+        {
+          model: "sonar",
+          messages: [{ role: "user", content: query }],
         },
-      }
-    );
+        {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    } catch (error) {
+      throw new Error(
+        `Perplexity API request failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
 
     const answer: string = response.data.choices[0].message.content;
     const citations: string[] = response.data.citations || [];
@@ -44,9 +51,10 @@ export class PerplexityProvider implements IResearchProvider {
       },
     ];
 
+    const htmlProcessor = new HTMLProcessor();
     for (const url of citations) {
       try {
-        const processed = await DocumentProcessorFactory.processDocument(url);
+        const processed = await htmlProcessor.process(url);
         materials.push({
           title: processed.title,
           content: processed.content,
