@@ -61,12 +61,12 @@ export class KokoroProvider extends BaseVocalProvider {
         throw new Error('Kokoro voices response missing a "voices" array');
       }
 
-      return (data.voices as string[]).map((name) => ({
-        id: name,
-        name,
-        description: name,
+      return (data.voices as { id: string; name: string }[]).map((voice) => ({
+        id: voice.id,
+        name: voice.name,
+        description: voice.name,
         provider: VocalProviderName.Kokoro,
-        providerId: name,
+        providerId: voice.id,
         settings: {},
       }));
     } catch (error) {

@@ -113,7 +113,12 @@ describe('KokoroProvider', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ voices: ['af_heart', 'am_michael'] }),
+        json: async () => ({
+          voices: [
+            { id: 'af_heart', name: 'af_heart' },
+            { id: 'am_michael', name: 'am_michael' },
+          ],
+        }),
       })
     );
 
