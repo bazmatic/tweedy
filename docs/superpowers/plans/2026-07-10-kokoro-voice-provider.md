@@ -357,7 +357,10 @@ export { CartesiaProvider } from './CartesiaProvider';
 export { KokoroProvider } from './KokoroProvider';
 export { VocalProviderFactory } from './VocalProviderFactory';
 export { AudioProcessor } from './AudioProcessor';
+export { AiModelFactory } from './AiModelFactory';
 ```
+
+(`AiModelFactory` was added by an unrelated AI-provider refactor that landed after this plan was written — keep its export line, just insert `KokoroProvider` above `VocalProviderFactory` alongside the other vocal providers.)
 
 - [ ] **Step 3: Typecheck and run the full test suite**
 
