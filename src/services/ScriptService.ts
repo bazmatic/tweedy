@@ -208,6 +208,7 @@ export class ScriptService implements IScriptService {
       voiceId: speech.voice.id,
       voiceStyle: speech.voiceStyle,
       timestamp: speech.timestamp,
+      stopReason: speech.stopReason,
     });
 
     speech.id = speechRecord.id;
@@ -243,6 +244,7 @@ export class ScriptService implements IScriptService {
             voice: speaker.voice,
             voiceStyle: speechRecord.voiceStyle,
             timestamp: speechRecord.timestamp,
+            stopReason: speechRecord.stopReason,
           });
         }
       }

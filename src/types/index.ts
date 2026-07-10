@@ -180,6 +180,7 @@ export interface SpeechRecord {
   voiceId: string;
   voiceStyle: string;
   timestamp: Date;
+  stopReason?: StopReason;
 }
 
 // Service Interfaces
