@@ -4,6 +4,7 @@ import { createSpeakerCommands } from "./commands/SpeakerCommands";
 import { createMaterialCommands } from "./commands/MaterialCommands";
 import { createScriptCommands } from "./commands/ScriptCommands";
 import { createAudioCommands } from "./commands/AudioCommands";
+import { createResearchCommands } from "./commands/ResearchCommands";
 import { appConfig, validateConfig } from "../utils/config";
 import { logger } from "../utils/logger";
 import chalk from "chalk";
@@ -36,6 +37,7 @@ export function createCLI(): Command {
   program.addCommand(createMaterialCommands());
   program.addCommand(createScriptCommands());
   program.addCommand(createAudioCommands());
+  program.addCommand(createResearchCommands());
 
   // Quick start command
   program
