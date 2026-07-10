@@ -16,7 +16,9 @@ import {
 
 export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
   private static readonly SPEECH_MAX_TOKENS = 80;
-  private static readonly INTERJECTION_MAX_TOKENS = 80;
+  // Tight on purpose: interjections are meant to be 1-10 words, and a shared
+  // budget with SPEAK-length turns let the model ramble well past that.
+  private static readonly INTERJECTION_MAX_TOKENS = 30;
 
   private speaker: Speaker;
   private maxAttempts = 3;
