@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import inquirer from "inquirer";
 import { MaterialService } from "../../services";
 import { MaterialRepository } from "../../repositories";
 import { RAGService } from "../../rag";
@@ -149,6 +150,42 @@ export function createMaterialCommands(): Command {
         logger.success(`Material deleted: ${id}`);
       } catch (error) {
         logger.error("Failed to delete material:", error);
+      }
+    });
+
+  materialCommand
+    .command("clear")
+    .description("Delete all materials")
+    .option("-y, --yes", "Skip confirmation prompt")
+    .action(async (options) => {
+      try {
+        const materials = await materialService.getAllMaterials();
+
+        if (materials.length === 0) {
+          logger.info("No materials to clear.");
+          return;
+        }
+
+        if (!options.yes) {
+          const { confirmed } = await inquirer.prompt([
+            {
+              type: "confirm",
+              name: "confirmed",
+              message: `Delete ${materials.length} materials? This cannot be undone.`,
+              default: false,
+            },
+          ]);
+
+          if (!confirmed) {
+            logger.info("Cancelled.");
+            return;
+          }
+        }
+
+        const count = await materialService.clearAllMaterials();
+        logger.success(`Cleared ${count} materials.`);
+      } catch (error) {
+        logger.error("Failed to clear materials:", error);
       }
     });
 
