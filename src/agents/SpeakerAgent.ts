@@ -4,6 +4,7 @@ import {
   PodcastScript,
   Speech,
   Speaker,
+  StopReason,
 } from "../types";
 import { BaseAgent } from "./BaseAgent";
 import { logger } from "../utils/logger";
@@ -35,10 +36,8 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
           attempt: attempts + 1,
         });
 
-        const { toolName, message, style } = await this.generateSpeech(
-          script,
-          direction
-        );
+        const { toolName, message, style, stopReason } =
+          await this.generateSpeech(script, direction);
 
         const speech: Speech = {
           id: this.generateId(),
@@ -49,6 +48,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
           voiceStyle: this.speaker.voiceStyle,
           timestamp: new Date(),
           tool: toolName,
+          stopReason,
         };
 
         logger.info(
@@ -107,6 +107,7 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
         voiceStyle: this.speaker.voiceStyle,
         timestamp: new Date(),
         tool: result.toolName as SpeakerAgentToolName,
+        stopReason: result.stopReason,
       };
     } catch (error) {
       logger.warn("Interjection generation failed:", error);
@@ -117,7 +118,12 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
   private async generateSpeech(
     script: PodcastScript,
     direction: string
-  ): Promise<{ toolName: SpeakerAgentToolName; message: string; style: string }> {
+  ): Promise<{
+    toolName: SpeakerAgentToolName;
+    message: string;
+    style: string;
+    stopReason: StopReason;
+  }> {
     const conversationHistory = this.getConversationHistory(script);
     const expertLevel = this.speaker.isExpert
       ? "Expert"
@@ -163,6 +169,7 @@ Respond naturally as ${
       toolName: result.toolName as SpeakerAgentToolName,
       message: result.message,
       style: result.style,
+      stopReason: result.stopReason,
     };
   }
 

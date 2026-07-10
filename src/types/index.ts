@@ -81,6 +81,7 @@ export interface Speech {
   voiceStyle: string;
   timestamp: Date;
   tool?: SpeakerAgentToolName;
+  stopReason?: StopReason;
 }
 
 export interface PodcastMaterial {
