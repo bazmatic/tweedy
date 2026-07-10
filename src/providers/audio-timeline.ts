@@ -1,7 +1,9 @@
-export const OVERLAP_SECONDS = 0.8;
+export const OVERLAP_SECONDS = 1;
+export const GAP_SECONDS = 0.3;
 
 export interface ClipTiming {
-  durationSeconds: number;
+  /** End of actual speech content, excluding any trailing silence in the clip. */
+  speechEndSeconds: number;
   isInterjection: boolean;
 }
 
@@ -15,13 +17,14 @@ export function computeClipOffsets(clips: ClipTiming[]): number[] {
     }
 
     const previous = clips[i - 1];
-    const previousEnd = offsets[i - 1] + previous.durationSeconds;
+    const previousSpeechEnd = offsets[i - 1] + previous.speechEndSeconds;
 
-    offsets.push(
-      clips[i].isInterjection
-        ? Math.max(0, previousEnd - OVERLAP_SECONDS)
-        : previousEnd
-    );
+    if (clips[i].isInterjection) {
+      console.log("INTERJECTION");
+      offsets.push(Math.max(0, previousSpeechEnd - OVERLAP_SECONDS));
+    } else {
+      offsets.push(previousSpeechEnd + GAP_SECONDS);
+    }
   }
 
   return offsets;

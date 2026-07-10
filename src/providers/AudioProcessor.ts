@@ -47,12 +47,12 @@ export class AudioProcessor {
     try {
       await fs.ensureDir(path.dirname(outputPath));
 
-      const durations = await Promise.all(
-        inputFiles.map((file) => AudioProcessor.getAudioDuration(file))
+      const speechEnds = await Promise.all(
+        inputFiles.map((file) => AudioProcessor.getSpeechEndSeconds(file))
       );
 
-      const clips: ClipTiming[] = durations.map((durationSeconds, i) => ({
-        durationSeconds,
+      const clips: ClipTiming[] = speechEnds.map((speechEndSeconds, i) => ({
+        speechEndSeconds,
         isInterjection: isInterjection[i] ?? false,
       }));
 
@@ -109,6 +109,57 @@ export class AudioProcessor {
           resolve(metadata.format.duration || 0);
         }
       });
+    });
+  }
+
+  /**
+   * Returns the timestamp where actual speech content ends, excluding any
+   * trailing silence the TTS provider padded the clip with. Falls back to
+   * the full file duration if no trailing silence is detected.
+   */
+  static async getSpeechEndSeconds(
+    filePath: string,
+    silenceThresholdDb = -40,
+    minSilenceDuration = 0.15
+  ): Promise<number> {
+    const duration = await AudioProcessor.getAudioDuration(filePath);
+    const endOfFileEpsilon = 0.05;
+
+    return new Promise((resolve, reject) => {
+      const silences: { start: number; end: number | null }[] = [];
+
+      ffmpeg(filePath)
+        .audioFilters(
+          `silencedetect=noise=${silenceThresholdDb}dB:d=${minSilenceDuration}`
+        )
+        .format("null")
+        .output(process.platform === "win32" ? "NUL" : "/dev/null")
+        .on("stderr", (line: string) => {
+          const startMatch = line.match(/silence_start:\s*([\d.]+)/);
+          if (startMatch) {
+            silences.push({ start: parseFloat(startMatch[1]), end: null });
+          }
+
+          const endMatch = line.match(/silence_end:\s*([\d.]+)/);
+          if (endMatch) {
+            const last = silences[silences.length - 1];
+            if (last) last.end = parseFloat(endMatch[1]);
+          }
+        })
+        .on("end", () => {
+          // A silence segment counts as trailing padding only if it runs
+          // through to (approximately) EOF — ffmpeg still reports a
+          // silence_end for it, but that end equals the clip's duration
+          // rather than marking a point where speech resumes.
+          const last = silences[silences.length - 1];
+          const isTrailing =
+            last != null &&
+            (last.end == null || last.end >= duration - endOfFileEpsilon);
+
+          resolve(isTrailing ? last!.start : duration);
+        })
+        .on("error", (error: Error) => reject(error))
+        .run();
     });
   }
 }
