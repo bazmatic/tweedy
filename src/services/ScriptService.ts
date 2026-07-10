@@ -14,8 +14,8 @@ import {
   SpeechRepository,
 } from "../repositories";
 import { DirectorAgent, SpeakerAgent } from "../agents";
-import { SpeakerAgentToolName } from "../agents/speaker-tools";
 import { logger } from "../utils/logger";
+import { shouldInterject } from "./interjection-policy";
 
 export class ScriptService implements IScriptService {
   constructor(
@@ -169,10 +169,6 @@ export class ScriptService implements IScriptService {
     });
     await directorAgent.createPodcastPlan();
 
-    // TODO: Explain
-    const INTERJECTION_LENGTH_THRESHOLD = 80;
-    const INTERJECTION_CHANCE = 0.8;
-
     for (let turn = 0; turn < params.maxTurns; turn++) {
       const { speaker, direction } = await directorAgent.chooseNextSpeaker(
         script
@@ -182,18 +178,11 @@ export class ScriptService implements IScriptService {
       const speech = await speakerAgent.speak(script, direction);
       await this.persistSpeech(script, speech);
 
-      // If that turn ran long, let a different speaker chime in with a quick
-      // reaction before the director picks the next real turn — real overlap
-      // instead of relying on the speaker to self-select a short tool.
-      const ranLong =
-        speech.tool === SpeakerAgentToolName.SPEAK &&
-        speech.message.length > INTERJECTION_LENGTH_THRESHOLD;
-
-      if (
-        ranLong &&
-        script.speakers.length > 1 &&
-        Math.random() < INTERJECTION_CHANCE
-      ) {
+      // If that turn ran long — or was cut off by the token limit — let a
+      // different speaker chime in with a quick reaction before the director
+      // picks the next real turn — real overlap instead of relying on the
+      // speaker to self-select a short tool.
+      if (shouldInterject(speech, script.speakers.length, Math.random())) {
         const eligibleInterjectors = script.speakers.filter(
           (s) => s.id !== speaker.id
         );
