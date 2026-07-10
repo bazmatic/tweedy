@@ -78,3 +78,36 @@ describe("SpeakerAgent stopReason threading", () => {
     expect(speech.stopReason).toBe("stop");
   });
 });
+
+describe("SpeakerAgent.interject tool set", () => {
+  it("offers CHALLENGE alongside INTERJECT and FILLER_COMMENT", async () => {
+    const lastSpeech = {
+      id: "sp1",
+      speaker: makeSpeaker("s2"),
+      message: "and then...",
+      instructions: "",
+      voice: makeSpeaker("s2").voice,
+      voiceStyle: "neutral",
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.SPEAK,
+    };
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const spy = vi
+      .spyOn(agent as any, "callModelWithTools")
+      .mockResolvedValue({
+        toolName: SpeakerAgentToolName.CHALLENGE,
+        message: "wait, is that actually true?",
+        style: "skeptical",
+        stopReason: "stop",
+      });
+
+    await agent.interject(makeScript([lastSpeech]));
+
+    const offeredTools = spy.mock.calls[0][1] as { name: string }[];
+    expect(offeredTools.map((tool) => tool.name)).toEqual([
+      SpeakerAgentToolName.INTERJECT,
+      SpeakerAgentToolName.FILLER_COMMENT,
+      SpeakerAgentToolName.CHALLENGE,
+    ]);
+  });
+});

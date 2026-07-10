@@ -9,6 +9,7 @@ import {
 import { BaseAgent } from "./BaseAgent";
 import { logger } from "../utils/logger";
 import {
+  INTERJECTION_TOOLS,
   SHORT_REACTION_TOOLS,
   SpeakerAgentToolName,
   toLlmTools,
@@ -96,7 +97,7 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
 
       const result = await this.callModelWithTools(
         messages,
-        toLlmTools(SHORT_REACTION_TOOLS.slice(0, 2)),
+        toLlmTools(INTERJECTION_TOOLS),
         SpeakerAgent.INTERJECTION_MAX_TOKENS
       );
 

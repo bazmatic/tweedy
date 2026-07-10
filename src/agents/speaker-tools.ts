@@ -8,6 +8,7 @@ export enum SpeakerAgentToolName {
   QUOTE = "quote",
   SHORT_QUESTION = "short_question",
   NEARLY_OUT_OF_TIME = "nearly_out_of_time",
+  CHALLENGE = "challenge",
 }
 
 export interface SpeakerToolDefinition {
@@ -66,6 +67,13 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
     styleDescription:
       "How to deliver the nearly-out-of-time message. Include timing, tone, and emphasis. Example: 'Pause slightly before speaking, use a thoughtful tone, emphasize \"perspective\"'",
   },
+  {
+    name: SpeakerAgentToolName.CHALLENGE,
+    toolDescription:
+      "Push back on what the previous speaker just said — voice real doubt, skepticism, or outright disagreement. Use when you have a genuine reason to question their claim, not just to be contrarian. Distinct from ONE_LINER: this is about disputing a point, not making a clever observation.",
+    styleDescription:
+      "How you're pushing back. Include tone and delivery. Example: 'Skeptical, slightly incredulous, leaning into \"really?\"'",
+  },
 ];
 
 export const SHORT_REACTION_TOOLS: SpeakerAgentToolName[] = [
@@ -73,6 +81,12 @@ export const SHORT_REACTION_TOOLS: SpeakerAgentToolName[] = [
   SpeakerAgentToolName.FILLER_COMMENT,
   SpeakerAgentToolName.SHORT_QUESTION,
   SpeakerAgentToolName.ONE_LINER,
+];
+
+export const INTERJECTION_TOOLS: SpeakerAgentToolName[] = [
+  SpeakerAgentToolName.INTERJECT,
+  SpeakerAgentToolName.FILLER_COMMENT,
+  SpeakerAgentToolName.CHALLENGE,
 ];
 
 export function toLlmTools(only?: SpeakerAgentToolName[]): LlmTool[] {
