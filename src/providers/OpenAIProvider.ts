@@ -57,11 +57,17 @@ export class OpenAIProvider extends BaseVocalProvider {
   // conversational baseline, with the per-line cue layered on top, keeps delivery consistent
   // between lines instead of lurching between takes.
   private buildInstructions(params: VocalProviderTtsParams): string {
+    const accent = params.voice.settings.providerOptions?.accent;
+    const voiceStyle = params.voice.settings.instructions?.trim();
     const cue = params.speech.instructions?.trim();
-    const lines = [
-      'Voice Affect: Natural, relaxed podcast co-host — conversational, not theatrical or over-enunciated.',
-      'Pacing: Even and unhurried, matching normal spoken conversation.',
-    ];
+
+    const lines = [];
+    if (accent) {
+      lines.push(`Accent: ${accent}.`);
+    }
+    if (voiceStyle) {
+      lines.push(`Character voice: ${voiceStyle}.`);
+    }
     if (cue) {
       lines.push(`Tone and emotion for this line: ${cue}.`);
     }
@@ -74,7 +80,9 @@ export class OpenAIProvider extends BaseVocalProvider {
       { id: 'alloy', name: 'Alloy', description: 'Neutral, balanced voice' },
       { id: 'ash', name: 'Ash', description: 'Confident, direct voice' },
       { id: 'ballad', name: 'Ballad', description: 'Smooth, storytelling voice' },
+      { id: 'cedar', name: 'Cedar', description: 'Warm, grounded voice' },
       { id: 'coral', name: 'Coral', description: 'Warm, friendly voice' },
+      { id: 'marin', name: 'Marin', description: 'Bright, natural voice' },
       { id: 'echo', name: 'Echo', description: 'Clear, confident voice' },
       { id: 'fable', name: 'Fable', description: 'Warm, expressive voice' },
       { id: 'onyx', name: 'Onyx', description: 'Deep, authoritative voice' },
