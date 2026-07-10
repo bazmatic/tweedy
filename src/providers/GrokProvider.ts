@@ -8,8 +8,37 @@ import { VocalProviderTtsParams, Voice, VocalProviderName } from '../types';
 import { appConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 
-const VALID_INLINE_TAGS = ['pause', 'long-pause', 'laugh', 'cry'];
-const VALID_WRAPPING_TAGS = ['whisper', 'slow', 'soft'];
+const VALID_INLINE_TAGS = [
+  'pause',
+  'long-pause',
+  'hum-tune',
+  'laugh',
+  'chuckle',
+  'giggle',
+  'cry',
+  'tsk',
+  'tongue-click',
+  'lip-smack',
+  'breath',
+  'inhale',
+  'exhale',
+  'sigh',
+];
+const VALID_WRAPPING_TAGS = [
+  'soft',
+  'whisper',
+  'loud',
+  'build-intensity',
+  'decrease-intensity',
+  'higher-pitch',
+  'lower-pitch',
+  'slow',
+  'fast',
+  'sing-song',
+  'singing',
+  'laugh-speak',
+  'emphasis',
+];
 const VALID_TAG_PATTERN = new RegExp(
   `\\[(?:${VALID_INLINE_TAGS.join('|')})\\]|</?(?:${VALID_WRAPPING_TAGS.join('|')})>`,
   'g'
@@ -64,12 +93,17 @@ export class GrokProvider extends BaseVocalProvider {
           "You add expressive speech markup to text for xAI's Grok text-to-speech engine. " +
             "Grok supports exactly two kinds of tags, and ONLY these — do not invent, rename, " +
             "or add any other tag:\n" +
-            "- Inline tags: [pause], [long-pause], [laugh], [cry]. Each is a single self-closing " +
-            "bracket dropped at a point in the text. Inline tags NEVER have a closing counterpart " +
-            "— there is no such thing as [laugh]...[/laugh] or [emphasis]...[/emphasis].\n" +
-            "- Wrapping tags: <whisper>...</whisper>, <slow>...</slow>, <soft>...</soft>. Each wraps " +
-            "a full phrase in an opening and closing angle-bracket tag, and they can be stacked, " +
-            "e.g. <slow><soft>Goodnight.</soft></slow>.\n" +
+            "- Inline tags — each is a single self-closing bracket dropped at a point in the text, " +
+            "and NEVER has a closing counterpart (there is no such thing as [laugh]...[/laugh]):\n" +
+            `  Pauses: [pause], [long-pause], [hum-tune]\n` +
+            `  Laughter & crying: [laugh], [chuckle], [giggle], [cry]\n` +
+            `  Mouth sounds: [tsk], [tongue-click], [lip-smack]\n` +
+            `  Breathing: [breath], [inhale], [exhale], [sigh]\n` +
+            "- Wrapping tags — each wraps a full phrase in a matching opening and closing " +
+            "angle-bracket tag, and they can be stacked, e.g. <slow><soft>Goodnight.</soft></slow>:\n" +
+            `  Volume & intensity: <soft>, <whisper>, <loud>, <build-intensity>, <decrease-intensity>\n` +
+            `  Pitch & speed: <higher-pitch>, <lower-pitch>, <slow>, <fast>\n` +
+            `  Vocal style: <sing-song>, <singing>, <laugh-speak>, <emphasis>\n` +
             "Insert tags naturally and sparingly wherever they fit the tone of the text — do not overuse them. " +
             "Do not change, add, or remove a single word, letter, or punctuation mark of the original text — " +
             "the only thing you may add is tags from the list above. " +
