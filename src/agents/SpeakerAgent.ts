@@ -237,7 +237,7 @@ Respond naturally as ${
       id: this.generateId(),
       speaker: this.speaker,
       message: randomMessage,
-      instructions: "Fallback response due to generation failure",
+      instructions: "Natural, conversational tone",
       voice: this.speaker.voice,
       voiceStyle: this.speaker.voiceStyle,
       timestamp: new Date(),

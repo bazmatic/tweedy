@@ -36,7 +36,7 @@ export class OpenAIProvider extends BaseVocalProvider {
         model: 'gpt-4o-mini-tts',
         voice: params.voice.providerId as any,
         input: params.speech.message,
-        instructions: params.speech.instructions || params.voice.settings.instructions,
+        instructions: this.buildInstructions(params),
         response_format: 'mp3',
         ...(options.speed !== undefined ? { speed: options.speed } : {}),
       } as any);
@@ -50,6 +50,22 @@ export class OpenAIProvider extends BaseVocalProvider {
       this.logTtsError(error);
       throw error;
     }
+  }
+
+  // gpt-4o-mini-tts has no memory across requests, so a bare one-line cue (e.g. "skeptical")
+  // gets over-acted with nothing to play it against. Anchoring every call to the same
+  // conversational baseline, with the per-line cue layered on top, keeps delivery consistent
+  // between lines instead of lurching between takes.
+  private buildInstructions(params: VocalProviderTtsParams): string {
+    const cue = params.speech.instructions?.trim();
+    const lines = [
+      'Voice Affect: Natural, relaxed podcast co-host — conversational, not theatrical or over-enunciated.',
+      'Pacing: Even and unhurried, matching normal spoken conversation.',
+    ];
+    if (cue) {
+      lines.push(`Tone and emotion for this line: ${cue}.`);
+    }
+    return lines.join('\n');
   }
 
   async getVoices(): Promise<Voice[]> {
