@@ -4,6 +4,7 @@ import * as path from 'path';
 import { BaseVocalProvider } from './BaseVocalProvider';
 import { VocalProviderTtsParams, Voice, VocalProviderName } from '../types';
 import { appConfig } from '../utils/config';
+import { logger } from '../utils/logger';
 
 export class GrokProvider extends BaseVocalProvider {
   private apiKey: string;
@@ -81,7 +82,7 @@ export class GrokProvider extends BaseVocalProvider {
         settings: {},
       }));
     } catch (error) {
-      this.logTtsError(error);
+      logger.error('Failed to get Grok voices:', error);
       throw error;
     }
   }
