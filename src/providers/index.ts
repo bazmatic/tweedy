@@ -7,4 +7,6 @@ export { KokoroProvider } from './KokoroProvider';
 export { VocalProviderFactory } from './VocalProviderFactory';
 export { AudioProcessor } from './AudioProcessor';
 export { AiModelFactory } from './AiModelFactory';
+export { PerplexityProvider } from "./PerplexityProvider";
+export { ResearchProviderFactory } from "./ResearchProviderFactory";
 
