@@ -119,4 +119,53 @@ describe("GrokProvider", () => {
       expect.any(Object)
     );
   });
+
+  it("maps the voices endpoint response into the shared Voice shape", async () => {
+    (axios.get as any).mockResolvedValue({
+      data: [
+        { id: "eve", name: "Eve", description: "Warm, natural voice" },
+        { id: "rex", name: "Rex" },
+      ],
+    });
+
+    const provider = new GrokProvider();
+    const voices = await provider.getVoices();
+
+    expect(axios.get).toHaveBeenCalledWith("https://api.x.ai/v1/tts/voices", {
+      headers: {
+        Authorization: "Bearer test-key",
+        "Content-Type": "application/json",
+      },
+    });
+    expect(voices).toEqual([
+      {
+        id: "eve",
+        name: "Eve",
+        description: "Warm, natural voice",
+        provider: VocalProviderName.Grok,
+        providerId: "eve",
+        settings: {},
+      },
+      {
+        id: "rex",
+        name: "Rex",
+        description: "Rex",
+        provider: VocalProviderName.Grok,
+        providerId: "rex",
+        settings: {},
+      },
+    ]);
+  });
+
+  it("unwraps a { data: [...] } envelope from the voices endpoint", async () => {
+    (axios.get as any).mockResolvedValue({
+      data: { data: [{ id: "ara", name: "Ara" }] },
+    });
+
+    const provider = new GrokProvider();
+    const voices = await provider.getVoices();
+
+    expect(voices).toHaveLength(1);
+    expect(voices[0].id).toBe("ara");
+  });
 });
