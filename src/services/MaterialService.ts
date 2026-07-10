@@ -47,6 +47,10 @@ export class MaterialService implements IMaterialService {
     }
   }
 
+  async clearAllMaterials(): Promise<number> {
+    return this.materialRepository.deleteAll();
+  }
+
   async searchMaterials(query: string): Promise<PodcastMaterial[]> {
     try {
       const relevantDocs = await this.ragService.searchRelevantContent(

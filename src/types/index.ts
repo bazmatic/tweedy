@@ -360,6 +360,7 @@ export interface IMaterialService {
   getMaterial(id: string): Promise<PodcastMaterial>;
   getAllMaterials(): Promise<PodcastMaterial[]>;
   deleteMaterial(id: string): Promise<void>;
+  clearAllMaterials(): Promise<number>;
   searchMaterials(query: string): Promise<PodcastMaterial[]>;
 }
 
