@@ -70,6 +70,8 @@ export interface Speaker {
   isExpert: boolean;
 }
 
+export type StopReason = "max_tokens" | "stop" | "tool_use" | "unknown";
+
 export interface Speech {
   id: string;
   speaker: Speaker;

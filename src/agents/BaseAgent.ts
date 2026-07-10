@@ -6,7 +6,7 @@ import {
 } from "@langchain/core/messages";
 import { AiModelFactory } from "../providers/AiModelFactory";
 import { appConfig } from "../utils/config";
-import { LlmMessage, LlmTool } from "../types";
+import { LlmMessage, LlmTool, StopReason } from "../types";
 import { logger } from "../utils/logger";
 
 function toOpenAiTools(tools: LlmTool[]) {
@@ -112,6 +112,23 @@ function recoverTruncatedToolCall(
   };
 }
 
+const MAX_TOKENS_REASONS = new Set(["max_tokens", "length"]);
+const TOOL_USE_REASONS = new Set(["tool_use", "tool_calls"]);
+const STOP_REASONS = new Set(["end_turn", "stop_sequence", "stop"]);
+
+export function normalizeStopReason(
+  metadata: Record<string, unknown> | undefined
+): StopReason {
+  const raw = (metadata?.stop_reason ?? metadata?.finish_reason) as
+    | string
+    | undefined;
+  if (!raw) return "unknown";
+  if (MAX_TOKENS_REASONS.has(raw)) return "max_tokens";
+  if (TOOL_USE_REASONS.has(raw)) return "tool_use";
+  if (STOP_REASONS.has(raw)) return "stop";
+  return "unknown";
+}
+
 function toBaseMessages(messages: LlmMessage[]): BaseMessage[] {
   return messages.map((message) => {
     switch (message.role) {
@@ -148,7 +165,12 @@ export abstract class BaseAgent {
     messages: LlmMessage[],
     tools: LlmTool[],
     maxTokens: number = 200
-  ): Promise<{ toolName: string; message: string; style: string }> {
+  ): Promise<{
+    toolName: string;
+    message: string;
+    style: string;
+    stopReason: StopReason;
+  }> {
     try {
       const model = AiModelFactory.getModel(
         appConfig.defaultAiProvider,
@@ -165,7 +187,7 @@ export abstract class BaseAgent {
           logger.warn(
             "Tool call truncated by the token limit; using the partial response instead of retrying"
           );
-          return recovered;
+          return { ...recovered, stopReason: "max_tokens" };
         }
         throw new Error("AI model response did not include a tool call");
       }
@@ -176,6 +198,7 @@ export abstract class BaseAgent {
         toolName: toolCall.name,
         message: input.message,
         style: input.style,
+        stopReason: normalizeStopReason(response.response_metadata),
       };
     } catch (error) {
       logger.error("AI model tool-use call failed:", error);
