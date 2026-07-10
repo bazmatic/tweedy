@@ -186,7 +186,6 @@ export interface SpeechRecord {
   voiceId: string;
   voiceStyle: string;
   timestamp: Date;
-  tool?: SpeakerAgentToolName;
   stopReason?: StopReason;
 }
 
