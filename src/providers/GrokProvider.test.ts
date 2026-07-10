@@ -250,4 +250,84 @@ describe("GrokProvider", () => {
       expect.any(Object)
     );
   });
+
+  it("falls back to the original message when the LLM emits a malformed or invented tag", async () => {
+    const arrayBuffer = new TextEncoder().encode("audio-bytes").buffer;
+    (axios.post as any).mockResolvedValue({ data: arrayBuffer });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi
+        .fn()
+        .mockResolvedValue({ content: "Hello [emphasis]there[/emphasis]." }),
+    });
+
+    const provider = new GrokProvider();
+    const voice = {
+      id: "v1",
+      name: "Eve",
+      description: "Eve",
+      provider: VocalProviderName.Grok,
+      providerId: "eve",
+      settings: {},
+    };
+    const speech = {
+      id: "s1",
+      speaker: {} as any,
+      message: "Hello there.",
+      instructions: "",
+      voice,
+      voiceStyle: "",
+      timestamp: new Date(),
+    };
+
+    await provider.tts({
+      speech: speech as any,
+      voice: voice as any,
+      outputFileName: "malformed.mp3",
+    });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://api.x.ai/v1/tts",
+      expect.objectContaining({ text: "Hello there." }),
+      expect.any(Object)
+    );
+  });
+
+  it("falls back to the original message when the LLM changes the wording", async () => {
+    const arrayBuffer = new TextEncoder().encode("audio-bytes").buffer;
+    (axios.post as any).mockResolvedValue({ data: arrayBuffer });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi.fn().mockResolvedValue({ content: "Hi [pause] there." }),
+    });
+
+    const provider = new GrokProvider();
+    const voice = {
+      id: "v1",
+      name: "Eve",
+      description: "Eve",
+      provider: VocalProviderName.Grok,
+      providerId: "eve",
+      settings: {},
+    };
+    const speech = {
+      id: "s1",
+      speaker: {} as any,
+      message: "Hello there.",
+      instructions: "",
+      voice,
+      voiceStyle: "",
+      timestamp: new Date(),
+    };
+
+    await provider.tts({
+      speech: speech as any,
+      voice: voice as any,
+      outputFileName: "reworded.mp3",
+    });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://api.x.ai/v1/tts",
+      expect.objectContaining({ text: "Hello there." }),
+      expect.any(Object)
+    );
+  });
 });

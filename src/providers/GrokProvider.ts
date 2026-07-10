@@ -8,6 +8,17 @@ import { VocalProviderTtsParams, Voice, VocalProviderName } from '../types';
 import { appConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 
+const VALID_INLINE_TAGS = ['pause', 'long-pause', 'laugh', 'cry'];
+const VALID_WRAPPING_TAGS = ['whisper', 'slow', 'soft'];
+const VALID_TAG_PATTERN = new RegExp(
+  `\\[(?:${VALID_INLINE_TAGS.join('|')})\\]|</?(?:${VALID_WRAPPING_TAGS.join('|')})>`,
+  'g'
+);
+
+function normalizeWhitespace(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 export class GrokProvider extends BaseVocalProvider {
   private apiKey: string;
   private baseUrl = 'https://api.x.ai/v1';
@@ -38,12 +49,17 @@ export class GrokProvider extends BaseVocalProvider {
       const response = await model.invoke([
         new SystemMessage(
           "You add expressive speech markup to text for xAI's Grok text-to-speech engine. " +
-            "Grok supports two kinds of tags: inline tags like [pause], [long-pause], [laugh], [cry], " +
-            "placed at a point in the text to trigger an expression; and wrapping tags like " +
-            "<whisper>...</whisper>, <slow>...</slow>, <soft>...</soft>, which enclose a phrase to change " +
-            "its delivery style and can be stacked, e.g. <slow><soft>Goodnight.</soft></slow>. " +
+            "Grok supports exactly two kinds of tags, and ONLY these — do not invent, rename, " +
+            "or add any other tag:\n" +
+            "- Inline tags: [pause], [long-pause], [laugh], [cry]. Each is a single self-closing " +
+            "bracket dropped at a point in the text. Inline tags NEVER have a closing counterpart " +
+            "— there is no such thing as [laugh]...[/laugh] or [emphasis]...[/emphasis].\n" +
+            "- Wrapping tags: <whisper>...</whisper>, <slow>...</slow>, <soft>...</soft>. Each wraps " +
+            "a full phrase in an opening and closing angle-bracket tag, and they can be stacked, " +
+            "e.g. <slow><soft>Goodnight.</soft></slow>.\n" +
             "Insert tags naturally and sparingly wherever they fit the tone of the text — do not overuse them. " +
-            "Never change the wording of the text itself. " +
+            "Do not change, add, or remove a single word, letter, or punctuation mark of the original text — " +
+            "the only thing you may add is tags from the list above. " +
             "Respond with only the tagged text, nothing else — no commentary, no markdown fences."
         ),
         new HumanMessage(text),
@@ -51,7 +67,17 @@ export class GrokProvider extends BaseVocalProvider {
 
       const tagged =
         typeof response.content === 'string' ? response.content.trim() : '';
-      return tagged || text;
+      if (!tagged) return text;
+
+      const strippedOfValidTags = tagged.replace(VALID_TAG_PATTERN, '');
+      if (normalizeWhitespace(strippedOfValidTags) !== normalizeWhitespace(text)) {
+        logger.warn(
+          'Grok effect-tagged text failed validation (malformed tags or altered wording), using original text'
+        );
+        return text;
+      }
+
+      return tagged;
     } catch (error) {
       logger.warn('Failed to add Grok effect tags, using original text:', error);
       return text;
