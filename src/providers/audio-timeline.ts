@@ -1,4 +1,4 @@
-export const OVERLAP_SECONDS = 0.4;
+export const OVERLAP_SECONDS = 0.8;
 
 export interface ClipTiming {
   durationSeconds: number;

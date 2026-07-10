@@ -14,6 +14,9 @@ import {
 } from "./speaker-tools";
 
 export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
+  private static readonly SPEECH_MAX_TOKENS = 80;
+  private static readonly INTERJECTION_MAX_TOKENS = 80;
+
   private speaker: Speaker;
   private maxAttempts = 3;
 
@@ -92,7 +95,7 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
       const result = await this.callModelWithTools(
         messages,
         toLlmTools(SHORT_REACTION_TOOLS.slice(0, 2)),
-        80
+        SpeakerAgent.INTERJECTION_MAX_TOKENS
       );
 
       return {
@@ -116,7 +119,12 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
     direction: string
   ): Promise<{ toolName: SpeakerAgentToolName; message: string; style: string }> {
     const conversationHistory = this.getConversationHistory(script);
-    const relevantMaterials = this.getRelevantMaterials(script);
+    const expertLevel = this.speaker.isExpert
+      ? "Expert"
+      : "General audience (no access to source material — you only know what's been discussed aloud or is common knowledge)";
+    const materialsSection = this.speaker.isExpert
+      ? `\n\nRelevant Materials:\n${this.getRelevantMaterials(script)}`
+      : "";
 
     const messages: LlmMessage[] = [
       {
@@ -126,17 +134,14 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
         }, a podcast speaker with the following characteristics:
 - Personality: ${this.speaker.personality}
 - Voice Style: ${this.speaker.voiceStyle}
-- Expert Level: ${this.speaker.isExpert ? "Expert" : "General audience"}
+- Expert Level: ${expertLevel}
 
 Podcast Context:
 - Title: ${script.title}
 - Description: ${script.description}
 
 Conversation History (speaker: message [tool used]):
-${conversationHistory}
-
-Relevant Materials:
-${relevantMaterials}
+${conversationHistory}${materialsSection}
 
 Director's guidance: ${direction}
 
@@ -144,14 +149,14 @@ Respond naturally as ${
           this.speaker.name
         }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getBrevityNudge(
           script
-        )} Be authentic to your personality and expertise level. Make the speech sound like real, unscripted talk, not a written passage: sprinkle in filler words (um, uh, er, like, you know), false starts and self-corrections ("it was — actually, no, it was..."), and the occasional stammer. Use ellipsis ("...") often to show trailing off, hesitation, or a pause before continuing a thought. Sometimes stop mid-sentence as if you've lost the word or the thread entirely — trail off with "..." and don't finish the thought; your co-host may jump in and finish it for you. Do not include stage directions, emotes, sound effects or physical actions in the message itself — those belong in the style argument.`,
+        )} Get ONE idea out and then stop — a single point, fact, or beat per turn, not a multi-part explanation. Trust your co-host to ask a follow-up if they want more; don't pre-empt their next question by answering it yourself in the same turn. Be authentic to your personality and expertise level. Make the speech sound like real, unscripted talk, not a written passage: sprinkle in filler words (um, uh, er, like, you know), false starts and self-corrections ("it was — actually, no, it was..."), and the occasional stammer. Use ellipsis ("...") often to show trailing off, hesitation, or a pause before continuing a thought. Sometimes stop mid-sentence as if you've lost the word or the thread entirely — trail off with "..." and don't finish the thought; your co-host may jump in and finish it for you. Do not include stage directions, emotes, sound effects or physical actions in the message itself — those belong in the style argument.`,
       },
     ];
 
     const result = await this.callModelWithTools(
       messages,
       toLlmTools(),
-      300
+      SpeakerAgent.SPEECH_MAX_TOKENS
     );
 
     return {

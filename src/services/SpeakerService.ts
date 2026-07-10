@@ -9,10 +9,18 @@ export class SpeakerService implements ISpeakerService {
   ) {}
 
   async createSpeaker(
-    speaker: Omit<SpeakerRecord, "id" | "createdAt" | "updatedAt">
+    speaker: Omit<SpeakerRecord, "id" | "slug" | "createdAt" | "updatedAt">
   ): Promise<Speaker> {
     try {
-      const record = await this.speakerRepository.create(speaker);
+      const voiceRecord = await this.voiceRepository.getById(speaker.voiceId);
+      if (!voiceRecord) {
+        throw new Error(`Voice with id ${speaker.voiceId} not found`);
+      }
+
+      const record = await this.speakerRepository.create(
+        speaker,
+        voiceRecord.provider
+      );
       return await this.populateSpeakerWithVoice(record);
     } catch (error) {
       logger.error("Failed to create speaker:", error);
@@ -24,6 +32,14 @@ export class SpeakerService implements ISpeakerService {
     const record = await this.speakerRepository.getById(id);
     if (!record) {
       throw new Error(`Speaker with id ${id} not found`);
+    }
+    return await this.populateSpeakerWithVoice(record);
+  }
+
+  async getSpeakerBySlug(slug: string): Promise<Speaker> {
+    const record = await this.speakerRepository.findBySlug(slug);
+    if (!record) {
+      throw new Error(`Speaker with slug ${slug} not found`);
     }
     return await this.populateSpeakerWithVoice(record);
   }
@@ -83,6 +99,7 @@ export class SpeakerService implements ISpeakerService {
 
     return {
       id: record.id,
+      slug: record.slug,
       name: record.name,
       personality: record.personality,
       voice,

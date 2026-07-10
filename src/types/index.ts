@@ -23,6 +23,7 @@ export enum VocalProviderName {
 
 export enum AiProviderName {
   Anthropic = "anthropic",
+  DeepSeek = "deepseek",
 }
 
 export enum DocumentType {
@@ -61,6 +62,7 @@ export interface VoiceSettings {
 
 export interface Speaker {
   id: string;
+  slug: string;
   name: string;
   personality: string;
   voice: Voice;
@@ -136,6 +138,7 @@ export interface VoiceRecord {
 
 export interface SpeakerRecord {
   id: string;
+  slug: string;
   name: string;
   personality: string;
   voiceId: string;
@@ -193,7 +196,8 @@ export interface IVoiceRepository {
 
 export interface ISpeakerRepository {
   create(
-    speaker: Omit<SpeakerRecord, "id" | "createdAt" | "updatedAt">
+    speaker: Omit<SpeakerRecord, "id" | "slug" | "createdAt" | "updatedAt">,
+    provider: VocalProviderName
   ): Promise<SpeakerRecord>;
   getById(id: string): Promise<SpeakerRecord | null>;
   getAll(): Promise<SpeakerRecord[]>;
@@ -203,6 +207,7 @@ export interface ISpeakerRepository {
   ): Promise<SpeakerRecord | null>;
   delete(id: string): Promise<boolean>;
   findByName(name: string): Promise<SpeakerRecord | null>;
+  findBySlug(slug: string): Promise<SpeakerRecord | null>;
 }
 
 export interface IScriptRepository {
@@ -305,9 +310,10 @@ export interface IVoiceService {
 
 export interface ISpeakerService {
   createSpeaker(
-    speaker: Omit<SpeakerRecord, "id" | "createdAt" | "updatedAt">
+    speaker: Omit<SpeakerRecord, "id" | "slug" | "createdAt" | "updatedAt">
   ): Promise<Speaker>;
   getSpeaker(id: string): Promise<Speaker>;
+  getSpeakerBySlug(slug: string): Promise<Speaker>;
   getAllSpeakers(): Promise<Speaker[]>;
   updateSpeaker(
     id: string,

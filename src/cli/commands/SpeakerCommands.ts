@@ -30,8 +30,9 @@ export function createSpeakerCommands(): Command {
         console.log("\nAvailable Speakers:");
         speakers.forEach((speaker) => {
           console.log(
-            `  [ID: ${speaker.id}] ${speaker.name} (${speaker.voice.name}) - ${speaker.personality}`
+            `  [${speaker.slug}] ${speaker.name} (${speaker.voice.name}) - ${speaker.personality}`
           );
+          console.log(`    ID: ${speaker.id}`);
           console.log(`    Expert: ${speaker.isExpert ? "Yes" : "No"}`);
           console.log(`    Voice Style: ${speaker.voiceStyle}`);
           console.log("");
@@ -64,7 +65,7 @@ export function createSpeakerCommands(): Command {
           isExpert: options.expert || false,
         });
 
-        logger.success(`Speaker created: ${speaker.name}`);
+        logger.success(`Speaker created: ${speaker.slug}`);
       } catch (error) {
         logger.error("Failed to create speaker:", error);
       }
@@ -79,6 +80,7 @@ export function createSpeakerCommands(): Command {
     .option("-s, --voice-style <style>", "New voice style")
     .option("-e, --expert", "Mark as expert")
     .option("--no-expert", "Remove expert status")
+    .option("--slug <slug>", "New speaker slug (must be unique)")
     .action(async (id, options) => {
       try {
         const updateData: any = {};
@@ -87,6 +89,7 @@ export function createSpeakerCommands(): Command {
         if (options.voiceId) updateData.voiceId = options.voiceId;
         if (options.voiceStyle) updateData.voiceStyle = options.voiceStyle;
         if (options.expert !== undefined) updateData.isExpert = options.expert;
+        if (options.slug) updateData.slug = options.slug;
 
         await speakerService.updateSpeaker(id, updateData);
         logger.success(`Speaker updated: ${id}`);

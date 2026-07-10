@@ -63,7 +63,10 @@ export function createScriptCommands(): Command {
     .description("Generate a new podcast script")
     .option("-t, --title <title>", "Script title")
     .option("-d, --description <description>", "Script description")
-    .option("-s, --speakers <speakers>", "Comma-separated speaker IDs")
+    .option(
+      "-s, --speakers <speakers>",
+      "Comma-separated speaker slugs or IDs"
+    )
     .option("-m, --materials <materials>", "Comma-separated material IDs")
     .option("--max-turns <turns>", "Maximum number of turns", "10")
     .option("--max-duration <duration>", "Maximum duration in seconds", "600")

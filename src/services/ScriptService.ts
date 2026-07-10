@@ -95,9 +95,13 @@ export class ScriptService implements IScriptService {
     const speakers: Speaker[] = [];
 
     for (const config of speakerConfigs) {
-      const speakerRecord = await this.speakerRepository.getById(config.id);
+      const speakerRecord =
+        (await this.speakerRepository.findBySlug(config.id)) ||
+        (await this.speakerRepository.getById(config.id));
       if (!speakerRecord) {
-        throw new Error(`Speaker with id ${config.id} not found`);
+        throw new Error(
+          `Speaker '${config.id}' not found (tried as slug and id)`
+        );
       }
 
       // Load voice for speaker
@@ -111,6 +115,7 @@ export class ScriptService implements IScriptService {
       // Create speaker with voice
       speakers.push({
         id: speakerRecord.id,
+        slug: speakerRecord.slug,
         name: speakerRecord.name,
         personality: speakerRecord.personality,
         voice: {
@@ -158,9 +163,13 @@ export class ScriptService implements IScriptService {
     script: PodcastScript,
     params: GenerateScriptParams
   ): Promise<void> {
-    const directorAgent = new DirectorAgent(script);
+    const directorAgent = new DirectorAgent(script, {
+      maxTurns: params.maxTurns,
+      maxDuration: params.maxDuration,
+    });
     await directorAgent.createPodcastPlan();
 
+    // TODO: Explain
     const INTERJECTION_LENGTH_THRESHOLD = 80;
     const INTERJECTION_CHANCE = 0.8;
 

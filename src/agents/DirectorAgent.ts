@@ -6,13 +6,23 @@ import {
   toSelectNextSpeakerTool,
 } from './director-tools';
 
+const WORDS_PER_MINUTE = 150;
+
 export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private script: PodcastScript;
   private podcastPlan: string = '';
+  private maxTurns: number;
+  private maxDuration: number;
+  private turnsUsed = 0;
 
-  constructor(script: PodcastScript) {
+  constructor(
+    script: PodcastScript,
+    budget: { maxTurns: number; maxDuration: number }
+  ) {
     super();
     this.script = script;
+    this.maxTurns = budget.maxTurns;
+    this.maxDuration = budget.maxDuration;
   }
 
   async createPodcastPlan(): Promise<string> {
@@ -30,7 +40,7 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
 
 Title: ${this.script.title}
 Description: ${this.script.description}
-Duration: Approximately ${this.script.speeches.length * 2} minutes
+Duration: Approximately ${Math.round(this.maxDuration / 60)} minutes, across up to ${this.maxTurns} speaking turns
 Speakers: ${this.script.speakers.map(s => s.name).join(', ')}
 
 Available materials:
@@ -62,6 +72,7 @@ Keep it engaging and natural, with clear direction for each speaker.`
     try {
       this.logAgentAction('Choosing next speaker');
 
+      this.turnsUsed++;
       const progress = this.calculateProgress(script);
       const history = this.getConversationHistory(script);
       const speakerDescriptions = script.speakers
@@ -85,12 +96,12 @@ Progress: ${progress}% complete
 Speakers:
 ${speakerDescriptions}
 
-Conversation so far:
+Conversation so far (each line tagged with the tool used to deliver it — "speak" is substantive content; "interject", "filler_comment", "one_liner", and "short_question" are brief reactions, not real answers or new points):
 ${history || '(nothing said yet — this is the opening of the episode)'}
 
-Decide which speaker should talk next and give them clear, specific, conversational direction about what they should say. On the opening of the episode, this should usually be the interviewer.${this.getPacingNote(
+Decide which speaker should talk next and give them clear, specific, conversational direction about what they should say. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. On the opening of the episode, this should usually be the interviewer.${this.getPacingNote(
             script
-          )}`
+          )}${this.getWrapUpNote(progress)}`
         }
       ];
 
@@ -130,10 +141,49 @@ Decide which speaker should talk next and give them clear, specific, conversatio
     return eligible[Math.floor(Math.random() * eligible.length)];
   }
 
+  /**
+   * Progress toward whichever budget — turn count or estimated spoken
+   * duration — is closer to running out, since either one can bind first.
+   */
   private calculateProgress(script: PodcastScript): number {
-    const totalExpectedTurns = script.speeches.length;
-    const currentTurns = script.speeches.length;
-    return Math.min(100, Math.round((currentTurns / totalExpectedTurns) * 100));
+    const turnProgress = this.turnsUsed / this.maxTurns;
+    const durationProgress =
+      this.maxDuration > 0
+        ? this.estimateElapsedSeconds(script) / this.maxDuration
+        : 0;
+    return Math.min(
+      100,
+      Math.round(Math.max(turnProgress, durationProgress) * 100)
+    );
+  }
+
+  private estimateElapsedSeconds(script: PodcastScript): number {
+    const totalWords = script.speeches.reduce(
+      (sum, speech) =>
+        sum + speech.message.trim().split(/\s+/).filter(Boolean).length,
+      0
+    );
+    return (totalWords / WORDS_PER_MINUTE) * 60;
+  }
+
+  /**
+   * Tells the director to start steering toward a close as the turn/duration
+   * budget runs low, and to force a sign-off on the final turn.
+   */
+  private getWrapUpNote(progress: number): string {
+    if (this.turnsUsed >= this.maxTurns) {
+      return ' This is the final turn of the episode — direct this speaker to deliver a closing statement that wraps up the conversation and signs off naturally.';
+    }
+
+    if (progress >= 85) {
+      return ' The episode is almost out of time — direct the speakers to wrap up remaining points and head toward a close within the next turn or two, rather than opening new topics.';
+    }
+
+    if (progress >= 65) {
+      return ' The episode is well past the halfway point of its time budget — start steering the conversation toward wrapping up open topics instead of introducing new ones.';
+    }
+
+    return '';
   }
 
   /**
@@ -160,7 +210,7 @@ Decide which speaker should talk next and give them clear, specific, conversatio
   private getConversationHistory(script: PodcastScript): string {
     return script.speeches
       .slice(-5) // Last 5 speeches
-      .map(speech => `${speech.speaker.name}: ${speech.message}`)
+      .map(speech => `${speech.speaker.name}: ${speech.message} [${speech.tool ?? 'unknown'}]`)
       .join('\n');
   }
 }

@@ -1,4 +1,4 @@
-import { Embeddings } from "langchain/embeddings/base";
+import { Embeddings } from "@langchain/core/embeddings";
 import { embedText, embedTexts } from "./local-embeddings";
 
 export class LocalLangChainEmbeddings extends Embeddings {
