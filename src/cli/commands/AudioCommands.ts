@@ -50,7 +50,7 @@ export function createAudioCommands(): Command {
           options.output ||
           path.join(appConfig.audioDir, `podcast-${scriptId}.mp3`);
 
-        await audioService.generateAudio(script.speeches, outputPath);
+        await audioService.generateAudio(script.speeches, outputPath, scriptId);
 
         logger.success(`Audio generated: ${outputPath}`);
       } catch (error) {
