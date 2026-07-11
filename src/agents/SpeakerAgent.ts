@@ -11,6 +11,7 @@ import { logger } from "../utils/logger";
 import {
   INTERJECTION_TOOLS,
   SHORT_REACTION_TOOLS,
+  SOLO_TOOLS,
   SpeakerAgentToolName,
   toLlmTools,
 } from "./speaker-tools";
@@ -139,6 +140,7 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
     style: string;
     stopReason: StopReason;
   }> {
+    const isSolo = script.speakers.length <= 1;
     const conversationHistory = this.getConversationHistory(script);
     const expertLevel = this.speaker.isExpert
       ? "Expert"
@@ -175,8 +177,9 @@ Director's guidance: ${direction}${
 Respond naturally as ${
           this.speaker.name
         }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getBrevityNudge(
-          script
-        )}${this.getExpertiseNudge()} Get ONE idea out and then stop — a single point, fact, or beat per turn, not a multi-part explanation. Trust your co-host to ask a follow-up if they want more; don't pre-empt their next question by answering it yourself in the same turn. Be authentic to your personality and expertise level. Make the speech sound like real, unscripted talk, not a written passage: sprinkle in filler words (um, uh, er, like, you know), false starts and self-corrections ("it was — actually, no, it was..."), and the occasional stammer. Use ellipsis ("...") often to show trailing off, hesitation, or a pause before continuing a thought. Sometimes stop mid-sentence as if you've lost the word or the thread entirely — trail off with "..." and don't finish the thought; your co-host may jump in and finish it for you. Do not include stage directions, emotes, sound effects or physical actions in the message itself — those belong in the style argument.`,
+          script,
+          isSolo
+        )}${this.getExpertiseNudge(isSolo)} Get ONE idea out and then stop — a single point, fact, or beat per turn, not a multi-part explanation. Trust your co-host to ask a follow-up if they want more; don't pre-empt their next question by answering it yourself in the same turn. Be authentic to your personality and expertise level. Make the speech sound like real, unscripted talk, not a written passage: sprinkle in filler words (um, uh, er, like, you know), false starts and self-corrections ("it was — actually, no, it was..."), and the occasional stammer. Use ellipsis ("...") often to show trailing off, hesitation, or a pause before continuing a thought. Sometimes stop mid-sentence as if you've lost the word or the thread entirely — trail off with "..." and don't finish the thought; your co-host may jump in and finish it for you. Do not include stage directions, emotes, sound effects or physical actions in the message itself — those belong in the style argument.`,
       },
     ];
 
@@ -184,7 +187,7 @@ Respond naturally as ${
       messages,
       forceNearlyOutOfTime
         ? toLlmTools([SpeakerAgentToolName.NEARLY_OUT_OF_TIME])
-        : toLlmTools(),
+        : toLlmTools(isSolo ? SOLO_TOOLS : undefined),
       SpeakerAgent.SPEECH_MAX_TOKENS
     );
 
@@ -212,7 +215,7 @@ Respond naturally as ${
    * Counts consecutive trailing speeches that used a long-form tool (SPEAK),
    * so the prompt can push back toward short reactions after a run of them.
    */
-  private getBrevityNudge(script: PodcastScript): string {
+  private getBrevityNudge(script: PodcastScript, isSolo: boolean): string {
     let consecutiveLongTurns = 0;
     for (let i = script.speeches.length - 1; i >= 0; i--) {
       if (script.speeches[i].tool === SpeakerAgentToolName.SPEAK) {
@@ -223,7 +226,10 @@ Respond naturally as ${
     }
 
     if (consecutiveLongTurns >= 2) {
-      return ` The conversation has had ${consecutiveLongTurns} long responses in a row — strongly prefer a short tool (${SHORT_REACTION_TOOLS.join(
+      const shortTools = isSolo
+        ? [SpeakerAgentToolName.ONE_LINER]
+        : SHORT_REACTION_TOOLS;
+      return ` The conversation has had ${consecutiveLongTurns} long responses in a row — strongly prefer a short tool (${shortTools.join(
         ", "
       )}) this turn instead of another full explanation.`;
     }
@@ -236,12 +242,15 @@ Respond naturally as ${
    * carry the substantive explaining, non-experts are the audience surrogate
    * and should mostly react/question rather than hold forth.
    */
-  private getExpertiseNudge(): string {
+  private getExpertiseNudge(isSolo: boolean): string {
     if (this.speaker.isExpert) {
       return " As the expert here with access to the material, favor the speak tool to carry the substantive explanation — that's your role in this conversation.";
     }
 
-    return ` As a non-expert, you rarely have new information to add — favor short tools (${SHORT_REACTION_TOOLS.join(
+    const shortTools = isSolo
+      ? [SpeakerAgentToolName.ONE_LINER]
+      : SHORT_REACTION_TOOLS;
+    return ` As a non-expert, you rarely have new information to add — favor short tools (${shortTools.join(
       ", "
     )}) most turns, and reserve speak for the occasional genuine point.`;
   }

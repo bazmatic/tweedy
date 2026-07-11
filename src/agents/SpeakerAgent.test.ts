@@ -26,12 +26,15 @@ function makeSpeaker(id: string, isExpert = false): Speaker {
   };
 }
 
-function makeScript(speeches: PodcastScript["speeches"] = []): PodcastScript {
+function makeScript(
+  speeches: PodcastScript["speeches"] = [],
+  speakers: PodcastScript["speakers"] = [makeSpeaker("s1"), makeSpeaker("s2")]
+): PodcastScript {
   return {
     id: "script-1",
     title: "Test Script",
     description: "A test script",
-    speakers: [makeSpeaker("s1"), makeSpeaker("s2")],
+    speakers,
     speeches,
     materials: [],
     createdAt: new Date(),
@@ -109,6 +112,58 @@ describe("SpeakerAgent.interject tool set", () => {
       SpeakerAgentToolName.FILLER_COMMENT,
       SpeakerAgentToolName.CHALLENGE,
     ]);
+  });
+});
+
+describe("SpeakerAgent.speak tool set for solo episodes", () => {
+  it("only offers SPEAK, QUOTE, and ONE_LINER when there is a single speaker", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "hello there",
+      style: "calm",
+      stopReason: "stop",
+    });
+
+    await agent.speak(makeScript([], [makeSpeaker("s1")]), "talk about x");
+
+    const offeredTools = spy.mock.calls[0][1] as { name: string }[];
+    expect(offeredTools.map((tool) => tool.name)).toEqual([
+      SpeakerAgentToolName.SPEAK,
+      SpeakerAgentToolName.ONE_LINER,
+      SpeakerAgentToolName.QUOTE,
+    ]);
+  });
+
+  it("offers the full tool set when there are multiple speakers", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "hello there",
+      style: "calm",
+      stopReason: "stop",
+    });
+
+    await agent.speak(makeScript(), "talk about x");
+
+    const offeredTools = spy.mock.calls[0][1] as { name: string }[];
+    expect(offeredTools.length).toBeGreaterThan(3);
+  });
+
+  it("nudges non-experts toward only ONE_LINER as the short tool when solo", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1", false));
+    const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "hello there",
+      style: "calm",
+      stopReason: "stop",
+    });
+
+    await agent.speak(makeScript([], [makeSpeaker("s1")]), "talk about x");
+
+    const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
+    expect(prompt).toContain(`favor short tools (${SpeakerAgentToolName.ONE_LINER})`);
+    expect(prompt).not.toContain(SpeakerAgentToolName.FILLER_COMMENT);
   });
 });
 

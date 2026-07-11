@@ -83,6 +83,12 @@ export const SHORT_REACTION_TOOLS: SpeakerAgentToolName[] = [
   SpeakerAgentToolName.ONE_LINER,
 ];
 
+export const SOLO_TOOLS: SpeakerAgentToolName[] = [
+  SpeakerAgentToolName.SPEAK,
+  SpeakerAgentToolName.QUOTE,
+  SpeakerAgentToolName.ONE_LINER,
+];
+
 export const INTERJECTION_TOOLS: SpeakerAgentToolName[] = [
   SpeakerAgentToolName.INTERJECT,
   SpeakerAgentToolName.FILLER_COMMENT,
