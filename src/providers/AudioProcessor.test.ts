@@ -1,42 +1,45 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("fluent-ffmpeg");
-vi.mock("fs-extra");
+// vi.mock(...) calls are hoisted above all imports and top-level consts, so
+// anything a factory closes over must itself be created via vi.hoisted.
+const { ffmpegState, commandMock, ffmpegFn } = vi.hoisted(() => {
+  const ffmpegState = {
+    handlers: {} as Record<string, (...args: any[]) => void>,
+  };
 
-import ffmpeg from "fluent-ffmpeg";
-import * as fs from "fs-extra";
-import { AudioProcessor } from "./AudioProcessor";
+  const commandMock: any = {
+    input: vi.fn().mockReturnThis(),
+    complexFilter: vi.fn().mockReturnThis(),
+    output: vi.fn().mockReturnThis(),
+    audioFilters: vi.fn().mockReturnThis(),
+    format: vi.fn().mockReturnThis(),
+    outputOptions: vi.fn().mockReturnThis(),
+    on: vi.fn().mockImplementation(function (this: any, event: string, cb: (...args: any[]) => void) {
+      ffmpegState.handlers[event] = cb;
+      return this;
+    }),
+    run: vi.fn().mockImplementation(() => {
+      // Simulate ffmpeg completing successfully.
+      ffmpegState.handlers["end"]?.();
+    }),
+  };
 
-const ffmpegState = {
-  handlers: {} as Record<string, (...args: any[]) => void>,
-};
+  const ffmpegFn: any = vi.fn(() => commandMock);
+  ffmpegFn.ffprobe = vi.fn((_path: string, cb: (err: unknown, data: any) => void) => {
+    cb(null, { format: { duration: 5 } });
+  });
 
-const commandMock: any = {
-  input: vi.fn().mockReturnThis(),
-  complexFilter: vi.fn().mockReturnThis(),
-  output: vi.fn().mockReturnThis(),
-  audioFilters: vi.fn().mockReturnThis(),
-  format: vi.fn().mockReturnThis(),
-  outputOptions: vi.fn().mockReturnThis(),
-  on: vi.fn().mockImplementation(function (this: any, event: string, cb: (...args: any[]) => void) {
-    ffmpegState.handlers[event] = cb;
-    return this;
-  }),
-  run: vi.fn().mockImplementation(() => {
-    // Simulate ffmpeg completing successfully.
-    ffmpegState.handlers["end"]?.();
-  }),
-};
-
-const ffmpegMock = vi.fn(() => commandMock);
-(ffmpegMock as any).ffprobe = vi.fn((_path: string, cb: (err: unknown, data: any) => void) => {
-  cb(null, { format: { duration: 5 } });
+  return { ffmpegState, commandMock, ffmpegFn };
 });
 
-vi.mocked(ffmpeg).mockImplementation(ffmpegMock as any);
-vi.mocked(ffmpeg).ffprobe = (ffmpegMock as any).ffprobe;
+// Explicit factories only — never let vi.mock("fluent-ffmpeg")/("fs-extra")
+// fall back to automocking, which requires loading the real modules (and,
+// for fluent-ffmpeg, can trigger real binary-detection/child-process
+// behavior at import time instead of a fast, hermetic unit test).
+vi.mock("fluent-ffmpeg", () => ({ default: ffmpegFn }));
+vi.mock("fs-extra", () => ({ ensureDir: vi.fn().mockResolvedValue(undefined) }));
 
-vi.mocked(fs).ensureDir = vi.fn().mockResolvedValue(undefined);
+import { AudioProcessor } from "./AudioProcessor";
 
 describe("AudioProcessor.concatenateAudio", () => {
   beforeEach(() => {
