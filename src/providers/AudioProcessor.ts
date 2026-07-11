@@ -6,6 +6,11 @@ import { logger } from "../utils/logger";
 import { computeClipOffsets } from "./audio-timeline";
 import type { ClipTiming } from "./audio-timeline";
 
+export interface ConcatenationTiming {
+  offsetsSeconds: number[];
+  speechEndSeconds: number[];
+}
+
 export class AudioProcessor {
   static async processAudio(
     inputPath: string,
@@ -43,7 +48,7 @@ export class AudioProcessor {
     inputFiles: string[],
     outputPath: string,
     isInterjection: boolean[] = inputFiles.map(() => false)
-  ): Promise<void> {
+  ): Promise<ConcatenationTiming> {
     try {
       await fs.ensureDir(path.dirname(outputPath));
 
@@ -86,7 +91,7 @@ export class AudioProcessor {
           .output(outputPath)
           .on("end", () => {
             logger.info(`Audio concatenated: ${outputPath}`);
-            resolve();
+            resolve({ offsetsSeconds: offsets, speechEndSeconds: speechEnds });
           })
           .on("error", (error: Error) => {
             logger.error("Audio concatenation failed:", error);
