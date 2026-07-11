@@ -175,6 +175,11 @@ npx tweedy audio generate <script-id> --output podcast.mp3
 npx tweedy audio process input.mp3 output.mp3
 ```
 
+Every `audio generate` run also writes a timeline JSON next to the audio
+file (e.g. `podcast.mp3` → `podcast.timeline.json`), listing each speech's
+speaker, message, and `startSeconds`/`endSeconds` in the final mixed track —
+useful for driving downstream time-synced assets like captions or video.
+
 ## Development
 
 ### Project Structure
