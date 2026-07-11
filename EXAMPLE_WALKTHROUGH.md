@@ -83,7 +83,10 @@ tweedy audio generate <script-id>
 ```
 
 Output is written to `./audio/podcast-<script-id>.mp3` (configurable via
-`AUDIO_DIR` in `.env`).
+`AUDIO_DIR` in `.env`). A sibling `podcast-<script-id>.timeline.json` is
+also written alongside it, listing each speech's speaker, message, and
+start/end timestamps in the final mixed track — useful for driving
+downstream time-synced assets like captions or video.
 
 ## Useful commands along the way
 
