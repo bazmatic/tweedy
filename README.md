@@ -159,6 +159,10 @@ npx tweedy script generate --title "Tech Discussion" --speakers "speaker-id-1,sp
 
 # Show script details
 npx tweedy script show <script-id>
+
+# Export a script as a human-readable document
+npx tweedy script export <script-id>
+npx tweedy script export <script-id> --output script.txt
 ```
 
 ### Audio Generation
