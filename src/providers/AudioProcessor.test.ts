@@ -65,7 +65,7 @@ describe("AudioProcessor.concatenateAudio", () => {
     });
   });
 
-  it("reflects an interjection's overlapping (earlier) offset in the returned timing", async () => {
+  it("reflects an interjection's offset (relative to the previous clip's speech end) in the returned timing", async () => {
     vi.spyOn(AudioProcessor, "getSpeechEndSeconds")
       .mockResolvedValueOnce(4)
       .mockResolvedValueOnce(1);
@@ -76,6 +76,6 @@ describe("AudioProcessor.concatenateAudio", () => {
       [false, true]
     );
 
-    expect(timing.offsetsSeconds).toEqual([0, 3]);
+    expect(timing.offsetsSeconds).toEqual([0, 4]);
   });
 });
