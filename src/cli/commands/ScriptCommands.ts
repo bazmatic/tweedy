@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { writeFile } from "fs/promises";
 import { ScriptService } from "../../services";
 import {
   ScriptRepository,
@@ -146,6 +147,25 @@ export function createScriptCommands(): Command {
         });
       } catch (error) {
         logger.error("Failed to show script:", error);
+      }
+    });
+
+  scriptCommand
+    .command("export <id>")
+    .description("Export a script as a single human-readable document")
+    .option("-o, --output <file>", "Write the document to a file instead of stdout")
+    .action(async (id, options) => {
+      try {
+        const document = await scriptService.exportScriptAsText(id);
+
+        if (options.output) {
+          await writeFile(options.output, document, "utf-8");
+          logger.success(`Script exported to ${options.output}`);
+        } else {
+          console.log(document);
+        }
+      } catch (error) {
+        logger.error("Failed to export script:", error);
       }
     });
 

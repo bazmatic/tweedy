@@ -360,6 +360,7 @@ export interface IScriptService {
   getScript(id: string): Promise<PodcastScript>;
   getAllScripts(): Promise<PodcastScript[]>;
   deleteScript(id: string): Promise<void>;
+  exportScriptAsText(id: string): Promise<string>;
 }
 
 export interface IMaterialService {

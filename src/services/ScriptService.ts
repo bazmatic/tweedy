@@ -91,6 +91,29 @@ export class ScriptService implements IScriptService {
     }
   }
 
+  async exportScriptAsText(id: string): Promise<string> {
+    const script = await this.getScript(id);
+
+    const lines: string[] = [];
+    lines.push(script.title);
+    lines.push("=".repeat(script.title.length));
+    if (script.description) {
+      lines.push("");
+      lines.push(script.description);
+    }
+    lines.push("");
+    lines.push(`Speakers: ${script.speakers.map((s) => s.name).join(", ")}`);
+    lines.push(`Created: ${script.createdAt.toLocaleDateString()}`);
+    lines.push("");
+
+    for (const speech of script.speeches) {
+      lines.push(`${speech.speaker.name}: ${speech.message}`);
+      lines.push("");
+    }
+
+    return lines.join("\n").trimEnd() + "\n";
+  }
+
   private async loadSpeakers(speakerConfigs: any[]): Promise<Speaker[]> {
     const speakers: Speaker[] = [];
 
