@@ -1,10 +1,10 @@
-import { IVocalProvider, VocalProviderTtsParams, Voice } from '../types';
+import { IVocalProvider, VocalProviderTtsParams, TtsResult, Voice } from '../types';
 import { logger } from '../utils/logger';
 
 export abstract class BaseVocalProvider implements IVocalProvider {
   protected abstract getProviderName(): string;
 
-  abstract tts(params: VocalProviderTtsParams): Promise<string>;
+  abstract tts(params: VocalProviderTtsParams): Promise<TtsResult>;
   abstract getVoices(): Promise<Voice[]>;
 
   protected validateParams(params: VocalProviderTtsParams): void {

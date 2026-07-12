@@ -2,7 +2,7 @@ import axios from 'axios';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { BaseVocalProvider } from './BaseVocalProvider';
-import { VocalProviderTtsParams, Voice, VocalProviderName } from '../types';
+import { VocalProviderTtsParams, TtsResult, Voice, VocalProviderName } from '../types';
 import { appConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 
@@ -29,7 +29,7 @@ export class HumeProvider extends BaseVocalProvider {
     return parts.length > 0 ? parts.join('. ') : undefined;
   }
 
-  async tts(params: VocalProviderTtsParams): Promise<string> {
+  async tts(params: VocalProviderTtsParams): Promise<TtsResult> {
     this.validateParams(params);
     this.logTtsRequest(params);
 
@@ -67,7 +67,7 @@ export class HumeProvider extends BaseVocalProvider {
       await fs.writeFile(outputPath, Buffer.from(base64Audio, 'base64'));
       this.logTtsSuccess(outputPath);
 
-      return outputPath;
+      return { outputPath };
     } catch (error) {
       this.logTtsError(error);
       throw error;

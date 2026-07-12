@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { BaseVocalProvider } from './BaseVocalProvider';
-import { VocalProviderTtsParams, Voice, VocalProviderName } from '../types';
+import { VocalProviderTtsParams, TtsResult, Voice, VocalProviderName } from '../types';
 import { appConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 
@@ -22,7 +22,7 @@ export class OpenAIProvider extends BaseVocalProvider {
     return 'OpenAI';
   }
 
-  async tts(params: VocalProviderTtsParams): Promise<string> {
+  async tts(params: VocalProviderTtsParams): Promise<TtsResult> {
     this.validateParams(params);
     this.logTtsRequest(params);
 
@@ -45,7 +45,7 @@ export class OpenAIProvider extends BaseVocalProvider {
       await fs.writeFile(outputPath, buffer);
       
       this.logTtsSuccess(outputPath);
-      return outputPath;
+      return { outputPath };
     } catch (error) {
       this.logTtsError(error);
       throw error;

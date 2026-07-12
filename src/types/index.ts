@@ -274,8 +274,19 @@ export interface LlmTool {
   };
 }
 
+export interface WordTimestamp {
+  word: string;
+  startSeconds: number;
+  endSeconds: number;
+}
+
+export interface TtsResult {
+  outputPath: string;
+  wordTimestamps?: WordTimestamp[];
+}
+
 export interface IVocalProvider {
-  tts(params: VocalProviderTtsParams): Promise<string>;
+  tts(params: VocalProviderTtsParams): Promise<TtsResult>;
   getVoices(): Promise<Voice[]>;
 }
 

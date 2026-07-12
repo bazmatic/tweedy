@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { BaseVocalProvider } from './BaseVocalProvider';
-import { VocalProviderTtsParams, Voice, VocalProviderName } from '../types';
+import { VocalProviderTtsParams, TtsResult, Voice, VocalProviderName } from '../types';
 import { appConfig } from '../utils/config';
 
 export class KokoroProvider extends BaseVocalProvider {
@@ -19,7 +19,7 @@ export class KokoroProvider extends BaseVocalProvider {
     return 'Kokoro';
   }
 
-  async tts(params: VocalProviderTtsParams): Promise<string> {
+  async tts(params: VocalProviderTtsParams): Promise<TtsResult> {
     this.validateParams(params);
     this.logTtsRequest(params);
 
@@ -40,7 +40,7 @@ export class KokoroProvider extends BaseVocalProvider {
       await fs.writeFile(outputPath, buffer);
 
       this.logTtsSuccess(outputPath);
-      return outputPath;
+      return { outputPath };
     } catch (error) {
       this.logTtsError(error);
       throw error;

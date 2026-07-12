@@ -74,7 +74,7 @@ describe('KokoroProvider', () => {
 
     const provider = new KokoroProvider();
     const voice = buildVoice();
-    const outputPath = await provider.tts({
+    const result = await provider.tts({
       speech: buildSpeech(voice),
       voice,
       outputFileName: 'output.mp3',
@@ -88,8 +88,9 @@ describe('KokoroProvider', () => {
         response_format: 'mp3',
       })
     );
-    expect(fs.writeFile).toHaveBeenCalledWith(outputPath, expect.any(Buffer));
-    expect(outputPath.endsWith('output.mp3')).toBe(true);
+    expect(fs.writeFile).toHaveBeenCalledWith(result.outputPath, expect.any(Buffer));
+    expect(result.outputPath.endsWith('output.mp3')).toBe(true);
+    expect(result.wordTimestamps).toBeUndefined();
   });
 
   it('spreads providerOptions into the request body', async () => {
