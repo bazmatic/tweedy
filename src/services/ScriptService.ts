@@ -44,6 +44,7 @@ export class ScriptService implements IScriptService {
         speakers,
         speeches: [],
         materials,
+        discussionPoints: [],
         createdAt: new Date(),
         updatedAt: new Date(),
       };

@@ -38,6 +38,7 @@ function makeScript(
     speakers,
     speeches,
     materials: [],
+    discussionPoints: [],
     createdAt: new Date(),
     updatedAt: new Date(),
   };

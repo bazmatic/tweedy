@@ -101,6 +101,13 @@ export interface PodcastMaterial {
   createdAt: Date;
 }
 
+export interface DiscussionPoint {
+  id: string;
+  text: string;
+  covered: boolean;
+  coveredAtTurn?: number;
+}
+
 export interface PodcastScript {
   id: string;
   title: string;
@@ -108,6 +115,7 @@ export interface PodcastScript {
   speakers: Speaker[];
   speeches: Speech[];
   materials: PodcastMaterial[];
+  discussionPoints: DiscussionPoint[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -165,6 +173,7 @@ export interface ScriptRecord {
   speakerIds: string[];
   speechIds: string[];
   materialIds: string[];
+  discussionPoints: DiscussionPoint[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -324,7 +333,8 @@ export interface ISpeakerAgent {
     script: PodcastScript,
     direction: string,
     timeStatus?: string,
-    forceNearlyOutOfTime?: boolean
+    forceNearlyOutOfTime?: boolean,
+    requestSummary?: boolean
   ): Promise<Speech>;
 }
 
@@ -335,6 +345,7 @@ export interface IDirectorAgent {
     direction: string;
     timeStatus: string;
     forceNearlyOutOfTime: boolean;
+    requestSummary: boolean;
   }>;
 }
 

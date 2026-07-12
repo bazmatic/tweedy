@@ -30,6 +30,7 @@ function makeScript(): PodcastScript {
     speakers: [],
     speeches: [],
     materials: [],
+    discussionPoints: [],
     createdAt: new Date(),
     updatedAt: new Date(),
   };
