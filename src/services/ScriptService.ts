@@ -204,7 +204,7 @@ export class ScriptService implements IScriptService {
     }
 
     for (let turn = 0; turn < params.maxTurns; turn++) {
-      const { speaker, direction, timeStatus, forceNearlyOutOfTime } =
+      const { speaker, direction, timeStatus, forceNearlyOutOfTime, requestSummary } =
         await directorAgent.chooseNextSpeaker(script);
       const speakerAgent = new SpeakerAgent(speaker, this.ragService);
 
@@ -212,7 +212,8 @@ export class ScriptService implements IScriptService {
         script,
         direction,
         timeStatus,
-        forceNearlyOutOfTime
+        forceNearlyOutOfTime,
+        requestSummary
       );
       await this.persistSpeech(script, speech);
 
@@ -241,6 +242,22 @@ export class ScriptService implements IScriptService {
         await this.persistSpeech(script, interjection);
       }
     }
+
+    this.logUncoveredPoints(script);
+  }
+
+  private logUncoveredPoints(script: PodcastScript): void {
+    const uncovered = (script.discussionPoints ?? []).filter(
+      (point) => !point.covered
+    );
+    if (uncovered.length === 0) {
+      return;
+    }
+    logger.warn(
+      `${uncovered.length} discussion point(s) never covered: ${uncovered
+        .map((point) => `${point.id} (${point.text})`)
+        .join(", ")}`
+    );
   }
 
   private async persistSpeech(
@@ -305,6 +322,7 @@ export class ScriptService implements IScriptService {
       speakers,
       speeches,
       materials,
+      discussionPoints: record.discussionPoints ?? [],
       createdAt: new Date(record.createdAt),
       updatedAt: new Date(record.updatedAt),
     };
@@ -317,6 +335,7 @@ export class ScriptService implements IScriptService {
       speakerIds: script.speakers.map((s) => s.id),
       speechIds: script.speeches.map((s) => s.id),
       materialIds: script.materials.map((m) => m.id),
+      discussionPoints: script.discussionPoints ?? [],
     };
 
     const created = await this.scriptRepository.create(record);

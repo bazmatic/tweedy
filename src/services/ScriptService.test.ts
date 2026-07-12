@@ -3,6 +3,7 @@ import { ScriptService } from "./ScriptService";
 import { SpeakerAgentToolName } from "../agents/speaker-tools";
 import { VocalProviderName, PodcastScript, SourceType } from "../types";
 import type { RAGService } from "../rag";
+import { logger } from "../utils/logger";
 
 const chooseNextSpeakerMock = vi.fn();
 const createPodcastPlanMock = vi.fn().mockResolvedValue(undefined);
@@ -37,6 +38,7 @@ function makeScript(): PodcastScript {
 }
 
 function makeService(overrides: {
+  scriptRepository?: any;
   speechRepository?: any;
   speakerRepository?: any;
   materialRepository?: any;
@@ -44,7 +46,7 @@ function makeService(overrides: {
   ragService?: any;
 }) {
   return new ScriptService(
-    {} as any,
+    overrides.scriptRepository ?? ({} as any),
     overrides.speakerRepository ?? ({} as any),
     overrides.materialRepository ?? ({} as any),
     overrides.voiceRepository ?? ({} as any),
@@ -306,5 +308,98 @@ describe("ScriptService RAG wiring", () => {
 
     expect(addMaterials).toHaveBeenCalledWith(script.materials);
     expect(speechRepository.create).toHaveBeenCalled();
+  });
+});
+
+describe("ScriptService.logUncoveredPoints", () => {
+  it("warns listing every point still not covered", () => {
+    const service = makeService({});
+    const script = makeScript();
+    script.discussionPoints = [
+      { id: "p1", text: "Point A", covered: true, coveredAtTurn: 1 },
+      { id: "p2", text: "Point B", covered: false },
+      { id: "p3", text: "Point C", covered: false },
+    ];
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+    (service as any).logUncoveredPoints(script);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      "2 discussion point(s) never covered: p2 (Point B), p3 (Point C)"
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("does not warn when every point is covered", () => {
+    const service = makeService({});
+    const script = makeScript();
+    script.discussionPoints = [
+      { id: "p1", text: "Point A", covered: true, coveredAtTurn: 1 },
+    ];
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+    (service as any).logUncoveredPoints(script);
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
+describe("ScriptService discussionPoints persistence", () => {
+  it("saveScript includes discussionPoints in the created record", async () => {
+    const create = vi.fn().mockResolvedValue({
+      id: "record-1",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const service = makeService({ scriptRepository: { create } });
+    const script = makeScript();
+    script.discussionPoints = [{ id: "p1", text: "Point A", covered: false }];
+
+    await (service as any).saveScript(script);
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        discussionPoints: [{ id: "p1", text: "Point A", covered: false }],
+      })
+    );
+  });
+
+  it("loadScriptFromRecord reads discussionPoints back, defaulting to [] when absent", async () => {
+    const speakerRepository = { getById: vi.fn() };
+    const materialRepository = { getById: vi.fn() };
+    const speechRepository = { getById: vi.fn() };
+    const service = makeService({
+      speakerRepository,
+      materialRepository,
+      speechRepository,
+    });
+
+    const withPoints = await (service as any).loadScriptFromRecord({
+      id: "s1",
+      title: "T",
+      description: "D",
+      speakerIds: [],
+      speechIds: [],
+      materialIds: [],
+      discussionPoints: [{ id: "p1", text: "Point A", covered: true }],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    expect(withPoints.discussionPoints).toEqual([
+      { id: "p1", text: "Point A", covered: true },
+    ]);
+
+    const withoutPoints = await (service as any).loadScriptFromRecord({
+      id: "s2",
+      title: "T",
+      description: "D",
+      speakerIds: [],
+      speechIds: [],
+      materialIds: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    expect(withoutPoints.discussionPoints).toEqual([]);
   });
 });
