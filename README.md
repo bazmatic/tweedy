@@ -180,6 +180,8 @@ file (e.g. `podcast.mp3` → `podcast.timeline.json`), listing each speech's
 speaker, message, and `startSeconds`/`endSeconds` in the final mixed track —
 useful for driving downstream time-synced assets like captions or video.
 
+When a speech is generated with a voice provider that supports word-level timing (currently Grok only), its timeline entry also includes a `wordTimestamps` array — `{ word, startSeconds, endSeconds }` per word, already shifted to the same track-relative seconds as the entry's own `startSeconds`/`endSeconds`. Entries from providers without timing support omit this field entirely.
+
 ## Development
 
 ### Project Structure
