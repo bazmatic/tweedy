@@ -75,7 +75,7 @@ describe("AudioService.generateAudio timeline", () => {
 
     const service = new AudioService();
     vi.spyOn(service as any, "generateSpeechAudio").mockImplementation(
-      async (speech: any) => `/audio/speeches/${speech.id}.mp3`
+      async (speech: any) => ({ outputPath: `/audio/speeches/${speech.id}.mp3` })
     );
 
     const speeches = [
@@ -129,13 +129,57 @@ describe("AudioService.generateAudio timeline", () => {
     });
 
     const service = new AudioService();
-    vi.spyOn(service as any, "generateSpeechAudio").mockResolvedValue(
-      "/audio/speeches/s1.mp3"
-    );
+    vi.spyOn(service as any, "generateSpeechAudio").mockResolvedValue({
+      outputPath: "/audio/speeches/s1.mp3",
+    });
 
     await service.generateAudio([makeSpeech({ id: "s1" })], "/audio/podcast.mp3");
 
     const [, payload] = mockWriteJson.mock.calls[0];
     expect(payload.scriptId).toBeUndefined();
+  });
+
+  it("shifts word timestamps by the clip's offset and includes them per entry", async () => {
+    mockConcatenateAudio.mockResolvedValue({
+      offsetsSeconds: [0, 2.3],
+      speechEndSeconds: [2, 1.5],
+    });
+
+    const service = new AudioService();
+    vi.spyOn(service as any, "generateSpeechAudio").mockImplementation(
+      async (speech: any) => {
+        if (speech.id === "s2") {
+          return {
+            outputPath: "/audio/speeches/s2.mp3",
+            wordTimestamps: [
+              { word: "Hello", startSeconds: 0, endSeconds: 0.3 },
+              { word: "there", startSeconds: 0.3, endSeconds: 0.6 },
+            ],
+          };
+        }
+        return { outputPath: "/audio/speeches/s1.mp3" };
+      }
+    );
+
+    const speeches = [
+      makeSpeech({ id: "s1" }),
+      makeSpeech({
+        id: "s2",
+        tool: SpeakerAgentToolName.INTERJECT,
+        speaker: makeSpeaker("sp2", "Bo"),
+        message: "Wait, really?",
+      }),
+    ];
+
+    await service.generateAudio(speeches, "/audio/podcast-abc123.mp3", "abc123");
+
+    const [, payload] = mockWriteJson.mock.calls[0];
+    // s2's clip offset (offsetsSeconds[1]) is 2.3, so its word timestamps
+    // must be shifted from clip-relative to track-relative seconds.
+    expect(payload.entries[1].wordTimestamps).toEqual([
+      { word: "Hello", startSeconds: 2.3, endSeconds: 2.6 },
+      { word: "there", startSeconds: 2.6, endSeconds: 2.9 },
+    ]);
+    expect(payload.entries[0].wordTimestamps).toBeUndefined();
   });
 });

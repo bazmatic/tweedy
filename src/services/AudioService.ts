@@ -1,6 +1,5 @@
 import { VocalProviderFactory, AudioProcessor } from "../providers";
-import { VocalProviderName, Speech, Voice } from "../types";
-import { appConfig } from "../utils/config";
+import { VocalProviderName, Speech, Voice, TtsResult } from "../types";
 import { logger } from "../utils/logger";
 import { SpeakerAgentToolName } from "../agents/speaker-tools";
 import * as path from "path";
@@ -24,6 +23,7 @@ interface TimelineEntry {
   isInterjection: boolean;
   startSeconds: number;
   endSeconds: number;
+  wordTimestamps?: { word: string; startSeconds: number; endSeconds: number }[];
 }
 
 function round3(value: number): number {
@@ -45,7 +45,7 @@ export class AudioService implements IAudioService {
     try {
       logger.info(`Generating audio for ${speeches.length} speeches`);
 
-      const audioFiles: string[] = [];
+      const ttsResults: TtsResult[] = [];
       const batchSize = 1;
 
       // Process speeches in batches
@@ -55,8 +55,10 @@ export class AudioService implements IAudioService {
           this.generateSpeechAudio(speech)
         );
         const batchResults = await Promise.all(batchPromises);
-        audioFiles.push(...batchResults);
+        ttsResults.push(...batchResults);
       }
+
+      const audioFiles = ttsResults.map((result) => result.outputPath);
 
       const isInterjection = speeches.map(
         (speech) => speech.tool === SpeakerAgentToolName.INTERJECT
@@ -70,7 +72,7 @@ export class AudioService implements IAudioService {
         isInterjection
       );
 
-      await this.writeTimeline(speeches, timing, outputPath, scriptId);
+      await this.writeTimeline(speeches, ttsResults, timing, outputPath, scriptId);
 
       logger.success(`Audio generated: ${outputPath}`);
       return outputPath;
@@ -92,20 +94,31 @@ export class AudioService implements IAudioService {
 
   private async writeTimeline(
     speeches: Speech[],
+    ttsResults: TtsResult[],
     timing: { offsetsSeconds: number[]; speechEndSeconds: number[] },
     outputPath: string,
     scriptId?: string
   ): Promise<void> {
-    const entries: TimelineEntry[] = speeches.map((speech, i) => ({
-      speechId: speech.id,
-      speakerId: speech.speaker.id,
-      speakerName: speech.speaker.name,
-      message: speech.message,
-      tool: speech.tool,
-      isInterjection: speech.tool === SpeakerAgentToolName.INTERJECT,
-      startSeconds: round3(timing.offsetsSeconds[i]),
-      endSeconds: round3(timing.offsetsSeconds[i] + timing.speechEndSeconds[i]),
-    }));
+    const entries: TimelineEntry[] = speeches.map((speech, i) => {
+      const startSeconds = round3(timing.offsetsSeconds[i]);
+      const wordTimestamps = ttsResults[i].wordTimestamps?.map((w) => ({
+        word: w.word,
+        startSeconds: round3(startSeconds + w.startSeconds),
+        endSeconds: round3(startSeconds + w.endSeconds),
+      }));
+
+      return {
+        speechId: speech.id,
+        speakerId: speech.speaker.id,
+        speakerName: speech.speaker.name,
+        message: speech.message,
+        tool: speech.tool,
+        isInterjection: speech.tool === SpeakerAgentToolName.INTERJECT,
+        startSeconds,
+        endSeconds: round3(timing.offsetsSeconds[i] + timing.speechEndSeconds[i]),
+        ...(wordTimestamps ? { wordTimestamps } : {}),
+      };
+    });
 
     const timelinePath = timelinePathFor(outputPath);
     await fs.writeJson(
@@ -120,17 +133,14 @@ export class AudioService implements IAudioService {
     logger.info(`Audio timeline written: ${timelinePath}`);
   }
 
-  private async generateSpeechAudio(speech: Speech): Promise<string> {
+  private async generateSpeechAudio(speech: Speech): Promise<TtsResult> {
     const provider = VocalProviderFactory.getProvider(speech.voice.provider);
     const outputFileName = path.join("speeches", `${speech.id}.mp3`);
 
-    await provider.tts({
+    return provider.tts({
       speech,
       voice: speech.voice,
       outputFileName,
     });
-
-    const outputPath = path.join(appConfig.audioDir, outputFileName);
-    return outputPath;
   }
 }
