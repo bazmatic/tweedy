@@ -17,7 +17,7 @@ This stays a prompt-injection mechanism — no new agent tool. Experts still don
 ### `src/services/ScriptService.ts`
 
 - Add `ragService: RAGService` as a new constructor parameter, stored as `this.ragService` alongside the existing repositories.
-- At the top of `generateScriptContent` (before the turn loop starts), call `await this.ragService.addMaterials(script.materials)` once, so the vector store has this script's materials available for search. `RAGService.addMaterials` is additive/idempotent-by-id already (it just calls `vectorStore.addDocuments`), so this is safe to call once per generation run.
+- At the top of `generateScriptContent` (before the turn loop starts), call `await this.ragService.addMaterials(script.materials)` once, so the vector store has this script's materials available for search. `RAGService.addMaterials` is not deduplicated by id — it just calls `vectorStore.addDocuments`, which appends to the in-memory `MemoryVectorStore` with no dedup. This is safe here only because each CLI invocation constructs a fresh `RAGService` (and its vector store) once, so the store never survives to see a second `generateScriptContent` call in practice. Reusing one `RAGService` instance across multiple `generateScriptContent` calls would insert duplicate documents.
 - Pass `this.ragService` into both `SpeakerAgent` instantiations in the turn loop: the main per-turn speaker (`new SpeakerAgent(speaker, this.ragService)`) and the interjection speaker (`new SpeakerAgent(interjector, this.ragService)`).
 
 ### Callers of `new ScriptService(...)`

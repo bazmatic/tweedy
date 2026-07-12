@@ -193,7 +193,14 @@ export class ScriptService implements IScriptService {
       maxDuration: params.maxDuration,
     });
     await directorAgent.createPodcastPlan();
-    await this.ragService.addMaterials(script.materials);
+    try {
+      await this.ragService.addMaterials(script.materials);
+    } catch (error) {
+      logger.warn(
+        "Failed to add script materials to RAG store; continuing without semantic material search:",
+        error
+      );
+    }
 
     for (let turn = 0; turn < params.maxTurns; turn++) {
       const { speaker, direction, timeStatus, forceNearlyOutOfTime } =

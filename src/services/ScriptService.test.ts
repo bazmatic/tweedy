@@ -239,4 +239,71 @@ describe("ScriptService RAG wiring", () => {
       ragService
     );
   });
+
+  it("continues script generation when ragService.addMaterials rejects", async () => {
+    const addMaterials = vi.fn().mockRejectedValue(new Error("embedding model load failed"));
+    const ragService = { addMaterials } as unknown as RAGService;
+
+    const speaker = {
+      id: "s1",
+      slug: "s1",
+      name: "S1",
+      personality: "",
+      voice: {
+        id: "voice-1",
+        name: "Voice",
+        description: "",
+        provider: VocalProviderName.ElevenLabs,
+        providerId: "p",
+        settings: {},
+      },
+      voiceStyle: "neutral",
+      isExpert: true,
+    };
+    chooseNextSpeakerMock.mockResolvedValue({
+      speaker,
+      direction: "talk about x",
+      timeStatus: "",
+      forceNearlyOutOfTime: false,
+    });
+    speakMock.mockResolvedValue({
+      id: "",
+      speaker,
+      message: "hi",
+      instructions: "calm",
+      voice: speaker.voice,
+      voiceStyle: "neutral",
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.SPEAK,
+      stopReason: "stop",
+    });
+
+    const speechRepository = {
+      create: vi.fn().mockResolvedValue({ id: "record-1" }),
+    };
+    const service = makeService({ speechRepository, ragService });
+
+    const script = makeScript();
+    script.materials = [
+      {
+        id: "m1",
+        title: "T",
+        content: "C",
+        source: "s",
+        sourceType: SourceType.Manual,
+        metadata: {},
+        createdAt: new Date(),
+      },
+    ];
+
+    await expect(
+      (service as any).generateScriptContent(script, {
+        maxTurns: 1,
+        maxDuration: 60,
+      })
+    ).resolves.toBeUndefined();
+
+    expect(addMaterials).toHaveBeenCalledWith(script.materials);
+    expect(speechRepository.create).toHaveBeenCalled();
+  });
 });
