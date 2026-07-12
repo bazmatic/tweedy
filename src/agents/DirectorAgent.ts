@@ -80,14 +80,10 @@ Keep it engaging and natural, with clear direction for each speaker.`
       const progress = this.calculateProgress(script);
       const wrapUpNote = this.getWrapUpNote(progress);
 
-      // Force exactly one explicit "we're almost out of time" tool call the
-      // first time the episode crosses into the almost-out-of-time band,
-      // rather than just hoping the speaker picks it up from prose — a soft
-      // suggestion was easy for the model to skip and then never revisit.
+      // Force explicit "we're almost out of time" tool call.
       const forceNearlyOutOfTime =
         progress >= 85 &&
-        this.turnsUsed < this.maxTurns &&
-        !this.hasForcedTimeWarning;
+        this.turnsUsed < this.maxTurns;
       if (forceNearlyOutOfTime) {
         this.hasForcedTimeWarning = true;
       }
@@ -117,7 +113,7 @@ ${speakerDescriptions}
 Conversation so far (each line tagged with the tool used to deliver it — "speak" is substantive content; "interject", "filler_comment", "one_liner", and "short_question" are brief reactions, not real answers or new points):
 ${history || '(nothing said yet — this is the opening of the episode)'}
 
-Decide which speaker should talk next and give them clear, specific, conversational direction about what they should say. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. On the opening of the episode, this should usually be the interviewer.${this.getPacingNote(
+Decide which speaker should talk next and give them clear direction on what they should talk about and how to make sure that the talking points all get covered in time and that the conversation flows smoothly. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. On the opening of the episode, this should usually be the interviewer.${this.getPacingNote(
             script
           )}${wrapUpNote}`
         }
