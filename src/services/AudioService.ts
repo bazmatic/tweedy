@@ -116,7 +116,7 @@ export class AudioService implements IAudioService {
         isInterjection: speech.tool === SpeakerAgentToolName.INTERJECT,
         startSeconds,
         endSeconds: round3(timing.offsetsSeconds[i] + timing.speechEndSeconds[i]),
-        ...(wordTimestamps ? { wordTimestamps } : {}),
+        ...(wordTimestamps?.length ? { wordTimestamps } : {}),
       };
     });
 

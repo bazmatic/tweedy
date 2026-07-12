@@ -182,4 +182,27 @@ describe("AudioService.generateAudio timeline", () => {
     ]);
     expect(payload.entries[0].wordTimestamps).toBeUndefined();
   });
+
+  it("omits wordTimestamps from the timeline entry when the provider returns an empty array", async () => {
+    mockConcatenateAudio.mockResolvedValue({
+      offsetsSeconds: [0],
+      speechEndSeconds: [2],
+    });
+
+    const service = new AudioService();
+    vi.spyOn(service as any, "generateSpeechAudio").mockResolvedValue({
+      outputPath: "/audio/speeches/s1.mp3",
+      wordTimestamps: [],
+    });
+
+    const speeches = [makeSpeech({ id: "s1" })];
+
+    await service.generateAudio(speeches, "/audio/podcast-abc123.mp3", "abc123");
+
+    const [, payload] = mockWriteJson.mock.calls[0];
+    expect(payload.entries[0].wordTimestamps).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(payload.entries[0], "wordTimestamps")).toBe(
+      false
+    );
+  });
 });
