@@ -33,9 +33,19 @@ describe("GrokProvider", () => {
     );
   });
 
-  it("posts the expected body and writes the returned audio to disk", async () => {
-    const arrayBuffer = new TextEncoder().encode("audio-bytes").buffer;
-    (axios.post as any).mockResolvedValue({ data: arrayBuffer });
+  it("posts the expected body (with_timestamps) and writes the decoded audio to disk", async () => {
+    const audioB64 = Buffer.from("audio-bytes").toString("base64");
+    (axios.post as any).mockResolvedValue({
+      data: {
+        audio: audioB64,
+        content_type: "audio/mpeg",
+        duration: 0.12,
+        audio_timestamps: {
+          graph_chars: "Hello there.".split(""),
+          graph_times: "Hello there.".split("").map((_, i) => [i * 0.06, (i + 1) * 0.06]),
+        },
+      },
+    });
 
     const provider = new GrokProvider();
     const voice = {
@@ -56,7 +66,7 @@ describe("GrokProvider", () => {
       timestamp: new Date(),
     };
 
-    const outputPath = await provider.tts({
+    const result = await provider.tts({
       speech: speech as any,
       voice: voice as any,
       outputFileName: "out.mp3",
@@ -70,22 +80,33 @@ describe("GrokProvider", () => {
         language: "en",
         output_format: { container: "mp3", sample_rate: 24000 },
         speed: 1.2,
+        with_timestamps: true,
       },
       {
         headers: {
           Authorization: "Bearer test-key",
           "Content-Type": "application/json",
         },
-        responseType: "arraybuffer",
       }
     );
-    expect(fs.writeFile).toHaveBeenCalled();
-    expect(outputPath).toContain("out.mp3");
+    expect(fs.writeFile).toHaveBeenCalledWith(
+      expect.stringContaining("out.mp3"),
+      Buffer.from(audioB64, "base64")
+    );
+    expect(result.outputPath).toContain("out.mp3");
+    expect(result.wordTimestamps).toEqual([
+      { word: "Hello", startSeconds: 0, endSeconds: 5 * 0.06 },
+      { word: "there.", startSeconds: 6 * 0.06, endSeconds: 11 * 0.06 + 0.06 },
+    ]);
   });
 
   it("defaults language to 'auto' and omits speed when providerOptions has neither", async () => {
-    const arrayBuffer = new TextEncoder().encode("audio-bytes").buffer;
-    (axios.post as any).mockResolvedValue({ data: arrayBuffer });
+    (axios.post as any).mockResolvedValue({
+      data: {
+        audio: Buffer.from("audio-bytes").toString("base64"),
+        audio_timestamps: { graph_chars: [], graph_times: [] },
+      },
+    });
 
     const provider = new GrokProvider();
     const voice = {
@@ -119,6 +140,7 @@ describe("GrokProvider", () => {
         voice_id: "eve",
         language: "auto",
         output_format: { container: "mp3", sample_rate: 24000 },
+        with_timestamps: true,
       },
       expect.any(Object)
     );
@@ -174,8 +196,12 @@ describe("GrokProvider", () => {
   });
 
   it("sends LLM-tagged text to the TTS endpoint instead of the raw message", async () => {
-    const arrayBuffer = new TextEncoder().encode("audio-bytes").buffer;
-    (axios.post as any).mockResolvedValue({ data: arrayBuffer });
+    (axios.post as any).mockResolvedValue({
+      data: {
+        audio: Buffer.from("audio-bytes").toString("base64"),
+        audio_timestamps: { graph_chars: [], graph_times: [] },
+      },
+    });
     (AiModelFactory.getModel as any).mockReturnValue({
       invoke: vi.fn().mockResolvedValue({ content: "Hello [pause] there." }),
     });
@@ -213,8 +239,12 @@ describe("GrokProvider", () => {
   });
 
   it("falls back to the original message when tag injection fails", async () => {
-    const arrayBuffer = new TextEncoder().encode("audio-bytes").buffer;
-    (axios.post as any).mockResolvedValue({ data: arrayBuffer });
+    (axios.post as any).mockResolvedValue({
+      data: {
+        audio: Buffer.from("audio-bytes").toString("base64"),
+        audio_timestamps: { graph_chars: [], graph_times: [] },
+      },
+    });
     (AiModelFactory.getModel as any).mockReturnValue({
       invoke: vi.fn().mockRejectedValue(new Error("model unavailable")),
     });
@@ -252,8 +282,12 @@ describe("GrokProvider", () => {
   });
 
   it("falls back to the original message when the LLM emits a malformed or invented tag", async () => {
-    const arrayBuffer = new TextEncoder().encode("audio-bytes").buffer;
-    (axios.post as any).mockResolvedValue({ data: arrayBuffer });
+    (axios.post as any).mockResolvedValue({
+      data: {
+        audio: Buffer.from("audio-bytes").toString("base64"),
+        audio_timestamps: { graph_chars: [], graph_times: [] },
+      },
+    });
     (AiModelFactory.getModel as any).mockReturnValue({
       invoke: vi
         .fn()
@@ -293,8 +327,12 @@ describe("GrokProvider", () => {
   });
 
   it("falls back to the original message when the LLM changes the wording", async () => {
-    const arrayBuffer = new TextEncoder().encode("audio-bytes").buffer;
-    (axios.post as any).mockResolvedValue({ data: arrayBuffer });
+    (axios.post as any).mockResolvedValue({
+      data: {
+        audio: Buffer.from("audio-bytes").toString("base64"),
+        audio_timestamps: { graph_chars: [], graph_times: [] },
+      },
+    });
     (AiModelFactory.getModel as any).mockReturnValue({
       invoke: vi.fn().mockResolvedValue({ content: "Hi [pause] there." }),
     });
@@ -332,8 +370,12 @@ describe("GrokProvider", () => {
   });
 
   it("falls back to the original message when a tag is inserted mid-word", async () => {
-    const arrayBuffer = new TextEncoder().encode("audio-bytes").buffer;
-    (axios.post as any).mockResolvedValue({ data: arrayBuffer });
+    (axios.post as any).mockResolvedValue({
+      data: {
+        audio: Buffer.from("audio-bytes").toString("base64"),
+        audio_timestamps: { graph_chars: [], graph_times: [] },
+      },
+    });
     (AiModelFactory.getModel as any).mockReturnValue({
       invoke: vi
         .fn()

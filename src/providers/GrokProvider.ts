@@ -4,7 +4,8 @@ import * as path from 'path';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { BaseVocalProvider } from './BaseVocalProvider';
 import { AiModelFactory } from './AiModelFactory';
-import { VocalProviderTtsParams, Voice, VocalProviderName } from '../types';
+import { VocalProviderTtsParams, Voice, VocalProviderName, TtsResult } from '../types';
+import { aggregateWordTimestamps } from './grok-word-timestamps';
 import { appConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 
@@ -138,7 +139,7 @@ export class GrokProvider extends BaseVocalProvider {
     }
   }
 
-  async tts(params: VocalProviderTtsParams): Promise<string> {
+  async tts(params: VocalProviderTtsParams): Promise<TtsResult> {
     this.validateParams(params);
     this.logTtsRequest(params);
 
@@ -157,20 +158,44 @@ export class GrokProvider extends BaseVocalProvider {
           language: options.language ?? 'auto',
           output_format: { container: 'mp3', sample_rate: 24000 },
           ...(options.speed !== undefined ? { speed: options.speed } : {}),
+          with_timestamps: true,
         },
         {
           headers: this.headers,
-          responseType: 'arraybuffer',
         }
       );
 
-      await fs.writeFile(outputPath, Buffer.from(response.data));
+      const audioBuffer = Buffer.from(response.data.audio, 'base64');
+      await fs.writeFile(outputPath, audioBuffer);
       this.logTtsSuccess(outputPath);
 
-      return outputPath;
+      const wordTimestamps = this.extractWordTimestamps(text, response.data);
+
+      return wordTimestamps ? { outputPath, wordTimestamps } : { outputPath };
     } catch (error) {
       this.logTtsError(error);
       throw error;
+    }
+  }
+
+  private extractWordTimestamps(
+    text: string,
+    responseData: any
+  ): ReturnType<typeof aggregateWordTimestamps> | undefined {
+    const timestamps = responseData?.audio_timestamps;
+    if (
+      !timestamps ||
+      !Array.isArray(timestamps.graph_chars) ||
+      !Array.isArray(timestamps.graph_times)
+    ) {
+      logger.warn('Grok TTS response missing audio_timestamps, skipping word timestamps');
+      return undefined;
+    }
+    try {
+      return aggregateWordTimestamps(text, timestamps.graph_chars, timestamps.graph_times);
+    } catch (error) {
+      logger.warn('Failed to aggregate Grok word timestamps, skipping:', error);
+      return undefined;
     }
   }
 
