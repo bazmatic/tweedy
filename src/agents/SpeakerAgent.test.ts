@@ -4,6 +4,7 @@ import { SpeakerAgentToolName } from "./speaker-tools";
 import {
   PodcastScript,
   Speaker,
+  SourceType,
   VocalProviderName,
 } from "../types";
 
@@ -197,5 +198,100 @@ describe("SpeakerAgent expertise nudge", () => {
     const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
     expect(prompt).toContain("favor short tools");
     expect(prompt).toContain("reserve speak for the occasional genuine point");
+  });
+});
+
+describe("SpeakerAgent expert material lookup via RAGService", () => {
+  it("uses RAGService.searchRelevantContent keyed on direction when ragService is provided", async () => {
+    const searchRelevantContent = vi.fn().mockResolvedValue([
+      {
+        id: "d1",
+        content: "Deep sea creatures glow.",
+        metadata: { title: "Bioluminescence" },
+      },
+    ]);
+    const ragService = { searchRelevantContent } as unknown as import("../rag").RAGService;
+    const agent = new SpeakerAgent(makeSpeaker("s1", true), ragService);
+    const spy = vi
+      .spyOn(agent as any, "callModelWithTools")
+      .mockResolvedValue({
+        toolName: SpeakerAgentToolName.SPEAK,
+        message: "hello there",
+        style: "calm",
+        stopReason: "stop",
+      });
+
+    await agent.speak(makeScript(), "talk about bioluminescence");
+
+    expect(searchRelevantContent).toHaveBeenCalledWith(
+      "talk about bioluminescence",
+      3
+    );
+    const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
+    expect(prompt).toContain("Bioluminescence: Deep sea creatures glow.");
+  });
+
+  it("falls back to script.materials when ragService is not provided", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1", true));
+    const spy = vi
+      .spyOn(agent as any, "callModelWithTools")
+      .mockResolvedValue({
+        toolName: SpeakerAgentToolName.SPEAK,
+        message: "hello there",
+        style: "calm",
+        stopReason: "stop",
+      });
+
+    const script = makeScript();
+    script.materials = [
+      {
+        id: "m1",
+        title: "Fallback Material",
+        content: "Naive content.",
+        source: "test",
+        sourceType: SourceType.Manual,
+        metadata: {},
+        createdAt: new Date(),
+      },
+    ];
+
+    await agent.speak(script, "talk about x");
+
+    const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
+    expect(prompt).toContain("Fallback Material: Naive content.");
+  });
+
+  it("falls back to script.materials when RAGService search throws", async () => {
+    const searchRelevantContent = vi
+      .fn()
+      .mockRejectedValue(new Error("vector store unavailable"));
+    const ragService = { searchRelevantContent } as unknown as import("../rag").RAGService;
+    const agent = new SpeakerAgent(makeSpeaker("s1", true), ragService);
+    const spy = vi
+      .spyOn(agent as any, "callModelWithTools")
+      .mockResolvedValue({
+        toolName: SpeakerAgentToolName.SPEAK,
+        message: "hello there",
+        style: "calm",
+        stopReason: "stop",
+      });
+
+    const script = makeScript();
+    script.materials = [
+      {
+        id: "m1",
+        title: "Fallback Material",
+        content: "Naive content.",
+        source: "test",
+        sourceType: SourceType.Manual,
+        metadata: {},
+        createdAt: new Date(),
+      },
+    ];
+
+    await agent.speak(script, "talk about x");
+
+    const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
+    expect(prompt).toContain("Fallback Material: Naive content.");
   });
 });

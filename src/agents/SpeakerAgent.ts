@@ -8,6 +8,7 @@ import {
 } from "../types";
 import { BaseAgent } from "./BaseAgent";
 import { logger } from "../utils/logger";
+import { RAGService } from "../rag";
 import {
   INTERJECTION_TOOLS,
   SHORT_REACTION_TOOLS,
@@ -23,11 +24,13 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
   private static readonly INTERJECTION_MAX_TOKENS = 40;
 
   private speaker: Speaker;
+  private ragService?: RAGService;
   private maxAttempts = 3;
 
-  constructor(speaker: Speaker) {
+  constructor(speaker: Speaker, ragService?: RAGService) {
     super();
     this.speaker = speaker;
+    this.ragService = ragService;
   }
 
   async speak(
@@ -146,7 +149,10 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
       ? "Expert"
       : "General audience (no access to source material — you only know what's been discussed aloud or is common knowledge)";
     const materialsSection = this.speaker.isExpert
-      ? `\n\nRelevant Materials:\n${this.getRelevantMaterials(script)}`
+      ? `\n\nRelevant Materials:\n${await this.getRelevantMaterials(
+          script,
+          direction
+        )}`
       : "";
 
     const messages: LlmMessage[] = [
@@ -255,7 +261,32 @@ Respond naturally as ${
     )}) most turns, and reserve speak for the occasional genuine point.`;
   }
 
-  private getRelevantMaterials(script: PodcastScript): string {
+  private async getRelevantMaterials(
+    script: PodcastScript,
+    direction: string
+  ): Promise<string> {
+    if (this.ragService) {
+      try {
+        const docs = await this.ragService.searchRelevantContent(
+          direction,
+          3
+        );
+        if (docs.length > 0) {
+          return docs
+            .map(
+              (doc) =>
+                `${doc.metadata.title}: ${doc.content.substring(0, 200)}...`
+            )
+            .join("\n\n");
+        }
+      } catch (error) {
+        logger.warn(
+          "RAG material search failed, falling back to naive material selection:",
+          error
+        );
+      }
+    }
+
     return script.materials
       .slice(0, 3) // First 3 materials
       .map(

@@ -16,6 +16,7 @@ import {
 import { DirectorAgent, SpeakerAgent } from "../agents";
 import { logger } from "../utils/logger";
 import { shouldInterject } from "./interjection-policy";
+import { RAGService } from "../rag";
 
 export class ScriptService implements IScriptService {
   constructor(
@@ -23,7 +24,8 @@ export class ScriptService implements IScriptService {
     private readonly speakerRepository: SpeakerRepository,
     private readonly materialRepository: MaterialRepository,
     private readonly voiceRepository: VoiceRepository,
-    private readonly speechRepository: SpeechRepository
+    private readonly speechRepository: SpeechRepository,
+    private readonly ragService: RAGService
   ) {}
 
   async generateScript(params: GenerateScriptParams): Promise<PodcastScript> {
@@ -191,11 +193,19 @@ export class ScriptService implements IScriptService {
       maxDuration: params.maxDuration,
     });
     await directorAgent.createPodcastPlan();
+    try {
+      await this.ragService.addMaterials(script.materials);
+    } catch (error) {
+      logger.warn(
+        "Failed to add script materials to RAG store; continuing without semantic material search:",
+        error
+      );
+    }
 
     for (let turn = 0; turn < params.maxTurns; turn++) {
       const { speaker, direction, timeStatus, forceNearlyOutOfTime } =
         await directorAgent.chooseNextSpeaker(script);
-      const speakerAgent = new SpeakerAgent(speaker);
+      const speakerAgent = new SpeakerAgent(speaker, this.ragService);
 
       const speech = await speakerAgent.speak(
         script,
@@ -222,7 +232,10 @@ export class ScriptService implements IScriptService {
           eligibleInterjectors[
             Math.floor(Math.random() * eligibleInterjectors.length)
           ];
-        const interjectionAgent = new SpeakerAgent(interjector);
+        const interjectionAgent = new SpeakerAgent(
+          interjector,
+          this.ragService
+        );
         const interjection = await interjectionAgent.interject(script);
         await this.persistSpeech(script, interjection);
       }
