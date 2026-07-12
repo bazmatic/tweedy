@@ -1,7 +1,26 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ScriptService } from "./ScriptService";
 import { SpeakerAgentToolName } from "../agents/speaker-tools";
-import { VocalProviderName, PodcastScript } from "../types";
+import { VocalProviderName, PodcastScript, SourceType } from "../types";
+import type { RAGService } from "../rag";
+
+const chooseNextSpeakerMock = vi.fn();
+const createPodcastPlanMock = vi.fn().mockResolvedValue(undefined);
+const speakMock = vi.fn();
+const speakerAgentConstructorMock = vi.fn();
+
+vi.mock("../agents", () => ({
+  DirectorAgent: vi.fn().mockImplementation(function () {
+    return {
+      createPodcastPlan: createPodcastPlanMock,
+      chooseNextSpeaker: chooseNextSpeakerMock,
+    };
+  }),
+  SpeakerAgent: vi.fn().mockImplementation(function (speaker, ragService) {
+    speakerAgentConstructorMock(speaker, ragService);
+    return { speak: speakMock, interject: vi.fn() };
+  }),
+}));
 
 function makeScript(): PodcastScript {
   return {
@@ -21,13 +40,15 @@ function makeService(overrides: {
   speakerRepository?: any;
   materialRepository?: any;
   voiceRepository?: any;
+  ragService?: any;
 }) {
   return new ScriptService(
     {} as any,
     overrides.speakerRepository ?? ({} as any),
     overrides.materialRepository ?? ({} as any),
     overrides.voiceRepository ?? ({} as any),
-    overrides.speechRepository ?? ({} as any)
+    overrides.speechRepository ?? ({} as any),
+    overrides.ragService ?? ({ addMaterials: vi.fn() } as any)
   );
 }
 
@@ -143,5 +164,79 @@ describe("ScriptService stopReason persistence", () => {
     });
 
     expect(script.speeches[0].stopReason).toBe("max_tokens");
+  });
+});
+
+describe("ScriptService RAG wiring", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("adds script materials to RAG once and injects ragService into each SpeakerAgent", async () => {
+    const addMaterials = vi.fn().mockResolvedValue(undefined);
+    const ragService = { addMaterials } as unknown as RAGService;
+
+    const speaker = {
+      id: "s1",
+      slug: "s1",
+      name: "S1",
+      personality: "",
+      voice: {
+        id: "voice-1",
+        name: "Voice",
+        description: "",
+        provider: VocalProviderName.ElevenLabs,
+        providerId: "p",
+        settings: {},
+      },
+      voiceStyle: "neutral",
+      isExpert: true,
+    };
+    chooseNextSpeakerMock.mockResolvedValue({
+      speaker,
+      direction: "talk about x",
+      timeStatus: "",
+      forceNearlyOutOfTime: false,
+    });
+    speakMock.mockResolvedValue({
+      id: "",
+      speaker,
+      message: "hi",
+      instructions: "calm",
+      voice: speaker.voice,
+      voiceStyle: "neutral",
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.SPEAK,
+      stopReason: "stop",
+    });
+
+    const speechRepository = {
+      create: vi.fn().mockResolvedValue({ id: "record-1" }),
+    };
+    const service = makeService({ speechRepository, ragService });
+
+    const script = makeScript();
+    script.materials = [
+      {
+        id: "m1",
+        title: "T",
+        content: "C",
+        source: "s",
+        sourceType: SourceType.Manual,
+        metadata: {},
+        createdAt: new Date(),
+      },
+    ];
+
+    await (service as any).generateScriptContent(script, {
+      maxTurns: 1,
+      maxDuration: 60,
+    });
+
+    expect(addMaterials).toHaveBeenCalledWith(script.materials);
+    expect(speakerAgentConstructorMock).toHaveBeenCalledWith(
+      speaker,
+      ragService
+    );
   });
 });
