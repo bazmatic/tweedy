@@ -6,47 +6,20 @@ import { BaseVocalProvider } from './BaseVocalProvider';
 import { AiModelFactory } from './AiModelFactory';
 import { VocalProviderTtsParams, Voice, VocalProviderName, TtsResult } from '../types';
 import { aggregateWordTimestamps } from './grok-word-timestamps';
+import { VALID_TAG_PATTERN } from './grok-effect-tags';
 import { appConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 
-const VALID_INLINE_TAGS = [
-  'pause',
-  'long-pause',
-  'hum-tune',
-  'laugh',
-  'chuckle',
-  'giggle',
-  'cry',
-  'tsk',
-  'tongue-click',
-  'lip-smack',
-  'breath',
-  'inhale',
-  'exhale',
-  'sigh',
-];
-const VALID_WRAPPING_TAGS = [
-  'soft',
-  'whisper',
-  'loud',
-  'build-intensity',
-  'decrease-intensity',
-  'higher-pitch',
-  'lower-pitch',
-  'slow',
-  'fast',
-  'sing-song',
-  'singing',
-  'laugh-speak',
-  'emphasis',
-];
-const VALID_TAG_PATTERN = new RegExp(
-  `\\[(?:${VALID_INLINE_TAGS.join('|')})\\]|</?(?:${VALID_WRAPPING_TAGS.join('|')})>`,
-  'g'
-);
-
 function normalizeWhitespace(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+interface GrokTtsResponseData {
+  audio: string;
+  audio_timestamps?: {
+    graph_chars: string[];
+    graph_times: [number, number][];
+  };
 }
 
 function hasMidWordTag(tagged: string): boolean {
@@ -169,7 +142,7 @@ export class GrokProvider extends BaseVocalProvider {
       await fs.writeFile(outputPath, audioBuffer);
       this.logTtsSuccess(outputPath);
 
-      const wordTimestamps = this.extractWordTimestamps(text, response.data);
+      const wordTimestamps = this.extractWordTimestamps(text, response.data as GrokTtsResponseData);
 
       return wordTimestamps ? { outputPath, wordTimestamps } : { outputPath };
     } catch (error) {
@@ -180,7 +153,7 @@ export class GrokProvider extends BaseVocalProvider {
 
   private extractWordTimestamps(
     text: string,
-    responseData: any
+    responseData: GrokTtsResponseData
   ): ReturnType<typeof aggregateWordTimestamps> | undefined {
     const timestamps = responseData?.audio_timestamps;
     if (

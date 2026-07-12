@@ -82,4 +82,16 @@ describe("aggregateWordTimestamps", () => {
     // this test pins the function's actual behavior for this input shape.
     expect(words.map((w) => w.word)).toEqual(["word1word2"]);
   });
+
+  it("throws when graphChars/graphTimes length does not match text (unsafe alignment)", () => {
+    const text = "Hello world.";
+    const { chars, times } = charTimes(text);
+
+    expect(() => aggregateWordTimestamps(text, chars.slice(0, -1), times)).toThrow(
+      /alignment mismatch/i
+    );
+    expect(() => aggregateWordTimestamps(text, chars, times.slice(0, -1))).toThrow(
+      /alignment mismatch/i
+    );
+  });
 });

@@ -1,40 +1,5 @@
 import { WordTimestamp } from '../types';
-
-const VALID_INLINE_TAGS = [
-  'pause',
-  'long-pause',
-  'hum-tune',
-  'laugh',
-  'chuckle',
-  'giggle',
-  'cry',
-  'tsk',
-  'tongue-click',
-  'lip-smack',
-  'breath',
-  'inhale',
-  'exhale',
-  'sigh',
-];
-const VALID_WRAPPING_TAGS = [
-  'soft',
-  'whisper',
-  'loud',
-  'build-intensity',
-  'decrease-intensity',
-  'higher-pitch',
-  'lower-pitch',
-  'slow',
-  'fast',
-  'sing-song',
-  'singing',
-  'laugh-speak',
-  'emphasis',
-];
-const TAG_PATTERN = new RegExp(
-  `\\[(?:${VALID_INLINE_TAGS.join('|')})\\]|</?(?:${VALID_WRAPPING_TAGS.join('|')})>`,
-  'g'
-);
+import { VALID_TAG_PATTERN as TAG_PATTERN } from './grok-effect-tags';
 
 function buildTagMask(text: string): boolean[] {
   const mask = new Array(text.length).fill(false);
@@ -58,6 +23,13 @@ export function aggregateWordTimestamps(
   graphChars: string[],
   graphTimes: [number, number][]
 ): WordTimestamp[] {
+  if (graphChars.length !== graphTimes.length || graphChars.length !== text.length) {
+    throw new Error(
+      `Grok word-timestamp alignment mismatch: text.length=${text.length}, ` +
+        `graphChars.length=${graphChars.length}, graphTimes.length=${graphTimes.length}`
+    );
+  }
+
   const mask = buildTagMask(text);
   const words: WordTimestamp[] = [];
 
