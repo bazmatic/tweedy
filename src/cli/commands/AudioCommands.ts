@@ -9,6 +9,7 @@ import {
   VoiceRepository,
   SpeechRepository,
 } from "../../repositories";
+import { RAGService } from "../../rag";
 import { VocalProviderName } from "../../types";
 import { logger } from "../../utils/logger";
 import { appConfig } from "../../utils/config";
@@ -21,12 +22,14 @@ export function createAudioCommands(): Command {
   const materialRepository = new MaterialRepository();
   const voiceRepository = new VoiceRepository();
   const speechRepository = new SpeechRepository();
+  const ragService = new RAGService();
   const scriptService = new ScriptService(
     scriptRepository,
     speakerRepository,
     materialRepository,
     voiceRepository,
-    speechRepository
+    speechRepository,
+    ragService
   );
   const audioService = new AudioService();
 
