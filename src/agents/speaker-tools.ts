@@ -9,6 +9,7 @@ export enum SpeakerAgentToolName {
   SHORT_QUESTION = "short_question",
   NEARLY_OUT_OF_TIME = "nearly_out_of_time",
   CHALLENGE = "challenge",
+  SUMMARIZE = "summarize",
 }
 
 export interface SpeakerToolDefinition {
@@ -73,6 +74,13 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
       "Push back on what the previous speaker just said — voice real doubt, skepticism, or outright disagreement. Use when you have a genuine reason to question their claim, not just to be contrarian. Distinct from ONE_LINER: this is about disputing a point, not making a clever observation.",
     styleDescription:
       "How you're pushing back. Include tone and delivery. Example: 'Skeptical, slightly incredulous, leaning into \"really?\"'",
+  },
+  {
+    name: SpeakerAgentToolName.SUMMARIZE,
+    toolDescription:
+      "Deliver a compact recap that briefly touches each of several named discussion points, one short clause per point, instead of one idea per turn. Use only when directed to catch up on multiple remaining points at once.",
+    styleDescription:
+      "How to deliver the summary. Include pacing and tone. Example: 'Brisk, matter-of-fact pace, quick transitions between points'",
   },
 ];
 

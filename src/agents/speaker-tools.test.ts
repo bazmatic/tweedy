@@ -41,4 +41,14 @@ describe("speaker-tools", () => {
   it("does not include CHALLENGE in SHORT_REACTION_TOOLS", () => {
     expect(SHORT_REACTION_TOOLS).not.toContain(SpeakerAgentToolName.CHALLENGE);
   });
+
+  it("includes SUMMARIZE with the shared {message, style} schema", () => {
+    const tools = toLlmTools();
+    const summarize = tools.find(
+      (tool) => tool.name === SpeakerAgentToolName.SUMMARIZE
+    );
+
+    expect(summarize).toBeDefined();
+    expect(summarize?.input_schema.required).toEqual(["message", "style"]);
+  });
 });
