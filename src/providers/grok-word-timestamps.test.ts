@@ -68,4 +68,18 @@ describe("aggregateWordTimestamps", () => {
 
     expect(aggregateWordTimestamps(text, chars, times)).toEqual([]);
   });
+
+  it("documents that a tag directly between two words with no whitespace merges them (relies on GrokProvider's hasMidWordTag validation to prevent this input from occurring in practice)", () => {
+    const text = "word1[pause]word2";
+    const { chars, times } = charTimes(text);
+
+    const words = aggregateWordTimestamps(text, chars, times);
+
+    // A tag is skipped without flushing the current word, so text immediately
+    // touching a tag on both sides merges into one token. GrokProvider's
+    // addEffectTags never produces this shape in practice (its hasMidWordTag
+    // check rejects a tag placed directly between two word characters), but
+    // this test pins the function's actual behavior for this input shape.
+    expect(words.map((w) => w.word)).toEqual(["word1word2"]);
+  });
 });

@@ -75,6 +75,14 @@ export function aggregateWordTimestamps(
   };
 
   for (let i = 0; i < graphChars.length; i++) {
+    // Masked (tag) characters are skipped without flushing the current word,
+    // so a tag adjacent to real characters merges into whichever word it's
+    // touching -- needed for trailing-punctuation-after-closing-tag cases
+    // like "Archie</soft></slow>." -> "Archie.". This relies on
+    // GrokProvider.addEffectTags's hasMidWordTag validation to guarantee a
+    // tag is never inserted directly between two distinct word-characters
+    // with no whitespace, so this function never actually sees two separate
+    // words fused only by a tag.
     if (mask[i]) {
       continue;
     }
