@@ -202,6 +202,49 @@ describe("SpeakerAgent expertise nudge", () => {
   });
 });
 
+describe("SpeakerAgent requestSummary", () => {
+  it("forces the SUMMARIZE tool and raises the token budget when requestSummary is true", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SUMMARIZE,
+      message: "quick recap of a, b, and c",
+      style: "brisk",
+      stopReason: "stop",
+    });
+
+    await agent.speak(
+      makeScript(),
+      "catch up on remaining points",
+      "",
+      false,
+      true
+    );
+
+    const offeredTools = spy.mock.calls[0][1] as { name: string }[];
+    expect(offeredTools.map((tool) => tool.name)).toEqual([
+      SpeakerAgentToolName.SUMMARIZE,
+    ]);
+    expect(spy.mock.calls[0][2]).toBe(180);
+  });
+
+  it("still forces NEARLY_OUT_OF_TIME over SUMMARIZE when both flags are true", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.NEARLY_OUT_OF_TIME,
+      message: "we're almost out of time",
+      style: "urgent",
+      stopReason: "stop",
+    });
+
+    await agent.speak(makeScript(), "wrap up", "almost out of time", true, true);
+
+    const offeredTools = spy.mock.calls[0][1] as { name: string }[];
+    expect(offeredTools.map((tool) => tool.name)).toEqual([
+      SpeakerAgentToolName.NEARLY_OUT_OF_TIME,
+    ]);
+  });
+});
+
 describe("SpeakerAgent expert material lookup via RAGService", () => {
   it("uses RAGService.searchRelevantContent keyed on direction when ragService is provided", async () => {
     const searchRelevantContent = vi.fn().mockResolvedValue([

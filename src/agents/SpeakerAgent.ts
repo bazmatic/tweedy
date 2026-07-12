@@ -22,6 +22,9 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
   // Tight on purpose: interjections are meant to be 1-10 words, and a shared
   // budget with SPEAK-length turns let the model ramble well past that.
   private static readonly INTERJECTION_MAX_TOKENS = 40;
+  // A recap has to touch several points in one turn, so it needs more room
+  // than a normal single-idea SPEAK turn, but stays well short of a ramble.
+  private static readonly SUMMARY_MAX_TOKENS = 180;
 
   private speaker: Speaker;
   private ragService?: RAGService;
@@ -37,7 +40,8 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     script: PodcastScript,
     direction: string,
     timeStatus = "",
-    forceNearlyOutOfTime = false
+    forceNearlyOutOfTime = false,
+    requestSummary = false
   ): Promise<Speech> {
     let attempts = 0;
 
@@ -53,7 +57,8 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
             script,
             direction,
             timeStatus,
-            forceNearlyOutOfTime
+            forceNearlyOutOfTime,
+            requestSummary
           );
 
         const speech: Speech = {
@@ -136,7 +141,8 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
     script: PodcastScript,
     direction: string,
     timeStatus: string,
-    forceNearlyOutOfTime: boolean
+    forceNearlyOutOfTime: boolean,
+    requestSummary: boolean
   ): Promise<{
     toolName: SpeakerAgentToolName;
     message: string;
@@ -189,13 +195,18 @@ Respond naturally as ${
       },
     ];
 
-    const result = await this.callModelWithTools(
-      messages,
-      forceNearlyOutOfTime
-        ? toLlmTools([SpeakerAgentToolName.NEARLY_OUT_OF_TIME])
-        : toLlmTools(isSolo ? SOLO_TOOLS : undefined),
-      SpeakerAgent.SPEECH_MAX_TOKENS
-    );
+    const tools = forceNearlyOutOfTime
+      ? toLlmTools([SpeakerAgentToolName.NEARLY_OUT_OF_TIME])
+      : requestSummary
+        ? toLlmTools([SpeakerAgentToolName.SUMMARIZE])
+        : toLlmTools(isSolo ? SOLO_TOOLS : undefined);
+
+    const maxTokens =
+      requestSummary && !forceNearlyOutOfTime
+        ? SpeakerAgent.SUMMARY_MAX_TOKENS
+        : SpeakerAgent.SPEECH_MAX_TOKENS;
+
+    const result = await this.callModelWithTools(messages, tools, maxTokens);
 
     return {
       toolName: result.toolName as SpeakerAgentToolName,
