@@ -22,21 +22,21 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.SPEAK,
     toolDescription:
-      "Deliver a concise, natural-sounding response in the podcast. Get ONE idea, fact, or beat out and then stop — 1-2 sentences max, never a multi-part explanation. Keep it very brief to maintain conversational flow. The message should be natural spoken language, while stage directions in instructions guide delivery. Use pauses and ums, like, ah, ..., etc.",
+      "Deliver a SHORT, concise, natural-sounding response in the podcast. Get ONE idea, fact, or beat out and then stop — 1-2 sentences max, never a multi-part explanation. Brevity is critical: shorter is always better than longer, and you should stop the moment the single idea has landed rather than padding it out. Keep it very brief to maintain conversational flow. The message should be natural spoken language, while stage directions in instructions guide delivery. Use pauses and ums, like, ah, ..., etc.",
     styleDescription:
       "How to deliver the speech. Include timing, tone, and emphasis. Example: 'Pause slightly before speaking, use a thoughtful tone, emphasize \"perspective\"'",
   },
   {
     name: SpeakerAgentToolName.INTERJECT,
     toolDescription:
-      "Make a brief, emotional reaction sound or very short response (maximum 1-10 words) to show engagement. Use for natural conversational responses like surprise, agreement, or interest. Keep it spontaneous and authentic. Don't interrupt and then ramble. That would be rude. Example: 'Hang on, so it was a mistake?'",
+      "Make a brief, emotional reaction sound or very short response (maximum 1-10 words, never more). Use for natural conversational responses like surprise, agreement, or interest. Keep it spontaneous and authentic. Don't interrupt and then ramble — that would be rude, and this tool must never turn into a mini-speech. Example: 'Hang on, so it was a mistake?'",
     styleDescription:
       "How to deliver the interjection. Include emotional context and delivery style. Example: 'Genuine surprise, slightly higher pitch, quick delivery'",
   },
   {
     name: SpeakerAgentToolName.ONE_LINER,
     toolDescription:
-      "Deliver a witty, insightful, or thought-provoking single sentence that adds value to the conversation. Use for clever observations, gentle challenges, or memorable statements. Keep it concise and impactful. Example: 'So it's kind of the opposite!'",
+      "Deliver a witty, insightful, or thought-provoking single sentence — one sentence only, no more — that adds value to the conversation. Use for clever observations, gentle challenges, or memorable statements. Keep it concise and impactful. Example: 'So it's kind of the opposite!'",
     styleDescription:
       "How to deliver the one-liner. Include timing, tone, and emphasis. Example: 'Pause slightly before speaking, use a thoughtful tone, emphasize \"perspective\"'",
   },
@@ -57,7 +57,7 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.SHORT_QUESTION,
     toolDescription:
-      "Ask a focused, relevant question that advances the discussion. Keep questions concise and open-ended to encourage elaboration. Use for genuine curiosity or clarification. Use ums, like, etc.",
+      "Ask a focused, relevant question that advances the discussion, in one short sentence — no preamble or setup, just the question. Keep questions concise and open-ended to encourage elaboration. Use for genuine curiosity or clarification. Use ums, like, etc.",
     styleDescription:
       "How to deliver the short question. Include timing, tone, and emphasis. Example: 'Pause slightly before speaking, use a thoughtful tone, emphasize \"perspective\"'",
   },
@@ -71,7 +71,7 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.CHALLENGE,
     toolDescription:
-      "Push back on what the previous speaker just said — voice real doubt, skepticism, or outright disagreement. Use when you have a genuine reason to question their claim, not just to be contrarian. Distinct from ONE_LINER: this is about disputing a point, not making a clever observation.",
+      "Push back on what the previous speaker just said, in one short sentence — voice real doubt, skepticism, or outright disagreement. Use when you have a genuine reason to question their claim, not just to be contrarian. Distinct from ONE_LINER: this is about disputing a point, not making a clever observation.",
     styleDescription:
       "How you're pushing back. Include tone and delivery. Example: 'Skeptical, slightly incredulous, leaning into \"really?\"'",
   },

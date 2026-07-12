@@ -19,9 +19,9 @@ import {
 
 export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
   private static readonly SPEECH_MAX_TOKENS = 150;
-  // Tight on purpose: interjections are meant to be 1-10 words, and a shared
+  // Tight on purpose: interjections are meant to be very short words, and a shared
   // budget with SPEAK-length turns let the model ramble well past that.
-  private static readonly INTERJECTION_MAX_TOKENS = 40;
+  private static readonly INTERJECTION_MAX_TOKENS = 100;
   // A recap has to touch several points in one turn, so it needs more room
   // than a normal single-idea SPEAK turn, but stays well short of a ramble.
   private static readonly SUMMARY_MAX_TOKENS = 180;

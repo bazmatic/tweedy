@@ -66,11 +66,11 @@ Also provide a separate list of 3-8 concrete discussion points that must be cove
       const { narrative, points } = await this.callModelForToolInput<CreatePodcastPlanInput>(
         messages,
         tools,
-        800
+        1200
       );
 
       this.podcastPlan = narrative;
-      this.points = points.map((text, index) => ({
+      this.points = (points ?? []).map((text, index) => ({
         id: `p${index + 1}`,
         text,
         covered: false,

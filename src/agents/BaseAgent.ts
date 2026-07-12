@@ -112,6 +112,83 @@ function recoverTruncatedToolCall(
   };
 }
 
+/**
+ * Best-effort repair of a JSON object that was cut off mid-generation by the
+ * token limit: closes any still-open string, drops a dangling trailing comma,
+ * then closes any still-open objects/arrays in the correct order.
+ */
+function repairTruncatedJson(raw: string): unknown | null {
+  let inString = false;
+  let escape = false;
+  const stack: string[] = [];
+
+  for (const ch of raw) {
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (ch === "\\") {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{" || ch === "[") {
+      stack.push(ch);
+    } else if (ch === "}" || ch === "]") {
+      stack.pop();
+    }
+  }
+
+  let repaired = raw;
+  if (inString) repaired += '"';
+  repaired = repaired.replace(/,\s*$/, "");
+  for (let i = stack.length - 1; i >= 0; i--) {
+    repaired += stack[i] === "{" ? "}" : "]";
+  }
+
+  try {
+    return JSON.parse(repaired);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * When a forced tool call is cut off by the token limit, LangChain can't parse
+ * the (invalid, unterminated) JSON arguments and leaves `tool_calls` empty, so
+ * a long-running turn would otherwise hard-fail. Recover whatever structured
+ * data was actually generated instead of discarding it.
+ */
+function recoverTruncatedToolInput<T>(response: AIMessage): T | null {
+  const rawCall = (response.additional_kwargs?.tool_calls as any[] | undefined)?.[0];
+  const args = rawCall?.function?.arguments;
+  if (typeof args !== "string") return null;
+
+  const repaired = repairTruncatedJson(args);
+  return repaired === null ? null : (repaired as T);
+}
+
+const TRUNCATION_FILLER_WORDS = [
+  "um",
+  "uh",
+  "you know",
+  "like",
+  "or something",
+  "I guess",
+  "or whatever",
+];
+
+function appendTruncationFiller(message: string): string {
+  const filler =
+    TRUNCATION_FILLER_WORDS[
+      Math.floor(Math.random() * TRUNCATION_FILLER_WORDS.length)
+    ];
+  return `${message.trimEnd()}... ${filler}`;
+}
+
 const MAX_TOKENS_REASONS = new Set(["max_tokens", "length"]);
 const TOOL_USE_REASONS = new Set(["tool_use", "tool_calls"]);
 const STOP_REASONS = new Set(["end_turn", "stop_sequence", "stop"]);
@@ -187,7 +264,11 @@ export abstract class BaseAgent {
           logger.warn(
             "Tool call truncated by the token limit; using the partial response instead of retrying"
           );
-          return { ...recovered, stopReason: "max_tokens" };
+          return {
+            ...recovered,
+            message: appendTruncationFiller(recovered.message),
+            stopReason: "max_tokens",
+          };
         }
         throw new Error("AI model response did not include a tool call");
       }
@@ -222,6 +303,13 @@ export abstract class BaseAgent {
 
       const toolCall = response.tool_calls?.[0];
       if (!toolCall) {
+        const recovered = recoverTruncatedToolInput<T>(response);
+        if (recovered) {
+          logger.warn(
+            "Tool call truncated by the token limit; using the repaired partial response instead of retrying"
+          );
+          return recovered;
+        }
         throw new Error("AI model response did not include a tool call");
       }
 
