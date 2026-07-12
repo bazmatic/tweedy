@@ -1,5 +1,6 @@
 import { DiscussionPoint, IDirectorAgent, PodcastScript, Speaker } from '../types';
 import { BaseAgent } from './BaseAgent';
+import { MaterialSummarizerAgent } from './MaterialSummarizerAgent';
 import { logger } from '../utils/logger';
 import {
   CreatePodcastPlanInput,
@@ -18,6 +19,7 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private turnsUsed = 0;
   private hasForcedTimeWarning = false;
   private points: DiscussionPoint[] = [];
+  private materialSummarizer = new MaterialSummarizerAgent();
 
   constructor(
     script: PodcastScript,
@@ -33,8 +35,16 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
     try {
       this.logAgentAction('Creating podcast plan');
 
+      const summaries = await Promise.all(
+        this.script.materials.map((material) =>
+          this.materialSummarizer.summarize(material, {
+            title: this.script.title,
+            description: this.script.description,
+          })
+        )
+      );
       const materialText = this.script.materials
-        .map(material => `${material.title}: ${material.content}`)
+        .map((material, index) => `${material.title}: ${summaries[index]}`)
         .join('\n\n');
 
       const messages = [

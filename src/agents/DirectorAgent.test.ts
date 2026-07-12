@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { DirectorAgent } from "./DirectorAgent";
-import { PodcastScript, Speaker, VocalProviderName } from "../types";
+import { MaterialSummarizerAgent } from "./MaterialSummarizerAgent";
+import {
+  PodcastMaterial,
+  PodcastScript,
+  SourceType,
+  Speaker,
+  VocalProviderName,
+} from "../types";
 
 function makeSpeaker(id: string): Speaker {
   return {
@@ -36,7 +43,45 @@ function makeScript(overrides: Partial<PodcastScript> = {}): PodcastScript {
   };
 }
 
+function makeMaterial(overrides: Partial<PodcastMaterial> = {}): PodcastMaterial {
+  return {
+    id: "m1",
+    title: "Some Article",
+    content: "Full raw article content that should not appear verbatim.",
+    source: "https://example.com",
+    sourceType: SourceType.Web,
+    metadata: {},
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
+
 describe("DirectorAgent.createPodcastPlan", () => {
+  it("builds the plan prompt from summarized materials, not raw content", async () => {
+    const material = makeMaterial();
+    const script = makeScript({ materials: [material] });
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    vi.spyOn(
+      MaterialSummarizerAgent.prototype,
+      "summarize"
+    ).mockResolvedValue("A concise podcast-ready summary of the article.");
+
+    const callModelForToolInputSpy = vi
+      .spyOn(agent as any, "callModelForToolInput")
+      .mockResolvedValue({
+        narrative: "Open with intros, then dig in.",
+        points: ["Point A"],
+      });
+
+    await agent.createPodcastPlan();
+
+    const promptContent = (callModelForToolInputSpy.mock.calls[0][0] as any)[0]
+      .content as string;
+    expect(promptContent).toContain("A concise podcast-ready summary of the article.");
+    expect(promptContent).not.toContain(material.content);
+  });
+
   it("assigns sequential ids to points and stores them on the script", async () => {
     const script = makeScript();
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
