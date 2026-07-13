@@ -174,11 +174,7 @@ function recoverTruncatedToolInput<T>(response: AIMessage): T | null {
 const TRUNCATION_FILLER_WORDS = [
   "um",
   "uh",
-  "you know",
-  "like",
-  "or something",
-  "I guess",
-  "or whatever",
+  "so",
 ];
 
 function appendTruncationFiller(message: string): string {

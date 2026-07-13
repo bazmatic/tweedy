@@ -1,5 +1,5 @@
 import { VocalProviderFactory, AudioProcessor } from "../providers";
-import { VocalProviderName, Speech, Voice, TtsResult, WordTimestamp } from "../types";
+import { Speech, TtsResult, WordTimestamp } from "../types";
 import { logger } from "../utils/logger";
 import { SpeakerAgentToolName } from "../agents/speaker-tools";
 import * as path from "path";

@@ -32,6 +32,11 @@ yarn-error.log*
 ehthumbs.db
 Thumbs.db
 
+# Audio and video files
+*.mp3
+*.mp4
+*.png
+
 # IDE
 .vscode/
 .idea/
@@ -48,7 +53,13 @@ tmp/
 temp/
 *.tmp
 
+plans/
+specs/
+
 # TypeScript
 *.tsbuildinfo
 
 .worktrees/
+.codegraph/
+.superpowers/
+.cursor/
