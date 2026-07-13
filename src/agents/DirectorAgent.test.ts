@@ -6,6 +6,7 @@ import {
   PodcastScript,
   SourceType,
   Speaker,
+  Speech,
   VocalProviderName,
 } from "../types";
 
@@ -403,6 +404,160 @@ describe("DirectorAgent.isConversationComplete", () => {
     const result = await agent.isConversationComplete(script);
 
     expect(result).toBe(false);
+  });
+});
+
+describe("DirectorAgent balance note", () => {
+  function makeSpeech(speaker: Speaker, wordCount: number, id = "sp"): PodcastScript["speeches"][number] {
+    return {
+      id,
+      speaker,
+      message: new Array(wordCount).fill("word").join(" "),
+      instructions: "",
+      voice: speaker.voice,
+      voiceStyle: "neutral",
+      timestamp: new Date(),
+    };
+  }
+
+  it("does not add a balance note before enough speeches have happened", async () => {
+    const s1 = makeSpeaker("s1");
+    const s2 = makeSpeaker("s2");
+    const script = makeScript({
+      speakers: [s1, s2],
+      speeches: [makeSpeech(s1, 100, "sp1")],
+    });
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    const chooseSpy = vi
+      .spyOn(agent as any, "callModelForToolInput")
+      .mockResolvedValueOnce({ narrative: "plan", points: [] });
+    await agent.createPodcastPlan();
+
+    chooseSpy.mockResolvedValueOnce({
+      speakerId: "s2",
+      direction: "keep going",
+      coveredPointIds: [],
+    });
+    await agent.chooseNextSpeaker(script);
+
+    const prompt = (chooseSpy.mock.calls[1][0] as any)[0].content as string;
+    expect(prompt).not.toContain("dominated the conversation");
+  });
+
+  it("flags a non-expert speaker who has dominated the word count", async () => {
+    const s1 = makeSpeaker("s1");
+    const s2 = makeSpeaker("s2");
+    const script = makeScript({
+      speakers: [s1, s2],
+      speeches: [
+        makeSpeech(s1, 100, "sp1"),
+        makeSpeech(s2, 10, "sp2"),
+        makeSpeech(s1, 100, "sp3"),
+      ],
+    });
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    const chooseSpy = vi
+      .spyOn(agent as any, "callModelForToolInput")
+      .mockResolvedValueOnce({ narrative: "plan", points: [] });
+    await agent.createPodcastPlan();
+
+    chooseSpy.mockResolvedValueOnce({
+      speakerId: "s2",
+      direction: "keep going",
+      coveredPointIds: [],
+    });
+    await agent.chooseNextSpeaker(script);
+
+    const prompt = (chooseSpy.mock.calls[1][0] as any)[0].content as string;
+    expect(prompt).toContain(`${s1.name} has dominated the conversation`);
+  });
+
+  it("does not flag an expert speaker even with a dominant word share", async () => {
+    const s1: Speaker = { ...makeSpeaker("s1"), isExpert: true };
+    const s2 = makeSpeaker("s2");
+    const script = makeScript({
+      speakers: [s1, s2],
+      speeches: [
+        makeSpeech(s1, 100, "sp1"),
+        makeSpeech(s2, 10, "sp2"),
+        makeSpeech(s1, 100, "sp3"),
+      ],
+    });
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    const chooseSpy = vi
+      .spyOn(agent as any, "callModelForToolInput")
+      .mockResolvedValueOnce({ narrative: "plan", points: [] });
+    await agent.createPodcastPlan();
+
+    chooseSpy.mockResolvedValueOnce({
+      speakerId: "s2",
+      direction: "keep going",
+      coveredPointIds: [],
+    });
+    await agent.chooseNextSpeaker(script);
+
+    const prompt = (chooseSpy.mock.calls[1][0] as any)[0].content as string;
+    expect(prompt).not.toContain("dominated the conversation");
+  });
+});
+
+describe("DirectorAgent.reviewSpeech", () => {
+  function makeReviewSpeech(): Speech {
+    const speaker = makeSpeaker("s1");
+    return {
+      id: "sp1",
+      speaker,
+      message: "Original message.",
+      instructions: "",
+      voice: speaker.voice,
+      voiceStyle: "neutral",
+      timestamp: new Date(),
+    };
+  }
+
+  it("returns the speech unchanged when the director judges it fine", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValueOnce({
+      needsFix: false,
+    });
+
+    const speech = makeReviewSpeech();
+    const result = await agent.reviewSpeech(speech, "Talk about X");
+
+    expect(result).toBe(speech);
+    expect(result.message).toBe("Original message.");
+  });
+
+  it("replaces the message with the director's revision when flagged", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValueOnce({
+      needsFix: true,
+      revisedMessage: "A tighter, corrected version.",
+    });
+
+    const speech = makeReviewSpeech();
+    const result = await agent.reviewSpeech(speech, "Talk about X, briefly");
+
+    expect(result.message).toBe("A tighter, corrected version.");
+    expect(result).not.toBe(speech);
+  });
+
+  it("returns the speech unchanged if the review call fails", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    vi.spyOn(agent as any, "callModelForToolInput").mockRejectedValueOnce(
+      new Error("model error")
+    );
+
+    const speech = makeReviewSpeech();
+    const result = await agent.reviewSpeech(speech, "Talk about X");
+
+    expect(result).toBe(speech);
   });
 });
 

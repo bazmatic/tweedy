@@ -361,6 +361,7 @@ export interface IDirectorAgent {
     isFinalTurn: boolean;
   }>;
   isConversationComplete(script: PodcastScript): Promise<boolean>;
+  reviewSpeech(speech: Speech, direction: string): Promise<Speech>;
 }
 
 // Service Interfaces

@@ -91,6 +91,37 @@ export function toCheckConversationCompleteTool(): LlmTool {
   };
 }
 
+export interface ReviewSpeechInput {
+  needsFix: boolean;
+  revisedMessage?: string;
+}
+
+export const REVIEW_SPEECH_TOOL_NAME = "review_speech";
+
+export function toReviewSpeechTool(): LlmTool {
+  return {
+    name: REVIEW_SPEECH_TOOL_NAME,
+    description:
+      "Judge whether a speaker's turn matches the direction given, in both length and substance, and correct it if not.",
+    input_schema: {
+      type: "object",
+      properties: {
+        needsFix: {
+          type: "boolean",
+          description:
+            "True if the speech rambled on too long for its direction, was too short and under-delivered on a direction that called for real substance, or otherwise missed the direction.",
+        },
+        revisedMessage: {
+          type: "string",
+          description:
+            "A corrected version of the message, in the same voice/personality and delivery register as the original, fixing the length or substance problem. Required when needsFix is true; omit otherwise.",
+        },
+      },
+      required: ["needsFix"],
+    },
+  };
+}
+
 export interface CreatePodcastPlanInput {
   narrative: string;
   points: string[];

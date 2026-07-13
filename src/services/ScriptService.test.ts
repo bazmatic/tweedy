@@ -7,6 +7,7 @@ import { logger } from "../utils/logger";
 
 const chooseNextSpeakerMock = vi.fn();
 const createPodcastPlanMock = vi.fn().mockResolvedValue(undefined);
+const reviewSpeechMock = vi.fn((speech) => Promise.resolve(speech));
 const speakMock = vi.fn();
 const speakerAgentConstructorMock = vi.fn();
 
@@ -15,6 +16,7 @@ vi.mock("../agents", () => ({
     return {
       createPodcastPlan: createPodcastPlanMock,
       chooseNextSpeaker: chooseNextSpeakerMock,
+      reviewSpeech: reviewSpeechMock,
     };
   }),
   SpeakerAgent: vi.fn().mockImplementation(function (speaker, ragService) {

@@ -1,20 +1,24 @@
-import { DiscussionPoint, IDirectorAgent, PodcastScript, Speaker } from '../types';
+import { DiscussionPoint, IDirectorAgent, PodcastScript, Speaker, Speech } from '../types';
 import { BaseAgent } from './BaseAgent';
 import { MaterialSummarizerAgent } from './MaterialSummarizerAgent';
 import { logger } from '../utils/logger';
 import {
   CheckConversationCompleteInput,
   CreatePodcastPlanInput,
+  ReviewSpeechInput,
   SelectNextSpeakerInput,
   VerifyCoveredPointsInput,
   toCheckConversationCompleteTool,
   toCreatePodcastPlanTool,
+  toReviewSpeechTool,
   toSelectNextSpeakerTool,
   toVerifyCoveredPointsTool,
 } from './director-tools';
 
 const WORDS_PER_MINUTE = 150;
 const MINUTES_PER_DISCUSSION_POINT = 2;
+const DOMINANT_SPEAKER_SHARE_THRESHOLD = 0.55;
+const MIN_SPEECHES_FOR_BALANCE_CHECK = 3;
 
 export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private script: PodcastScript;
@@ -72,7 +76,7 @@ Available materials:
 ${materialText}
 
 Create a detailed plan for how the conversation should flow, including:
-1. Opening segment — a warm, friendly welcome where the interviewer greets listeners, introduces the episode by name ("${this.script.title}"), and introduces the speakers, before any substantive discussion begins
+1. Opening segment — a warm, friendly welcome where the interviewer greets listeners, introduces the episode by name ("${this.script.title}"), and introduces the speakers, before any points are mentioned. After naming the speakers, the speaker must stop and let them respond.
 2. Main discussion points
 3. Key topics to cover
 4. Closing segment
@@ -132,6 +136,7 @@ Also provide a separate list of at least ${minDiscussionPoints} concrete discuss
       const velocityBeforeThisTurn = this.calculateVelocity(script);
       const velocityNote = this.getVelocityNote(velocityBeforeThisTurn);
       const openPointsSection = this.getOpenPointsSection();
+      const balanceNote = this.getBalanceNote(script);
 
       // Force explicit "we're almost out of time" tool call.
       const forceNearlyOutOfTime = progress >= 85 && !isFinalTurn;
@@ -166,7 +171,7 @@ ${history || '(nothing said yet — this is the opening of the episode)'}
 
 Decide which speaker should talk next and give them clear direction on what they should talk about and how to make sure that the talking points all get covered in time and that the conversation flows smoothly. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. On the opening of the episode (nothing said yet), this must be the interviewer, and the direction must have them deliver a warm, friendly welcome to listeners — greeting them, naming the episode ("${this.script.title}"), and introducing the speakers by name — before moving into substantive content. Don't repeat this welcome on later turns. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack).${this.getPacingNote(
             script
-          )}${wrapUpNote}${velocityNote}`
+          )}${wrapUpNote}${velocityNote}${balanceNote}`
         }
       ];
 
@@ -258,6 +263,48 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
         error
       );
       return false;
+    }
+  }
+
+  /**
+   * Judges a just-generated speech against the direction the director gave
+   * for that turn — flagging both rambling/too-long speeches and speeches
+   * too short to deliver on a direction that called for real substance —
+   * and, in the same call, corrects it if needed. Fails open on error,
+   * returning the speech unchanged rather than blocking production.
+   */
+  async reviewSpeech(speech: Speech, direction: string): Promise<Speech> {
+    const messages = [
+      {
+        role: 'user' as const,
+        content: `You are a podcast director reviewing a speaker's turn against the direction you gave them.
+
+Direction given: ${direction}
+
+${speech.speaker.name} said: "${speech.message}"
+
+Judge whether this speech matches the direction in both length and substance — flag it if it rambled on too long, or if it was too short and under-delivered on a direction that called for real content. If it needs fixing, write a corrected version in ${speech.speaker.name}'s same voice and delivery register.`,
+      },
+    ];
+
+    try {
+      const { needsFix, revisedMessage } =
+        await this.callModelForToolInput<ReviewSpeechInput>(
+          messages,
+          [toReviewSpeechTool()],
+          300
+        );
+
+      if (needsFix && revisedMessage) {
+        logger.info(
+          `Director revised ${speech.speaker.name}'s speech for length/substance`
+        );
+        return { ...speech, message: revisedMessage };
+      }
+      return speech;
+    } catch (error) {
+      logger.error('Failed to review speech; keeping original:', error);
+      return speech;
     }
   }
 
@@ -403,6 +450,48 @@ Return only the ids of points that were genuinely, substantively covered.`,
     return ` The conversation is behind pace on discussion points — ${velocity.openCount} point(s) remain with about ${velocity.remainingMinutes.toFixed(
       1
     )} minutes left. Direct the next speaker to move faster and cover multiple remaining points concisely rather than dwelling on one:\n${openPointsList}`;
+  }
+
+  /**
+   * Flags when a non-expert speaker has taken a disproportionate share of
+   * words so far, so the director can steer the next pick toward others.
+   * Experts are exempt — they're expected to carry substantive explaining.
+   */
+  private getBalanceNote(script: PodcastScript): string {
+    if (
+      script.speakers.length < 2 ||
+      script.speeches.length < MIN_SPEECHES_FOR_BALANCE_CHECK
+    ) {
+      return '';
+    }
+
+    const wordCounts = new Map<string, number>();
+    let totalWords = 0;
+    for (const speech of script.speeches) {
+      const words = speech.message.trim().split(/\s+/).filter(Boolean).length;
+      wordCounts.set(
+        speech.speaker.id,
+        (wordCounts.get(speech.speaker.id) ?? 0) + words
+      );
+      totalWords += words;
+    }
+    if (totalWords === 0) {
+      return '';
+    }
+
+    for (const speaker of script.speakers) {
+      if (speaker.isExpert) {
+        continue;
+      }
+      const share = (wordCounts.get(speaker.id) ?? 0) / totalWords;
+      if (share > DOMINANT_SPEAKER_SHARE_THRESHOLD) {
+        return ` ${speaker.name} has dominated the conversation so far (${Math.round(
+          share * 100
+        )}% of words spoken) — favor other speakers for the next turn unless the next point specifically calls for ${speaker.name}'s input.`;
+      }
+    }
+
+    return '';
   }
 
   private getOpenPointsSection(): string {

@@ -218,7 +218,7 @@ export class ScriptService implements IScriptService {
         await directorAgent.chooseNextSpeaker(script);
       const speakerAgent = new SpeakerAgent(speaker, this.ragService);
 
-      const speech = await speakerAgent.speak(
+      const rawSpeech = await speakerAgent.speak(
         script.speeches,
         script.speakers,
         script.materials,
@@ -230,6 +230,7 @@ export class ScriptService implements IScriptService {
         requestSummary,
         isFinalTurn
       );
+      const speech = await directorAgent.reviewSpeech(rawSpeech, direction);
       await this.persistSpeech(script, speech);
 
       // If that turn ran long — or was cut off by the token limit — let a
