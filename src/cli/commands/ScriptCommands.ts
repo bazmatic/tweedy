@@ -72,7 +72,11 @@ export function createScriptCommands(): Command {
       "Comma-separated speaker slugs or IDs"
     )
     .option("-m, --materials <materials>", "Comma-separated material IDs")
-    .option("--max-turns <turns>", "Maximum number of turns", "10")
+    .option(
+      "--max-turns <turns>",
+      "Maximum number of turns (safety ceiling only; pacing is driven by --max-duration)",
+      "60"
+    )
     .option("--max-duration <duration>", "Maximum duration in seconds", "600")
     .option(
       "--allocation <allocation>",

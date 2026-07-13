@@ -50,7 +50,7 @@ export const scriptGenerationSchema = z.object({
     .array(z.object({ id: z.string() }))
     .min(1, "At least one speaker is required"),
   materials: z.array(z.object({ id: z.string() })).optional(),
-  maxTurns: z.number().min(1).max(50),
+  maxTurns: z.number().min(1).max(500),
   maxDuration: z.number().min(60).max(3600),
   allocation: z.nativeEnum(SpeakerAllocation).optional(),
 });
