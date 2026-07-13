@@ -13,7 +13,7 @@ import {
   toPrepareMaterialTool,
 } from "./editorial-tools";
 
-const MAX_PREPARATION_TOKENS = 1800;
+const MAX_PREPARATION_TOKENS = 3000;
 const FALLBACK_CONTENT_LENGTH = 700;
 
 export class MaterialPreparerAgent

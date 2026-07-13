@@ -17,6 +17,7 @@ import { DirectorAgent, SpeakerAgent } from "../agents";
 import { logger } from "../utils/logger";
 import { shouldInterject } from "./interjection-policy";
 import { RAGService } from "../rag";
+import { OpeningSequencePolicy } from "../agents/OpeningSequencePolicy";
 
 export class ScriptService implements IScriptService {
   constructor(
@@ -190,9 +191,10 @@ export class ScriptService implements IScriptService {
     params: GenerateScriptParams
   ): Promise<void> {
     const directorAgent = new DirectorAgent(script, {
-      maxTurns: params.maxTurns,
+      maxTurns: Math.max(1, params.maxTurns - script.speakers.length),
       maxDuration: params.maxDuration,
     });
+    const openingSequence = new OpeningSequencePolicy();
     await directorAgent.createPodcastPlan();
     try {
       await this.ragService.addMaterials(script.materials);
@@ -204,7 +206,9 @@ export class ScriptService implements IScriptService {
     }
 
     for (let turn = 0; turn < params.maxTurns; turn++) {
+      const openingTurn = openingSequence.nextTurn(script);
       if (
+        !openingTurn &&
         script.speeches.length > 0 &&
         (await directorAgent.isConversationComplete(script))
       ) {
@@ -215,7 +219,7 @@ export class ScriptService implements IScriptService {
       }
 
       const { speaker, direction, timeStatus, forceNearlyOutOfTime, requestSummary, isFinalTurn, turnBrief } =
-        await directorAgent.chooseNextSpeaker(script);
+        openingTurn ?? await directorAgent.chooseNextSpeaker(script);
       const speakerAgent = new SpeakerAgent(speaker, this.ragService);
 
       const rawSpeech = await speakerAgent.speak(
@@ -244,9 +248,11 @@ export class ScriptService implements IScriptService {
       // If that turn ran long — or was cut off by the token limit — let a
       // different speaker chime in with a quick reaction before the director
       // picks the next real turn — real overlap instead of relying on the
-      // speaker to self-select a short tool. Skip on the final turn so the
-      // closing statement is the last thing said, not a context-blind reaction.
+      // speaker to self-select a short tool. Skip during the enforced opening
+      // sequence, and on the final turn so the closing statement is the last
+      // thing said rather than a context-blind reaction.
       if (
+        !openingTurn &&
         !isFinalTurn &&
         shouldInterject(speech, script.speakers.length, Math.random())
       ) {

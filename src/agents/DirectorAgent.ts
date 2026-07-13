@@ -33,6 +33,8 @@ import { ConversationBeatInput } from './editorial-tools';
 
 const WORDS_PER_MINUTE = 150;
 const MINUTES_PER_DISCUSSION_POINT = 2;
+const MAX_PLAN_TOKENS = 5000;
+const MAX_TURN_DIRECTION_TOKENS = 600;
 const DOMINANT_SPEAKER_SHARE_THRESHOLD = 0.55;
 const MIN_SPEECHES_FOR_BALANCE_CHECK = 3;
 
@@ -135,7 +137,7 @@ Also provide a sequence of conversation beats. Each beat must have a listener-ce
       const { narrative, points, beats } = await this.callModelForToolInput<CreatePodcastPlanInput>(
         messages,
         tools,
-        2000
+        MAX_PLAN_TOKENS
       );
 
       this.podcastPlan = narrative ?? '';
@@ -231,7 +233,7 @@ Decide which speaker should talk next and give them clear direction. Also choose
         await this.callModelForToolInput<SelectNextSpeakerInput>(
           messages,
           tools,
-          300
+          MAX_TURN_DIRECTION_TOKENS
         );
       const { speakerId, direction, coveredPointIds } = result;
 

@@ -18,6 +18,7 @@ const chooseNextSpeakerMock = vi.fn();
 const createPodcastPlanMock = vi.fn().mockResolvedValue(undefined);
 const reviewSpeechMock = vi.fn((speech) => Promise.resolve(speech));
 const speakMock = vi.fn();
+const interjectMock = vi.fn();
 const speakerAgentConstructorMock = vi.fn();
 
 vi.mock("../agents", () => ({
@@ -30,7 +31,7 @@ vi.mock("../agents", () => ({
   }),
   SpeakerAgent: vi.fn().mockImplementation(function (speaker, ragService) {
     speakerAgentConstructorMock(speaker, ragService);
-    return { speak: speakMock, interject: vi.fn() };
+    return { speak: speakMock, interject: interjectMock };
   }),
 }));
 
@@ -332,6 +333,89 @@ describe("ScriptService RAG wiring", () => {
 
     expect(addMaterials).toHaveBeenCalledWith(script.materials);
     expect(speechRepository.create).toHaveBeenCalled();
+  });
+});
+
+describe("ScriptService opening sequence", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("enforces welcome then acknowledgement without inserting a random interjection", async () => {
+    const host = {
+      id: "host",
+      slug: "ada",
+      name: "Ada",
+      personality: "warm",
+      voice: {
+        id: "voice-host",
+        name: "Voice",
+        description: "",
+        provider: VocalProviderName.ElevenLabs,
+        providerId: "p",
+        settings: {},
+      },
+      voiceStyle: "neutral",
+      isExpert: false,
+    };
+    const expert = {
+      ...host,
+      id: "expert",
+      slug: "miles",
+      name: "Miles",
+      voice: { ...host.voice, id: "voice-expert" },
+      isExpert: true,
+    };
+    const script = makeScript();
+    script.speakers = [expert, host];
+
+    speakMock
+      .mockResolvedValueOnce({
+        id: "",
+        speaker: host,
+        message: "A deliberately long welcome that would normally qualify for a random interjection under the length policy.",
+        instructions: "warm",
+        voice: host.voice,
+        voiceStyle: host.voiceStyle,
+        timestamp: new Date(),
+        tool: SpeakerAgentToolName.SPEAK,
+        stopReason: "stop",
+      })
+      .mockResolvedValueOnce({
+        id: "",
+        speaker: expert,
+        message: "Hello Ada, and hello everyone.",
+        instructions: "warm",
+        voice: expert.voice,
+        voiceStyle: expert.voiceStyle,
+        timestamp: new Date(),
+        tool: SpeakerAgentToolName.SPEAK,
+        stopReason: "stop",
+      });
+
+    let recordNumber = 0;
+    const speechRepository = {
+      create: vi.fn().mockImplementation(async () => ({
+        id: `record-${++recordNumber}`,
+      })),
+    };
+    const service = makeService({ speechRepository });
+
+    await (service as any).generateScriptContent(script, {
+      maxTurns: 2,
+      maxDuration: 60,
+    });
+
+    expect(script.speeches.map((speech) => speech.speaker.name)).toEqual([
+      "Ada",
+      "Miles",
+    ]);
+    expect(speakMock.mock.calls[0][5]).toContain("introduce Miles");
+    expect(speakMock.mock.calls[1][5]).toContain(
+      "Respond directly to Ada's introduction"
+    );
+    expect(interjectMock).not.toHaveBeenCalled();
+    expect(chooseNextSpeakerMock).not.toHaveBeenCalled();
   });
 });
 
