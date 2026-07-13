@@ -23,10 +23,12 @@ export class ElevenLabsProvider extends BaseVocalProvider {
     return 'ElevenLabs';
   }
 
-  // eleven_multilingual_v2 supports previous_request_ids stitching, but each
-  // speech is synthesized independently here and we don't thread request IDs
-  // between calls, so a deterministic per-voice seed plus high stability is
-  // what keeps accent/timbre from drifting across clips instead.
+  // eleven_multilingual_v2 supports previous_request_ids stitching for voice
+  // continuity, but each speech is synthesized independently here and we don't
+  // thread request IDs between calls, so a deterministic per-voice seed plus
+  // high stability is what keeps accent/timbre from drifting across clips
+  // instead. previous_text/next_text (below) is a separate mechanism that
+  // gives prosody context across speaker boundaries.
   private seedForVoice(providerId: string): number {
     const hash = crypto.createHash('md5').update(providerId).digest();
     return hash.readUInt32BE(0);
@@ -46,10 +48,13 @@ export class ElevenLabsProvider extends BaseVocalProvider {
           text: params.speech.message,
           model_id: 'eleven_multilingual_v2',
           seed: this.seedForVoice(params.voice.providerId),
+          ...(params.previousText ? { previous_text: params.previousText } : {}),
+          ...(params.nextText ? { next_text: params.nextText } : {}),
           voice_settings: {
-            stability: params.voice.settings.stability ?? 0.75,
+            stability: params.voice.settings.stability ?? 0.3,
             similarity_boost: params.voice.settings.similarityBoost || 0.75,
-            style: params.voice.settings.style ?? 0,
+            style: params.voice.settings.style ?? 0.66,
+            speed: params.voice.settings.speed ?? 1,
             use_speaker_boost: true,
           },
         },
@@ -88,9 +93,9 @@ export class ElevenLabsProvider extends BaseVocalProvider {
         provider: VocalProviderName.ElevenLabs,
         providerId: voice.voice_id,
         settings: {
-          stability: 0.75,
+          stability: 0.3,
           similarityBoost: 0.75,
-          style: 0.0,
+          style: 0.66
         },
       }));
     } catch (error) {

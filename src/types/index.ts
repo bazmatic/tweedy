@@ -61,6 +61,7 @@ export interface VoiceSettings {
   stability?: number;
   similarityBoost?: number;
   style?: string;
+  speed?: number;
   instructions?: string;
   /** Provider-specific TTS options that don't have a shared equivalent
    * (e.g. Cartesia's `emotion`/`volume`, either provider's `speed`). */
@@ -303,6 +304,11 @@ export interface VocalProviderTtsParams {
   speech: Speech;
   voice: Voice;
   outputFileName: string;
+  /** Text of the immediately preceding/following speech in the script, regardless of
+   * speaker — passed to providers that support cross-clip prosody context (e.g.
+   * ElevenLabs' previous_text/next_text) so delivery reacts naturally to context. */
+  previousText?: string;
+  nextText?: string;
 }
 
 export interface IDocumentProcessor {
@@ -330,11 +336,16 @@ export interface IResearchProvider {
 // Agent Interfaces
 export interface ISpeakerAgent {
   speak(
-    script: PodcastScript,
+    speeches: Speech[],
+    speakers: Speaker[],
+    materials: PodcastMaterial[],
+    title: string,
+    description: string,
     direction: string,
     timeStatus?: string,
     forceNearlyOutOfTime?: boolean,
-    requestSummary?: boolean
+    requestSummary?: boolean,
+    isFinalTurn?: boolean
   ): Promise<Speech>;
 }
 
@@ -346,7 +357,9 @@ export interface IDirectorAgent {
     timeStatus: string;
     forceNearlyOutOfTime: boolean;
     requestSummary: boolean;
+    isFinalTurn: boolean;
   }>;
+  isConversationComplete(script: PodcastScript): Promise<boolean>;
 }
 
 // Service Interfaces

@@ -51,9 +51,14 @@ export class AudioService implements IAudioService {
       // Process speeches in batches
       for (let i = 0; i < speeches.length; i += batchSize) {
         const batch = speeches.slice(i, i + batchSize);
-        const batchPromises = batch.map((speech) =>
-          this.generateSpeechAudio(speech)
-        );
+        const batchPromises = batch.map((speech, batchIndex) => {
+          const index = i + batchIndex;
+          return this.generateSpeechAudio(
+            speech,
+            speeches[index - 1]?.message,
+            speeches[index + 1]?.message
+          );
+        });
         const batchResults = await Promise.all(batchPromises);
         ttsResults.push(...batchResults);
       }
@@ -133,7 +138,11 @@ export class AudioService implements IAudioService {
     logger.info(`Audio timeline written: ${timelinePath}`);
   }
 
-  private async generateSpeechAudio(speech: Speech): Promise<TtsResult> {
+  private async generateSpeechAudio(
+    speech: Speech,
+    previousText?: string,
+    nextText?: string
+  ): Promise<TtsResult> {
     const provider = VocalProviderFactory.getProvider(speech.voice.provider);
     const outputFileName = path.join("speeches", `${speech.id}.mp3`);
 
@@ -141,6 +150,8 @@ export class AudioService implements IAudioService {
       speech,
       voice: speech.voice,
       outputFileName,
+      previousText,
+      nextText,
     });
   }
 }

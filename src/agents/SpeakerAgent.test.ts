@@ -54,7 +54,15 @@ describe("SpeakerAgent stopReason threading", () => {
       stopReason: "max_tokens",
     });
 
-    const speech = await agent.speak(makeScript(), "talk about x");
+    const script = makeScript();
+    const speech = await agent.speak(
+      script.speeches,
+      script.speakers,
+      script.materials,
+      script.title,
+      script.description,
+      "talk about x"
+    );
 
     expect(speech.stopReason).toBe("max_tokens");
   });
@@ -78,7 +86,7 @@ describe("SpeakerAgent stopReason threading", () => {
       stopReason: "stop",
     });
 
-    const speech = await agent.interject(makeScript([lastSpeech]));
+    const speech = await agent.interject(lastSpeech);
 
     expect(speech.stopReason).toBe("stop");
   });
@@ -106,7 +114,7 @@ describe("SpeakerAgent.interject tool set", () => {
         stopReason: "stop",
       });
 
-    await agent.interject(makeScript([lastSpeech]));
+    await agent.interject(lastSpeech);
 
     const offeredTools = spy.mock.calls[0][1] as { name: string }[];
     expect(offeredTools.map((tool) => tool.name)).toEqual([
@@ -127,7 +135,15 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
       stopReason: "stop",
     });
 
-    await agent.speak(makeScript([], [makeSpeaker("s1")]), "talk about x");
+    const script1 = makeScript([], [makeSpeaker("s1")]);
+    await agent.speak(
+      script1.speeches,
+      script1.speakers,
+      script1.materials,
+      script1.title,
+      script1.description,
+      "talk about x"
+    );
 
     const offeredTools = spy.mock.calls[0][1] as { name: string }[];
     expect(offeredTools.map((tool) => tool.name)).toEqual([
@@ -137,8 +153,8 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
     ]);
   });
 
-  it("offers the full tool set when there are multiple speakers", async () => {
-    const agent = new SpeakerAgent(makeSpeaker("s1"));
+  it("offers the full tool set when there are multiple speakers and the speaker is an expert", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1", true));
     const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
       toolName: SpeakerAgentToolName.SPEAK,
       message: "hello there",
@@ -146,10 +162,55 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
       stopReason: "stop",
     });
 
-    await agent.speak(makeScript(), "talk about x");
+    const scriptMulti = makeScript();
+    await agent.speak(
+      scriptMulti.speeches,
+      scriptMulti.speakers,
+      scriptMulti.materials,
+      scriptMulti.title,
+      scriptMulti.description,
+      "talk about x"
+    );
 
     const offeredTools = spy.mock.calls[0][1] as { name: string }[];
     expect(offeredTools.length).toBeGreaterThan(3);
+    expect(offeredTools.map((tool) => tool.name)).toContain(
+      SpeakerAgentToolName.SPEAK
+    );
+  });
+
+  it("hard-constrains non-experts to SHORT_REACTION_TOOLS when there are multiple speakers", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1", false));
+    const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.INTERJECT,
+      message: "wow",
+      style: "surprised",
+      stopReason: "stop",
+    });
+
+    const scriptMulti = makeScript();
+    await agent.speak(
+      scriptMulti.speeches,
+      scriptMulti.speakers,
+      scriptMulti.materials,
+      scriptMulti.title,
+      scriptMulti.description,
+      "talk about x"
+    );
+
+    const offeredTools = spy.mock.calls[0][1] as { name: string }[];
+    const toolNames = offeredTools.map((tool) => tool.name);
+    // Non-experts should have exactly the SHORT_REACTION_TOOLS and nothing else
+    expect(new Set(toolNames)).toEqual(
+      new Set([
+        SpeakerAgentToolName.INTERJECT,
+        SpeakerAgentToolName.FILLER_COMMENT,
+        SpeakerAgentToolName.SHORT_QUESTION,
+        SpeakerAgentToolName.ONE_LINER,
+      ])
+    );
+    expect(toolNames.length).toBe(4);
+    expect(toolNames).not.toContain(SpeakerAgentToolName.SPEAK);
   });
 
   it("nudges non-experts toward only ONE_LINER as the short tool when solo", async () => {
@@ -161,10 +222,19 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
       stopReason: "stop",
     });
 
-    await agent.speak(makeScript([], [makeSpeaker("s1")]), "talk about x");
+    const script1 = makeScript([], [makeSpeaker("s1")]);
+    await agent.speak(
+      script1.speeches,
+      script1.speakers,
+      script1.materials,
+      script1.title,
+      script1.description,
+      "talk about x"
+    );
 
     const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
-    expect(prompt).toContain(`favor short tools (${SpeakerAgentToolName.ONE_LINER})`);
+    expect(prompt).toContain("only use short tools");
+    expect(prompt).toContain(SpeakerAgentToolName.ONE_LINER);
     expect(prompt).not.toContain(SpeakerAgentToolName.FILLER_COMMENT);
   });
 });
@@ -179,10 +249,18 @@ describe("SpeakerAgent expertise nudge", () => {
       stopReason: "stop",
     });
 
-    await agent.speak(makeScript(), "talk about x");
+    const script2 = makeScript();
+    await agent.speak(
+      script2.speeches,
+      script2.speakers,
+      script2.materials,
+      script2.title,
+      script2.description,
+      "talk about x"
+    );
 
     const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
-    expect(prompt).toContain("favor the speak tool");
+    expect(prompt).toContain("use the speak tool");
   });
 
   it("tells non-experts to favor short tools and use speak rarely", async () => {
@@ -194,11 +272,19 @@ describe("SpeakerAgent expertise nudge", () => {
       stopReason: "stop",
     });
 
-    await agent.speak(makeScript(), "talk about x");
+    const script2b = makeScript();
+    await agent.speak(
+      script2b.speeches,
+      script2b.speakers,
+      script2b.materials,
+      script2b.title,
+      script2b.description,
+      "talk about x"
+    );
 
     const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
-    expect(prompt).toContain("favor short tools");
-    expect(prompt).toContain("reserve speak for the occasional genuine point");
+    expect(prompt).toContain("only use short tools");
+    expect(prompt).toContain("Do NOT use speak");
   });
 });
 
@@ -212,8 +298,13 @@ describe("SpeakerAgent requestSummary", () => {
       stopReason: "stop",
     });
 
+    const script3 = makeScript();
     await agent.speak(
-      makeScript(),
+      script3.speeches,
+      script3.speakers,
+      script3.materials,
+      script3.title,
+      script3.description,
       "catch up on remaining points",
       "",
       false,
@@ -224,7 +315,7 @@ describe("SpeakerAgent requestSummary", () => {
     expect(offeredTools.map((tool) => tool.name)).toEqual([
       SpeakerAgentToolName.SUMMARIZE,
     ]);
-    expect(spy.mock.calls[0][2]).toBe(180);
+    expect(spy.mock.calls[0][2]).toBe(120);
   });
 
   it("still forces NEARLY_OUT_OF_TIME over SUMMARIZE when both flags are true", async () => {
@@ -236,7 +327,18 @@ describe("SpeakerAgent requestSummary", () => {
       stopReason: "stop",
     });
 
-    await agent.speak(makeScript(), "wrap up", "almost out of time", true, true);
+    const script4 = makeScript();
+    await agent.speak(
+      script4.speeches,
+      script4.speakers,
+      script4.materials,
+      script4.title,
+      script4.description,
+      "wrap up",
+      "almost out of time",
+      true,
+      true
+    );
 
     const offeredTools = spy.mock.calls[0][1] as { name: string }[];
     expect(offeredTools.map((tool) => tool.name)).toEqual([
@@ -265,7 +367,15 @@ describe("SpeakerAgent expert material lookup via RAGService", () => {
         stopReason: "stop",
       });
 
-    await agent.speak(makeScript(), "talk about bioluminescence");
+    const script5 = makeScript();
+    await agent.speak(
+      script5.speeches,
+      script5.speakers,
+      script5.materials,
+      script5.title,
+      script5.description,
+      "talk about bioluminescence"
+    );
 
     expect(searchRelevantContent).toHaveBeenCalledWith(
       "talk about bioluminescence",
@@ -299,7 +409,14 @@ describe("SpeakerAgent expert material lookup via RAGService", () => {
       },
     ];
 
-    await agent.speak(script, "talk about x");
+    await agent.speak(
+      script.speeches,
+      script.speakers,
+      script.materials,
+      script.title,
+      script.description,
+      "talk about x"
+    );
 
     const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
     expect(prompt).toContain("Fallback Material: Naive content.");
@@ -333,7 +450,14 @@ describe("SpeakerAgent expert material lookup via RAGService", () => {
       },
     ];
 
-    await agent.speak(script, "talk about x");
+    await agent.speak(
+      script.speeches,
+      script.speakers,
+      script.materials,
+      script.title,
+      script.description,
+      "talk about x"
+    );
 
     const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
     expect(prompt).toContain("Fallback Material: Naive content.");

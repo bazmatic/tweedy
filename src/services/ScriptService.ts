@@ -204,16 +204,31 @@ export class ScriptService implements IScriptService {
     }
 
     for (let turn = 0; turn < params.maxTurns; turn++) {
-      const { speaker, direction, timeStatus, forceNearlyOutOfTime, requestSummary } =
+      if (
+        script.speeches.length > 0 &&
+        (await directorAgent.isConversationComplete(script))
+      ) {
+        logger.info(
+          'Director judged the conversation naturally concluded; stopping production early'
+        );
+        break;
+      }
+
+      const { speaker, direction, timeStatus, forceNearlyOutOfTime, requestSummary, isFinalTurn } =
         await directorAgent.chooseNextSpeaker(script);
       const speakerAgent = new SpeakerAgent(speaker, this.ragService);
 
       const speech = await speakerAgent.speak(
-        script,
+        script.speeches,
+        script.speakers,
+        script.materials,
+        script.title,
+        script.description,
         direction,
         timeStatus,
         forceNearlyOutOfTime,
-        requestSummary
+        requestSummary,
+        isFinalTurn
       );
       await this.persistSpeech(script, speech);
 
@@ -222,7 +237,6 @@ export class ScriptService implements IScriptService {
       // picks the next real turn — real overlap instead of relying on the
       // speaker to self-select a short tool. Skip on the final turn so the
       // closing statement is the last thing said, not a context-blind reaction.
-      const isFinalTurn = turn === params.maxTurns - 1;
       if (
         !isFinalTurn &&
         shouldInterject(speech, script.speakers.length, Math.random())
@@ -238,8 +252,15 @@ export class ScriptService implements IScriptService {
           interjector,
           this.ragService
         );
-        const interjection = await interjectionAgent.interject(script);
+        const interjection = await interjectionAgent.interject(script.speeches[script.speeches.length - 1]);
         await this.persistSpeech(script, interjection);
+      }
+
+      // The director declares final turn either at the maxTurns safety
+      // ceiling or once the estimated duration budget is exhausted — stop
+      // here rather than looping until maxTurns regardless of pacing.
+      if (isFinalTurn) {
+        break;
       }
     }
 

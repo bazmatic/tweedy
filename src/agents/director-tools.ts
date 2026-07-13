@@ -65,6 +65,32 @@ export function toVerifyCoveredPointsTool(): LlmTool {
   };
 }
 
+export interface CheckConversationCompleteInput {
+  isComplete: boolean;
+}
+
+export const CHECK_CONVERSATION_COMPLETE_TOOL_NAME =
+  "check_conversation_complete";
+
+export function toCheckConversationCompleteTool(): LlmTool {
+  return {
+    name: CHECK_CONVERSATION_COMPLETE_TOOL_NAME,
+    description:
+      "Judge whether the conversation has reached a natural, satisfying conclusion (e.g. farewells exchanged, explicit sense of wrap-up) versus still being mid-thought even though all discussion points are covered.",
+    input_schema: {
+      type: "object",
+      properties: {
+        isComplete: {
+          type: "boolean",
+          description:
+            "True only if the recent speech(es) show the conversation has genuinely wrapped up naturally — not merely that all discussion points are covered.",
+        },
+      },
+      required: ["isComplete"],
+    },
+  };
+}
+
 export interface CreatePodcastPlanInput {
   narrative: string;
   points: string[];
@@ -78,19 +104,19 @@ export function toCreatePodcastPlanTool(): LlmTool {
     input_schema: {
       type: "object",
       properties: {
+        points: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Concrete, discrete discussion points that must be covered during the episode, each a short phrase. The exact minimum count is given in the prompt, scaled to episode length. Provide this before the narrative.",
+        },
         narrative: {
           type: "string",
           description:
             "A detailed prose description of how the conversation should flow: opening, segments, closing.",
         },
-        points: {
-          type: "array",
-          items: { type: "string" },
-          description:
-            "3-8 concrete, discrete discussion points that must be covered during the episode, each a short phrase.",
-        },
       },
-      required: ["narrative", "points"],
+      required: ["points", "narrative"],
     },
   };
 }

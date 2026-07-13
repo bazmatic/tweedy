@@ -295,6 +295,117 @@ describe("DirectorAgent progress / wrap-up pacing", () => {
   });
 });
 
+describe("DirectorAgent.isConversationComplete", () => {
+  it("returns false without a model call when there are no discussion points", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    const callModelSpy = vi.spyOn(agent as any, "callModelForToolInput");
+
+    const result = await agent.isConversationComplete(script);
+
+    expect(result).toBe(false);
+    expect(callModelSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns false without a model call when some points are still uncovered", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValueOnce({
+      narrative: "plan",
+      points: ["Point A", "Point B"],
+    });
+    await agent.createPodcastPlan();
+
+    const callModelSpy = vi.spyOn(agent as any, "callModelForToolInput");
+    callModelSpy.mockClear();
+
+    const result = await agent.isConversationComplete(script);
+
+    expect(result).toBe(false);
+    expect(callModelSpy).not.toHaveBeenCalled();
+  });
+
+  it("asks the model to judge natural conclusion once all points are covered, and returns true when it agrees", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValueOnce({
+      narrative: "plan",
+      points: ["Point A"],
+    });
+    await agent.createPodcastPlan();
+
+    const chooseSpy = vi.spyOn(agent as any, "callModelForToolInput");
+    chooseSpy.mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Talk about A",
+      coveredPointIds: ["p1"],
+    });
+    chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
+    await agent.chooseNextSpeaker(script);
+
+    chooseSpy.mockResolvedValueOnce({ isComplete: true });
+
+    const result = await agent.isConversationComplete(script);
+
+    expect(result).toBe(true);
+  });
+
+  it("returns false when the model judges the conversation is not yet naturally concluded", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValueOnce({
+      narrative: "plan",
+      points: ["Point A"],
+    });
+    await agent.createPodcastPlan();
+
+    const chooseSpy = vi.spyOn(agent as any, "callModelForToolInput");
+    chooseSpy.mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Talk about A",
+      coveredPointIds: ["p1"],
+    });
+    chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
+    await agent.chooseNextSpeaker(script);
+
+    chooseSpy.mockResolvedValueOnce({ isComplete: false });
+
+    const result = await agent.isConversationComplete(script);
+
+    expect(result).toBe(false);
+  });
+
+  it("returns false and does not throw if the completeness check fails", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValueOnce({
+      narrative: "plan",
+      points: ["Point A"],
+    });
+    await agent.createPodcastPlan();
+
+    const chooseSpy = vi.spyOn(agent as any, "callModelForToolInput");
+    chooseSpy.mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Talk about A",
+      coveredPointIds: ["p1"],
+    });
+    chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
+    await agent.chooseNextSpeaker(script);
+
+    chooseSpy.mockRejectedValueOnce(new Error("model error"));
+
+    const result = await agent.isConversationComplete(script);
+
+    expect(result).toBe(false);
+  });
+});
+
 describe("DirectorAgent velocity / pacing", () => {
   it("requests a summary turn when behind pace with 2+ open points", async () => {
     const script = makeScript({

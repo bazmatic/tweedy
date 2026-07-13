@@ -274,12 +274,16 @@ export abstract class BaseAgent {
       }
 
       const input = toolCall.args as { message: string; style: string };
+      const stopReason = normalizeStopReason(response.response_metadata);
 
       return {
         toolName: toolCall.name,
-        message: input.message,
+        message:
+          stopReason === "max_tokens"
+            ? appendTruncationFiller(input.message)
+            : input.message,
         style: input.style,
-        stopReason: normalizeStopReason(response.response_metadata),
+        stopReason,
       };
     } catch (error) {
       logger.error("AI model tool-use call failed:", error);

@@ -14,17 +14,11 @@ import {
   SHORT_REACTION_TOOLS,
   SOLO_TOOLS,
   SpeakerAgentToolName,
+  getToolMaxTokens,
   toLlmTools,
 } from "./speaker-tools";
 
 export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
-  private static readonly SPEECH_MAX_TOKENS = 150;
-  // Tight on purpose: interjections are meant to be very short words, and a shared
-  // budget with SPEAK-length turns let the model ramble well past that.
-  private static readonly INTERJECTION_MAX_TOKENS = 100;
-  // A recap has to touch several points in one turn, so it needs more room
-  // than a normal single-idea SPEAK turn, but stays well short of a ramble.
-  private static readonly SUMMARY_MAX_TOKENS = 180;
 
   private speaker: Speaker;
   private ragService?: RAGService;
@@ -37,11 +31,16 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
   }
 
   async speak(
-    script: PodcastScript,
+    speeches: Speech[],
+    speakers: Speaker[],
+    materials: PodcastScript['materials'],
+    title: string,
+    description: string,
     direction: string,
     timeStatus = "",
     forceNearlyOutOfTime = false,
-    requestSummary = false
+    requestSummary = false,
+    isFinalTurn = false
   ): Promise<Speech> {
     let attempts = 0;
 
@@ -54,11 +53,16 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
 
         const { toolName, message, style, stopReason } =
           await this.generateSpeech(
-            script,
+            speeches,
+            speakers,
+            materials,
+            title,
+            description,
             direction,
             timeStatus,
             forceNearlyOutOfTime,
-            requestSummary
+            requestSummary,
+            isFinalTurn
           );
 
         const speech: Speech = {
@@ -97,10 +101,8 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
    * A cheap, forced-short-form turn used to interrupt a co-host mid-flow.
    * Only reaction tools are offered so this can never turn into another monologue.
    */
-  async interject(script: PodcastScript): Promise<Speech> {
+  async interject(lastSpeech: Speech): Promise<Speech> {
     try {
-      const lastSpeech = script.speeches[script.speeches.length - 1];
-
       const messages: LlmMessage[] = [
         {
           role: "user" as const,
@@ -110,14 +112,14 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
 
 ${lastSpeech.speaker.name} just said: "${lastSpeech.message}"
 
-Give a brief, natural reaction to cut in with — a quick interjection or filler comment. If ${lastSpeech.speaker.name}'s line trails off or stops mid-sentence (e.g. ends with "..." or an unfinished thought), you can jump in and complete their sentence for them instead of just reacting. Do not summarize or explain, just react in the moment.`,
+Give a brief, natural reaction to cut in with — a quick interjection or filler comment. Do not summarize or explain, just react in the moment.`,
         },
       ];
 
       const result = await this.callModelWithTools(
         messages,
         toLlmTools(INTERJECTION_TOOLS),
-        SpeakerAgent.INTERJECTION_MAX_TOKENS
+        getToolMaxTokens(SpeakerAgentToolName.INTERJECT)
       );
 
       return {
@@ -138,27 +140,36 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
   }
 
   private async generateSpeech(
-    script: PodcastScript,
+    speeches: Speech[],
+    speakers: Speaker[],
+    materials: PodcastScript['materials'],
+    title: string,
+    description: string,
     direction: string,
     timeStatus: string,
     forceNearlyOutOfTime: boolean,
-    requestSummary: boolean
+    requestSummary: boolean,
+    isFinalTurn: boolean
   ): Promise<{
     toolName: SpeakerAgentToolName;
     message: string;
     style: string;
     stopReason: StopReason;
   }> {
-    const isSolo = script.speakers.length <= 1;
-    const conversationHistory = this.getConversationHistory(script);
+    const isSolo = speakers.length <= 1;
+    const conversationHistory = this.getConversationHistory(speeches);
     const expertLevel = this.speaker.isExpert
       ? "Expert"
       : "General audience (no access to source material — you only know what's been discussed aloud or is common knowledge)";
     const materialsSection = this.speaker.isExpert
       ? `\n\nRelevant Materials:\n${await this.getRelevantMaterials(
-          script,
+          materials,
           direction
         )}`
+      : "";
+
+    const closingPromptAddendum = isFinalTurn
+      ? "\n\nThis is the final turn of the episode. Use the closing_statement tool to deliver a warm, authentic closing that wraps up the podcast and signs off naturally."
       : "";
 
     const messages: LlmMessage[] = [
@@ -172,8 +183,8 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
 - Expert Level: ${expertLevel}
 
 Podcast Context:
-- Title: ${script.title}
-- Description: ${script.description}
+- Title: ${title}
+- Description: ${description}
 
 Conversation History (speaker: message [tool used]):
 ${conversationHistory}${materialsSection}
@@ -184,27 +195,37 @@ Director's guidance: ${direction}${
               ? `\n\nTime status: ${timeStatus} You must use the nearly_out_of_time tool this turn to tell your co-hosts you're running low on time.`
               : `\n\nTime status: ${timeStatus} If it fits naturally, you can use the nearly_out_of_time tool to flag the time to your co-hosts.`
             : ""
-        }
+        }${closingPromptAddendum}
 
 Respond naturally as ${
           this.speaker.name
         }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getBrevityNudge(
-          script,
+          speeches,
           isSolo
-        )}${this.getExpertiseNudge(isSolo)} Keep this short and punchy. Get ONE idea out and then stop — a single point, fact, or beat per turn, not a multi-part explanation. Trust your co-host to ask a follow-up if they want more; don't pre-empt their next question by answering it yourself in the same turn. Be authentic to your personality and expertise level. Make the speech sound like real, unscripted talk, not a written passage: sprinkle in plenty of filler words (um, uh, er, like, you know, ahhhh, ummmmm), false starts and self-corrections ("it was — actually, no, it was..."), and the occasional stammer. Use ellipsis ("...") often to show trailing off, hesitation, or a pause before continuing a thought. Sometimes stop mid-sentence as if you've lost the word or the thread entirely — trail off with "..." and don't finish the thought; your co-host may jump in and finish it for you. Do not include stage directions, emotes, sound effects or physical actions in the message itself — those belong in the style argument.`,
+        )}${this.getExpertiseNudge(isSolo)} **CRITICAL: Keep this to 1-2 sentences max (under 50 words).** Get ONE idea out and then stop. Trust your co-host to ask a follow-up; don't pre-empt their next question. Be authentic to your personality and expertise level. Make the speech sound like real, unscripted talk with filler words (um, uh, like, you know), false starts ("it was — actually, no..."), and occasional stammers. Use ellipsis ("...") to show trailing off or hesitation. Don't include stage directions, emotes, or sound effects — those belong in the style argument only.`,
       },
     ];
 
-    const tools = forceNearlyOutOfTime
-      ? toLlmTools([SpeakerAgentToolName.NEARLY_OUT_OF_TIME])
-      : requestSummary
-        ? toLlmTools([SpeakerAgentToolName.SUMMARIZE])
-        : toLlmTools(isSolo ? SOLO_TOOLS : undefined);
+    const toolSet = isFinalTurn
+      ? [SpeakerAgentToolName.CLOSING_STATEMENT]
+      : forceNearlyOutOfTime
+        ? [SpeakerAgentToolName.NEARLY_OUT_OF_TIME]
+        : requestSummary
+          ? [SpeakerAgentToolName.SUMMARIZE]
+          : isSolo
+            ? SOLO_TOOLS
+            : this.speaker.isExpert
+              ? undefined
+              : SHORT_REACTION_TOOLS;
+
+    const tools = toLlmTools(toolSet);
 
     const maxTokens =
-      requestSummary && !forceNearlyOutOfTime
-        ? SpeakerAgent.SUMMARY_MAX_TOKENS
-        : SpeakerAgent.SPEECH_MAX_TOKENS;
+      isFinalTurn
+        ? getToolMaxTokens(SpeakerAgentToolName.CLOSING_STATEMENT)
+        : requestSummary && !forceNearlyOutOfTime
+          ? getToolMaxTokens(SpeakerAgentToolName.SUMMARIZE)
+          : getToolMaxTokens(SpeakerAgentToolName.SPEAK);
 
     const result = await this.callModelWithTools(messages, tools, maxTokens);
 
@@ -216,8 +237,8 @@ Respond naturally as ${
     };
   }
 
-  private getConversationHistory(script: PodcastScript): string {
-    return script.speeches
+  private getConversationHistory(speeches: Speech[]): string {
+    return speeches
       .slice(-10) // Last 10 speeches
       .map(
         (speech) =>
@@ -232,23 +253,23 @@ Respond naturally as ${
    * Counts consecutive trailing speeches that used a long-form tool (SPEAK),
    * so the prompt can push back toward short reactions after a run of them.
    */
-  private getBrevityNudge(script: PodcastScript, isSolo: boolean): string {
+  private getBrevityNudge(speeches: Speech[], isSolo: boolean): string {
     let consecutiveLongTurns = 0;
-    for (let i = script.speeches.length - 1; i >= 0; i--) {
-      if (script.speeches[i].tool === SpeakerAgentToolName.SPEAK) {
+    for (let i = speeches.length - 1; i >= 0; i--) {
+      if (speeches[i].tool === SpeakerAgentToolName.SPEAK) {
         consecutiveLongTurns++;
       } else {
         break;
       }
     }
 
-    if (consecutiveLongTurns >= 2) {
+    if (consecutiveLongTurns >= 1) {
       const shortTools = isSolo
         ? [SpeakerAgentToolName.ONE_LINER]
         : SHORT_REACTION_TOOLS;
-      return ` The conversation has had ${consecutiveLongTurns} long responses in a row — strongly prefer a short tool (${shortTools.join(
+      return ` **YOU MUST use a short tool this turn** (${shortTools.join(
         ", "
-      )}) this turn instead of another full explanation.`;
+      )}) — no long explanations, just a brief reaction or quick point.`;
     }
 
     return "";
@@ -261,19 +282,19 @@ Respond naturally as ${
    */
   private getExpertiseNudge(isSolo: boolean): string {
     if (this.speaker.isExpert) {
-      return " As the expert here with access to the material, favor the speak tool to carry the substantive explanation — that's your role in this conversation.";
+      return " As the expert here with access to the material, use the speak tool to deliver substantive explanations — that's your role.";
     }
 
     const shortTools = isSolo
       ? [SpeakerAgentToolName.ONE_LINER]
       : SHORT_REACTION_TOOLS;
-    return ` As a non-expert, you rarely have new information to add — favor short tools (${shortTools.join(
+    return ` As a non-expert, **only use short tools** (${shortTools.join(
       ", "
-    )}) most turns, and reserve speak for the occasional genuine point.`;
+    )}) — you're the audience, not the teacher. React, ask, or push back briefly. Do NOT use speak.`;
   }
 
   private async getRelevantMaterials(
-    script: PodcastScript,
+    materials: PodcastScript['materials'],
     direction: string
   ): Promise<string> {
     if (this.ragService) {
@@ -298,7 +319,7 @@ Respond naturally as ${
       }
     }
 
-    return script.materials
+    return materials
       .slice(0, 3) // First 3 materials
       .map(
         (material) =>

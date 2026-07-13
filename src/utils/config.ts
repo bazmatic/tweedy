@@ -1,8 +1,12 @@
 import { config } from "dotenv";
+import * as os from "os";
+import * as path from "path";
 import { AiProviderName, AppConfig, VocalProviderName } from "../types";
 
-// Load environment variables
+// Load environment variables: cwd .env takes precedence, falling back to a
+// global ~/.tweedy/.env so the CLI works the same regardless of cwd.
 config();
+config({ path: path.join(os.homedir(), ".tweedy", ".env") });
 
 export function loadConfig(): AppConfig {
   return {

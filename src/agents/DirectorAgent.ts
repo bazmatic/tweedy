@@ -3,15 +3,18 @@ import { BaseAgent } from './BaseAgent';
 import { MaterialSummarizerAgent } from './MaterialSummarizerAgent';
 import { logger } from '../utils/logger';
 import {
+  CheckConversationCompleteInput,
   CreatePodcastPlanInput,
   SelectNextSpeakerInput,
   VerifyCoveredPointsInput,
+  toCheckConversationCompleteTool,
   toCreatePodcastPlanTool,
   toSelectNextSpeakerTool,
   toVerifyCoveredPointsTool,
 } from './director-tools';
 
 const WORDS_PER_MINUTE = 150;
+const MINUTES_PER_DISCUSSION_POINT = 2;
 
 export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private script: PodcastScript;
@@ -49,6 +52,12 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
         .map((material, index) => `${material.title}: ${summaries[index]}`)
         .join('\n\n');
 
+      const durationMinutes = this.maxDuration / 60;
+      const minDiscussionPoints = Math.max(
+        3,
+        Math.round(durationMinutes / MINUTES_PER_DISCUSSION_POINT)
+      );
+
       const messages = [
         {
           role: 'user' as const,
@@ -56,7 +65,7 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
 
 Title: ${this.script.title}
 Description: ${this.script.description}
-Duration: Approximately ${Math.round(this.maxDuration / 60)} minutes, across up to ${this.maxTurns} speaking turns
+Duration: Approximately ${Math.round(durationMinutes)} minutes, across up to ${this.maxTurns} speaking turns
 Speakers: ${this.script.speakers.map(s => s.name).join(', ')}
 
 Available materials:
@@ -70,7 +79,7 @@ Create a detailed plan for how the conversation should flow, including:
 
 Keep it engaging and natural, with clear direction for each speaker.
 
-Also provide a separate list of 3-8 concrete discussion points that must be covered during the episode — short, discrete phrases rather than full sentences, since they'll be tracked individually as the conversation progresses.`
+Also provide a separate list of at least ${minDiscussionPoints} concrete discussion points that must be covered during the episode (roughly one per ${MINUTES_PER_DISCUSSION_POINT} minutes of runtime) — short, discrete phrases rather than full sentences, since they'll be tracked individually as the conversation progresses.`
         }
       ];
 
@@ -78,7 +87,7 @@ Also provide a separate list of 3-8 concrete discussion points that must be cove
       const { narrative, points } = await this.callModelForToolInput<CreatePodcastPlanInput>(
         messages,
         tools,
-        1200
+        2000
       );
 
       this.podcastPlan = narrative ?? '';
@@ -106,21 +115,26 @@ Also provide a separate list of 3-8 concrete discussion points that must be cove
     timeStatus: string;
     forceNearlyOutOfTime: boolean;
     requestSummary: boolean;
+    isFinalTurn: boolean;
   }> {
     try {
       this.logAgentAction('Choosing next speaker');
 
       this.turnsUsed++;
       const progress = this.calculateProgress(script);
-      const wrapUpNote = this.getWrapUpNote(progress);
+      // progress caps at 100 once estimated elapsed speech time reaches
+      // maxDuration — treat that the same as hitting the turn ceiling so the
+      // episode actually ends instead of dragging on until maxTurns (a
+      // generous safety ceiling, not the real pacing signal).
+      const isFinalTurn =
+        this.turnsUsed >= this.maxTurns || progress >= 100;
+      const wrapUpNote = this.getWrapUpNote(progress, isFinalTurn);
       const velocityBeforeThisTurn = this.calculateVelocity(script);
       const velocityNote = this.getVelocityNote(velocityBeforeThisTurn);
       const openPointsSection = this.getOpenPointsSection();
 
       // Force explicit "we're almost out of time" tool call.
-      const forceNearlyOutOfTime =
-        progress >= 85 &&
-        this.turnsUsed < this.maxTurns;
+      const forceNearlyOutOfTime = progress >= 85 && !isFinalTurn;
       if (forceNearlyOutOfTime) {
         this.hasForcedTimeWarning = true;
       }
@@ -186,6 +200,7 @@ Decide which speaker should talk next and give them clear direction on what they
           timeStatus: wrapUpNote,
           forceNearlyOutOfTime,
           requestSummary,
+          isFinalTurn,
         };
       }
 
@@ -196,10 +211,53 @@ Decide which speaker should talk next and give them clear direction on what they
         timeStatus: wrapUpNote,
         forceNearlyOutOfTime,
         requestSummary,
+        isFinalTurn,
       };
     } catch (error) {
       logger.error('Failed to choose next speaker:', error);
       throw error;
+    }
+  }
+
+  /**
+   * True once all discussion points are covered AND the model judges the
+   * recent speeches show the conversation has actually wrapped up naturally
+   * (farewells, sense of closure) rather than just having hit point coverage
+   * while still mid-thought. Skips the model call entirely unless every point
+   * is covered, since that's a cheap, deterministic prerequisite.
+   */
+  async isConversationComplete(script: PodcastScript): Promise<boolean> {
+    if (this.points.length === 0 || this.points.some((point) => !point.covered)) {
+      return false;
+    }
+
+    const history = this.getConversationHistory(script);
+    const messages = [
+      {
+        role: 'user' as const,
+        content: `All discussion points for this podcast episode have been covered. Judge whether the conversation below has reached a natural, satisfying conclusion — farewells exchanged, an explicit sense of wrap-up or closure — versus the discussion merely having covered its required points while still feeling mid-thought or open-ended.
+
+Recent speech(es):
+${history || '(nothing said yet)'}
+
+Return isComplete: true only if the conversation has genuinely wrapped up naturally.`,
+      },
+    ];
+
+    try {
+      const { isComplete } =
+        await this.callModelForToolInput<CheckConversationCompleteInput>(
+          messages,
+          [toCheckConversationCompleteTool()],
+          50
+        );
+      return isComplete;
+    } catch (error) {
+      logger.error(
+        'Failed to judge conversation completeness; continuing production:',
+        error
+      );
+      return false;
     }
   }
 
@@ -409,8 +467,8 @@ Return only the ids of points that were genuinely, substantively covered.`,
    * Tells the director to start steering toward a close as the turn/duration
    * budget runs low, and to force a sign-off on the final turn.
    */
-  private getWrapUpNote(progress: number): string {
-    if (this.turnsUsed >= this.maxTurns) {
+  private getWrapUpNote(progress: number, isFinalTurn: boolean): string {
+    if (isFinalTurn) {
       return ' This is the final turn of the episode — direct this speaker to deliver a closing statement that wraps up the conversation and signs off naturally.';
     }
 

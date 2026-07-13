@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { normalizeStopReason } from "./BaseAgent";
+import { describe, expect, it, vi } from "vitest";
+import { normalizeStopReason, BaseAgent } from "./BaseAgent";
+import { AiModelFactory } from "../providers/AiModelFactory";
+
+class TestAgent extends BaseAgent {
+  callModelWithTools(...args: Parameters<BaseAgent["callModelWithTools"]>) {
+    return super.callModelWithTools(...args);
+  }
+}
 
 describe("normalizeStopReason", () => {
   it("maps Anthropic's max_tokens stop_reason to max_tokens", () => {
@@ -41,5 +48,37 @@ describe("normalizeStopReason", () => {
     );
     expect(normalizeStopReason(undefined)).toBe("unknown");
     expect(normalizeStopReason({})).toBe("unknown");
+  });
+});
+
+describe("callModelWithTools truncation filler", () => {
+  it("appends filler even when the tool call parses cleanly but finish_reason is max_tokens", async () => {
+    const fakeModel = {
+      bindTools: () => ({
+        invoke: async () => ({
+          tool_calls: [
+            {
+              name: "SPEAK",
+              args: { message: "how did they not just suffocate?", style: "urgent" },
+            },
+          ],
+          response_metadata: { finish_reason: "length" },
+        }),
+      }),
+    };
+    vi.spyOn(AiModelFactory, "getModel").mockReturnValue(fakeModel as any);
+
+    const agent = new TestAgent();
+    const result = await agent.callModelWithTools(
+      [{ role: "user", content: "go" }],
+      [],
+      200
+    );
+
+    expect(result.stopReason).toBe("max_tokens");
+    expect(result.message).not.toBe("how did they not just suffocate?");
+    expect(result.message.startsWith("how did they not just suffocate?")).toBe(
+      true
+    );
   });
 });
