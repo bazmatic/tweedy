@@ -72,7 +72,7 @@ Available materials:
 ${materialText}
 
 Create a detailed plan for how the conversation should flow, including:
-1. Opening segment
+1. Opening segment — a warm, friendly welcome where the interviewer greets listeners, introduces the episode by name ("${this.script.title}"), and introduces the speakers, before any substantive discussion begins
 2. Main discussion points
 3. Key topics to cover
 4. Closing segment
@@ -164,7 +164,7 @@ ${speakerDescriptions}
 Conversation so far (each line tagged with the tool used to deliver it — "speak" is substantive content; "interject", "filler_comment", "one_liner", and "short_question" are brief reactions, not real answers or new points):
 ${history || '(nothing said yet — this is the opening of the episode)'}
 
-Decide which speaker should talk next and give them clear direction on what they should talk about and how to make sure that the talking points all get covered in time and that the conversation flows smoothly. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. On the opening of the episode, this should usually be the interviewer. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack).${this.getPacingNote(
+Decide which speaker should talk next and give them clear direction on what they should talk about and how to make sure that the talking points all get covered in time and that the conversation flows smoothly. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. On the opening of the episode (nothing said yet), this must be the interviewer, and the direction must have them deliver a warm, friendly welcome to listeners — greeting them, naming the episode ("${this.script.title}"), and introducing the speakers by name — before moving into substantive content. Don't repeat this welcome on later turns. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack).${this.getPacingNote(
             script
           )}${wrapUpNote}${velocityNote}`
         }
