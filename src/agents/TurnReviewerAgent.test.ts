@@ -47,6 +47,9 @@ describe("TurnReviewerAgent", () => {
         grounded: true,
         advancesBeat: true,
         addsVariety: true,
+        roleConsistent: true,
+        knowledgeConsistent: true,
+        introducedCardIds: [],
       });
 
     await agent.review(
@@ -67,5 +70,38 @@ describe("TurnReviewerAgent", () => {
     expect(prompt).toContain("Humanise the subject");
     expect(prompt).toContain("Do not demand analysis from a story");
     expect(prompt).toContain("Australian/British spelling");
+    expect(prompt).toContain("Speaker epistemic role: audience_guide");
+    expect(prompt).toContain("Natural fillers, pauses, hesitations");
+  });
+
+  it("cannot accept a turn that violates role consistency", async () => {
+    const agent = new TurnReviewerAgent();
+    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValue({
+      accepted: true,
+      clear: true,
+      engaging: true,
+      grounded: true,
+      advancesBeat: true,
+      addsVariety: true,
+      roleConsistent: false,
+      knowledgeConsistent: true,
+      introducedCardIds: [],
+    });
+
+    const result = await agent.review(
+      speech,
+      {
+        speakerId: "s1",
+        goal: "Ask for clarification.",
+        move: EditorialMove.Question,
+        cardIds: [],
+        audienceValue: AudienceValue.Understanding,
+        desiredEnergy: EnergyLevel.Curious,
+      },
+      [],
+      []
+    );
+
+    expect(result.accepted).toBe(false);
   });
 });

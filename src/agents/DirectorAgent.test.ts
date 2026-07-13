@@ -657,15 +657,27 @@ describe("DirectorAgent.reviewSpeech", () => {
   it("replaces the message with the director's revision when flagged", async () => {
     const script = makeScript();
     const turnReviewer = {
-      review: vi.fn().mockResolvedValue({
-        accepted: false,
-        clear: true,
-        engaging: true,
-        grounded: true,
-        advancesBeat: false,
-        addsVariety: true,
-        revisedMessage: "A tighter, corrected version.",
-      }),
+      review: vi
+        .fn()
+        .mockResolvedValueOnce({
+          accepted: false,
+          clear: true,
+          engaging: true,
+          grounded: true,
+          advancesBeat: false,
+          addsVariety: true,
+          revisedMessage: "A tighter, corrected version.",
+        })
+        .mockResolvedValueOnce({
+          accepted: true,
+          clear: true,
+          engaging: true,
+          grounded: true,
+          advancesBeat: true,
+          addsVariety: true,
+          roleConsistent: true,
+          knowledgeConsistent: true,
+        }),
     };
     const agent = new DirectorAgent(
       script,
@@ -678,6 +690,33 @@ describe("DirectorAgent.reviewSpeech", () => {
 
     expect(result.message).toBe("A tighter, corrected version.");
     expect(result).not.toBe(speech);
+    expect(turnReviewer.review).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the original when the proposed revision is visibly truncated", async () => {
+    const script = makeScript();
+    const turnReviewer = {
+      review: vi.fn().mockResolvedValue({
+        accepted: false,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: false,
+        addsVariety: true,
+        revisedMessage: "A sprawling network weaving through the soil,",
+      }),
+    };
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      { turnReviewer }
+    );
+
+    const speech = makeReviewSpeech();
+    const result = await agent.reviewSpeech(speech, "Talk about X");
+
+    expect(result.message).toBe(speech.message);
+    expect(turnReviewer.review).toHaveBeenCalledTimes(1);
   });
 
   it("returns the speech unchanged if the review call fails", async () => {

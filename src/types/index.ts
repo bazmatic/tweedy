@@ -77,6 +77,31 @@ export interface Speaker {
   voice: Voice;
   voiceStyle: string;
   isExpert: boolean;
+  roleProfile?: SpeakerRoleProfile;
+}
+
+export enum EpistemicRole {
+  Expert = "expert",
+  InformedHost = "informed_host",
+  AudienceGuide = "audience_guide",
+}
+
+export enum SourceAccess {
+  Full = "full",
+  PreparedCards = "prepared_cards",
+  HeardOnly = "heard_only",
+}
+
+export enum UncertaintyStyle {
+  Precise = "precise",
+  Exploratory = "exploratory",
+  ListenerSurrogate = "listener_surrogate",
+}
+
+export interface SpeakerRoleProfile {
+  epistemicRole: EpistemicRole;
+  sourceAccess: SourceAccess;
+  uncertaintyStyle: UncertaintyStyle;
 }
 
 export type StopReason = "max_tokens" | "stop" | "tool_use" | "unknown";
@@ -135,6 +160,25 @@ export interface EvidenceRef {
   materialId: string;
   excerpt: string;
   section?: string;
+}
+
+export enum KnowledgeSource {
+  SourceMaterial = "source_material",
+  PreparedCard = "prepared_card",
+  Conversation = "conversation",
+  CommonKnowledge = "common_knowledge",
+  PersonalExperience = "personal_experience",
+}
+
+export interface IntroducedKnowledge {
+  cardId: string;
+  introducedBySpeakerId: string;
+  introducedAtTurn: number;
+  source: KnowledgeSource;
+}
+
+export interface KnowledgeLedger {
+  introducedCards: IntroducedKnowledge[];
 }
 
 export interface EditorialCard {
@@ -235,6 +279,7 @@ export interface TurnBrief {
   audienceValue: AudienceValue;
   desiredEnergy: EnergyLevel;
   device?: ConversationalDevice;
+  knowledgeSource?: KnowledgeSource;
 }
 
 export interface TurnReview {
@@ -244,7 +289,14 @@ export interface TurnReview {
   grounded: boolean;
   advancesBeat: boolean;
   addsVariety: boolean;
+  roleConsistent?: boolean;
+  knowledgeConsistent?: boolean;
+  introducedCardIds?: string[];
   feedback?: string;
+}
+
+export interface ReviewedTurn extends TurnReview {
+  revisedMessage?: string;
 }
 
 export interface PodcastScript {
@@ -257,6 +309,7 @@ export interface PodcastScript {
   discussionPoints: DiscussionPoint[];
   editorialCards?: EditorialCard[];
   conversationBeats?: ConversationBeat[];
+  knowledgeLedger?: KnowledgeLedger;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -303,6 +356,7 @@ export interface SpeakerRecord {
   voiceId: string;
   voiceStyle: string;
   isExpert: boolean;
+  roleProfile?: SpeakerRoleProfile;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -317,6 +371,7 @@ export interface ScriptRecord {
   discussionPoints: DiscussionPoint[];
   editorialCards?: EditorialCard[];
   conversationBeats?: ConversationBeat[];
+  knowledgeLedger?: KnowledgeLedger;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -528,8 +583,9 @@ export interface ITurnReviewer {
     speech: Speech,
     brief: TurnBrief,
     cards: EditorialCard[],
-    recentSpeeches: Speech[]
-  ): Promise<TurnReview & { revisedMessage?: string }>;
+    recentSpeeches: Speech[],
+    knowledgeLedger?: KnowledgeLedger
+  ): Promise<ReviewedTurn>;
 }
 
 // Service Interfaces

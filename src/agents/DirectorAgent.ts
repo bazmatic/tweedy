@@ -6,6 +6,7 @@ import {
   EditorialCard,
   EditorialMove,
   EnergyLevel,
+  EpistemicRole,
   IDirectorAgent,
   IMaterialPreparer,
   ITurnReviewer,
@@ -30,6 +31,10 @@ import {
   toVerifyCoveredPointsTool,
 } from './director-tools';
 import { ConversationBeatInput } from './editorial-tools';
+import { SpeakerRolePolicy } from './SpeakerRolePolicy';
+import { SpeechRevisionPolicy } from './SpeechRevisionPolicy';
+import { SpeakerRoleProfileResolver } from './SpeakerRoleProfileResolver';
+import { DialogueCadencePolicy } from './DialogueCadencePolicy';
 
 const WORDS_PER_MINUTE = 150;
 const MINUTES_PER_DISCUSSION_POINT = 2;
@@ -49,6 +54,10 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private materialPreparer: IMaterialPreparer;
   private turnReviewer: ITurnReviewer;
   private rhythmPolicy: ConversationRhythmPolicy;
+  private speakerRolePolicy: SpeakerRolePolicy;
+  private speechRevisionPolicy: SpeechRevisionPolicy;
+  private roleProfileResolver: SpeakerRoleProfileResolver;
+  private dialogueCadencePolicy: DialogueCadencePolicy;
 
   constructor(
     script: PodcastScript,
@@ -57,6 +66,10 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
       materialPreparer?: IMaterialPreparer;
       turnReviewer?: ITurnReviewer;
       rhythmPolicy?: ConversationRhythmPolicy;
+      speakerRolePolicy?: SpeakerRolePolicy;
+      speechRevisionPolicy?: SpeechRevisionPolicy;
+      roleProfileResolver?: SpeakerRoleProfileResolver;
+      dialogueCadencePolicy?: DialogueCadencePolicy;
     } = {}
   ) {
     super();
@@ -68,6 +81,14 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
     this.turnReviewer = dependencies.turnReviewer ?? new TurnReviewerAgent();
     this.rhythmPolicy =
       dependencies.rhythmPolicy ?? new ConversationRhythmPolicy();
+    this.speakerRolePolicy =
+      dependencies.speakerRolePolicy ?? new SpeakerRolePolicy();
+    this.speechRevisionPolicy =
+      dependencies.speechRevisionPolicy ?? new SpeechRevisionPolicy();
+    this.roleProfileResolver =
+      dependencies.roleProfileResolver ?? new SpeakerRoleProfileResolver();
+    this.dialogueCadencePolicy =
+      dependencies.dialogueCadencePolicy ?? new DialogueCadencePolicy();
   }
 
   async createPodcastPlan(): Promise<string> {
@@ -202,7 +223,7 @@ Also provide a sequence of conversation beats. Each beat must have a listener-ce
         .map(
           (speaker) =>
             `- ${speaker.name} (id: ${speaker.id}, ${
-              speaker.isExpert ? 'expert' : 'interviewer'
+              this.roleProfileResolver.resolve(speaker).epistemicRole
             }): ${speaker.personality}`
         )
         .join('\n');
@@ -224,7 +245,7 @@ ${history || '(nothing said yet — this is the opening of the episode)'}
 
 Decide which speaker should talk next and give them clear direction. Also choose a subject-neutral editorial move, the primary audience value, desired energy, relevant beat and prepared card ids. Every turn should help the listener understand, entertain them, reveal something meaningful, create connection, or move the conversation forwards; it need not do all of these. Don't force analysis onto a story or humour onto an explanation. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. On the opening of the episode (nothing said yet), this must be the interviewer, and the direction must have them deliver a warm, friendly welcome to listeners — greeting them, naming the episode ("${this.script.title}"), and introducing the speakers by name — before moving into substantive content. Don't repeat this welcome on later turns. Mark genuinely completed beat ids in coveredBeatIds. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack). Use Australian/British spelling.${this.getPacingNote(
             script
-          )}${wrapUpNote}${velocityNote}${balanceNote}${rhythmNote}`
+          )}${wrapUpNote}${velocityNote}${balanceNote}${rhythmNote}${this.speakerRolePolicy.buildDirectorGuidance(script)}`
         }
       ];
 
@@ -250,32 +271,46 @@ Decide which speaker should talk next and give them clear direction. Also choose
         velocityAfterThisTurn.openCount >= 2;
       const turnBrief = this.toTurnBrief(result, direction);
 
-      const speaker = script.speakers.find((s) => s.id === speakerId);
-      if (!speaker) {
-        const fallback = this.fallbackSpeaker(script);
+      const proposedSpeaker = script.speakers.find((s) => s.id === speakerId);
+      const fallback = proposedSpeaker ?? this.fallbackSpeaker(script);
+      if (!proposedSpeaker) {
         logger.warn(
           `Director chose unknown speakerId "${speakerId}"; falling back to alternating speaker`
         );
-        return {
-          speaker: fallback,
-          direction,
-          timeStatus: wrapUpNote,
-          forceNearlyOutOfTime,
-          requestSummary,
-          isFinalTurn,
-          turnBrief: { ...turnBrief, speakerId: fallback.id },
-        };
       }
 
-      logger.debug(`Director chose ${speaker.name}: ${direction}`);
+      const roleAssignment = this.speakerRolePolicy.repairAssignment(
+        script,
+        fallback,
+        { ...turnBrief, speakerId: fallback.id },
+        direction
+      );
+      if (roleAssignment.repaired) {
+        logger.info(
+          `Repaired role-inconsistent turn assignment (${roleAssignment.repairReason})`
+        );
+      }
+      const assignment = this.dialogueCadencePolicy.repairAssignment(
+        script,
+        roleAssignment
+      );
+      if (assignment.cadenceRepairReason) {
+        logger.info(
+          `Repaired repetitive dialogue cadence (${assignment.cadenceRepairReason})`
+        );
+      }
+
+      logger.debug(
+        `Director chose ${assignment.speaker.name}: ${assignment.direction}`
+      );
       return {
-        speaker,
-        direction,
+        speaker: assignment.speaker,
+        direction: assignment.direction,
         timeStatus: wrapUpNote,
         forceNearlyOutOfTime,
         requestSummary,
         isFinalTurn,
-        turnBrief,
+        turnBrief: assignment.turnBrief,
       };
     } catch (error) {
       logger.error('Failed to choose next speaker:', error);
@@ -342,17 +377,38 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
         speech,
         turnBrief,
         editorialCards,
-        recentSpeeches
+        recentSpeeches,
+        this.script.knowledgeLedger
       );
-      if (!review.accepted && review.revisedMessage) {
+      if (
+        !review.accepted &&
+        review.revisedMessage &&
+        this.speechRevisionPolicy.isUsable(review.revisedMessage)
+      ) {
+        const revisedSpeech = {
+          ...speech,
+          message: review.revisedMessage,
+          turnBrief,
+        };
+        const revisedReview = await this.turnReviewer.review(
+          revisedSpeech,
+          turnBrief,
+          editorialCards,
+          recentSpeeches,
+          this.script.knowledgeLedger
+        );
+        if (!revisedReview.accepted) {
+          logger.warn(
+            `Turn reviewer rejected its revision for ${speech.speaker.name}; keeping the original speech`
+          );
+          return { ...speech, turnBrief, review };
+        }
         logger.info(
           `Turn reviewer revised ${speech.speaker.name}'s speech for editorial fit`
         );
         return {
-          ...speech,
-          message: review.revisedMessage,
-          turnBrief,
-          review,
+          ...revisedSpeech,
+          review: revisedReview,
         };
       }
       return { ...speech, turnBrief, review };
@@ -544,7 +600,10 @@ Return only the ids of points that were genuinely, substantively covered.`,
     }
 
     for (const speaker of script.speakers) {
-      if (speaker.isExpert) {
+      if (
+        this.roleProfileResolver.resolve(speaker).epistemicRole ===
+        EpistemicRole.Expert
+      ) {
         continue;
       }
       const share = (wordCounts.get(speaker.id) ?? 0) / totalWords;

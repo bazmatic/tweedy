@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { VocalProviderName, SourceType, SpeakerAllocation } from "../types";
+import {
+  EpistemicRole,
+  SourceAccess,
+  SpeakerAllocation,
+  SourceType,
+  UncertaintyStyle,
+  VocalProviderName,
+} from "../types";
 
 // Environment validation schema
 export const envSchema = z.object({
@@ -31,6 +38,13 @@ export const speakerSchema = z.object({
   voiceId: z.string().min(1, "Voice ID is required"),
   voiceStyle: z.string().optional(),
   isExpert: z.boolean().optional(),
+  roleProfile: z
+    .object({
+      epistemicRole: z.nativeEnum(EpistemicRole),
+      sourceAccess: z.nativeEnum(SourceAccess),
+      uncertaintyStyle: z.nativeEnum(UncertaintyStyle),
+    })
+    .optional(),
 });
 
 // Material validation schema
@@ -84,4 +98,3 @@ export function validateMaterial(data: unknown) {
 export function validateScriptGeneration(data: unknown) {
   return scriptGenerationSchema.parse(data);
 }
-

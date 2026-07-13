@@ -293,7 +293,7 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
 });
 
 describe("SpeakerAgent expertise nudge", () => {
-  it("tells experts to favour the speak tool", async () => {
+  it("tells experts to answer confidently without feigning ignorance", async () => {
     const agent = new SpeakerAgent(makeSpeaker("s1", true));
     const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
       toolName: SpeakerAgentToolName.SPEAK,
@@ -313,7 +313,8 @@ describe("SpeakerAgent expertise nudge", () => {
     );
 
     const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
-    expect(prompt).toContain("use the speak tool");
+    expect(prompt).toContain("answer from the material with appropriate confidence");
+    expect(prompt).toContain("Do not feign ignorance");
   });
 
   it("lets audience guides contribute without introducing unsupported facts", async () => {

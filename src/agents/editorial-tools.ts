@@ -81,6 +81,9 @@ export interface ReviewTurnInput {
   grounded: boolean;
   advancesBeat: boolean;
   addsVariety: boolean;
+  roleConsistent: boolean;
+  knowledgeConsistent: boolean;
+  introducedCardIds: string[];
   feedback?: string;
   revisedMessage?: string;
 }
@@ -99,6 +102,14 @@ export function toReviewTurnTool(): LlmTool {
         grounded: { type: "boolean" },
         advancesBeat: { type: "boolean" },
         addsVariety: { type: "boolean" },
+        roleConsistent: { type: "boolean" },
+        knowledgeConsistent: { type: "boolean" },
+        introducedCardIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Assigned prepared card ids whose substance was explicitly introduced aloud in this turn. Exclude cards merely available in the brief.",
+        },
         feedback: {
           type: "string",
           description: "Focused revision guidance when the turn is rejected.",
@@ -116,6 +127,9 @@ export function toReviewTurnTool(): LlmTool {
         "grounded",
         "advancesBeat",
         "addsVariety",
+        "roleConsistent",
+        "knowledgeConsistent",
+        "introducedCardIds",
       ],
     },
   };

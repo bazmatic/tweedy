@@ -1,10 +1,12 @@
 import {
   ISpeakerAgent,
   EditorialCard,
+  EpistemicRole,
   LlmMessage,
   PodcastScript,
   Speech,
   Speaker,
+  SourceAccess,
   StopReason,
   TurnBrief,
 } from "../types";
@@ -13,24 +15,36 @@ import { logger } from "../utils/logger";
 import { RAGService } from "../rag";
 import {
   INTERJECTION_TOOLS,
-  INTERVIEWER_TOOLS,
-  SHORT_REACTION_TOOLS,
-  SOLO_TOOLS,
   SpeakerAgentToolName,
   getToolMaxTokens,
   toLlmTools,
 } from "./speaker-tools";
+import { NaturalSpeechStylePolicy } from "./NaturalSpeechStylePolicy";
+import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
+import { ResponseModePolicy } from "./ResponseModePolicy";
 
 export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
 
   private speaker: Speaker;
   private ragService?: RAGService;
   private maxAttempts = 3;
+  private readonly roleProfileResolver: SpeakerRoleProfileResolver;
+  private readonly naturalSpeechStylePolicy: NaturalSpeechStylePolicy;
+  private readonly responseModePolicy: ResponseModePolicy;
 
-  constructor(speaker: Speaker, ragService?: RAGService) {
+  constructor(
+    speaker: Speaker,
+    ragService?: RAGService,
+    roleProfileResolver = new SpeakerRoleProfileResolver(),
+    naturalSpeechStylePolicy = new NaturalSpeechStylePolicy(),
+    responseModePolicy = new ResponseModePolicy(roleProfileResolver)
+  ) {
     super();
     this.speaker = speaker;
     this.ragService = ragService;
+    this.roleProfileResolver = roleProfileResolver;
+    this.naturalSpeechStylePolicy = naturalSpeechStylePolicy;
+    this.responseModePolicy = responseModePolicy;
   }
 
   async speak(
@@ -168,10 +182,8 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
   }> {
     const isSolo = speakers.length <= 1;
     const conversationHistory = this.getConversationHistory(speeches);
-    const expertLevel = this.speaker.isExpert
-      ? "Expert"
-      : "Audience guide (use only what has been discussed aloud, common knowledge, or the prepared editorial cards assigned to this turn; do not pretend to be a subject-matter expert)";
-    const materialsSection = this.speaker.isExpert
+    const roleProfile = this.roleProfileResolver.resolve(this.speaker);
+    const materialsSection = roleProfile.sourceAccess === SourceAccess.Full
       ? `\n\nRelevant Materials:\n${await this.getRelevantMaterials(
           materials,
           direction
@@ -194,7 +206,9 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
         }, a podcast speaker with the following characteristics:
 - Personality: ${this.speaker.personality}
 - Voice Style: ${this.speaker.voiceStyle}
-- Expert Level: ${expertLevel}
+- Epistemic Role: ${roleProfile.epistemicRole}
+- Source Access: ${roleProfile.sourceAccess}
+- Uncertainty Style: ${roleProfile.uncertaintyStyle}
 
 Podcast Context:
 - Title: ${title}
@@ -213,24 +227,19 @@ Director's guidance: ${direction}${editorialSection}${
 
 Respond naturally as ${
           this.speaker.name
-        }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getBrevityNudge(
-          speeches,
-          isSolo
-        )}${this.getExpertiseNudge(isSolo, turnBrief)} **CRITICAL: Keep this to 1-2 sentences max (under 50 words).** Get ONE idea or conversational beat out and then stop. Serve the assigned audience value without forcing analysis, jokes or profundity where they do not belong. Trust your co-host to ask a follow-up; don't pre-empt their next question. Use Australian/British spelling. Be authentic to your personality and expertise level. Make the speech sound like real, unscripted talk with occasional filler words (um, uh, like, you know), false starts ("it was — actually, no..."), and occasional stammers, but do not overuse them. Use ellipsis ("...") to show trailing off or hesitation. Don't include stage directions, emotes, or sound effects — those belong in the style argument only.`,
+        }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getExpertiseNudge(isSolo, roleProfile.epistemicRole, turnBrief)} **CRITICAL: Keep this to 1-2 sentences max (under 50 words).** Get ONE idea or conversational beat out and then stop. Serve the assigned audience value without forcing analysis, jokes or profundity where they do not belong. Trust your co-host to ask a follow-up; don't pre-empt their next question. Use Australian/British spelling. Be authentic to your personality and epistemic role. ${this.naturalSpeechStylePolicy.buildGuidance(roleProfile)} Don't include stage directions, emotes, or sound effects — those belong in the style argument only.`,
       },
     ];
 
-    const toolSet = isFinalTurn
-      ? [SpeakerAgentToolName.CLOSING_STATEMENT]
-      : forceNearlyOutOfTime
-        ? [SpeakerAgentToolName.NEARLY_OUT_OF_TIME]
-        : requestSummary
-          ? [SpeakerAgentToolName.SUMMARIZE]
-          : isSolo
-            ? SOLO_TOOLS
-            : this.speaker.isExpert
-              ? undefined
-              : INTERVIEWER_TOOLS;
+    const toolSet = this.responseModePolicy.selectTools({
+      speaker: this.speaker,
+      speeches,
+      isSolo,
+      isFinalTurn,
+      forceNearlyOutOfTime,
+      requestSummary,
+      turnBrief,
+    });
 
     const tools = toLlmTools(toolSet);
 
@@ -264,42 +273,21 @@ Respond naturally as ${
   }
 
   /**
-   * Counts consecutive trailing speeches that used a long-form tool (SPEAK),
-   * so the prompt can push back toward short reactions after a run of them.
-   */
-  private getBrevityNudge(speeches: Speech[], isSolo: boolean): string {
-    let consecutiveLongTurns = 0;
-    for (let i = speeches.length - 1; i >= 0; i--) {
-      if (speeches[i].tool === SpeakerAgentToolName.SPEAK) {
-        consecutiveLongTurns++;
-      } else {
-        break;
-      }
-    }
-
-    if (consecutiveLongTurns >= 1) {
-      const shortTools = isSolo
-        ? [SpeakerAgentToolName.ONE_LINER]
-        : SHORT_REACTION_TOOLS;
-      return ` **YOU MUST use a short tool this turn** (${shortTools.join(
-        ", "
-      )}) — no long explanations, just a brief reaction or quick point.`;
-    }
-
-    return "";
-  }
-
-  /**
    * Steers tool choice by expertise: experts have the material and should
    * carry the substantive explaining, non-experts are the audience surrogate
    * and should mostly react/question rather than hold forth.
    */
   private getExpertiseNudge(
     isSolo: boolean,
+    epistemicRole: EpistemicRole,
     turnBrief?: TurnBrief
   ): string {
-    if (this.speaker.isExpert) {
-      return " As the expert here with access to the material, use the speak tool to deliver substantive explanations — that's your role.";
+    if (epistemicRole === EpistemicRole.Expert) {
+      return " As the expert, answer from the material with appropriate confidence. Do not feign ignorance or perform surprise at foundational material you are responsible for explaining.";
+    }
+
+    if (epistemicRole === EpistemicRole.InformedHost) {
+      return " As an informed host, introduce only prepared material explicitly assigned to this turn, and frame it as preparation rather than specialist authority.";
     }
 
     if (isSolo) {

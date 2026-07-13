@@ -7,6 +7,7 @@ import {
   EditorialCardKind,
   EditorialMove,
   EnergyLevel,
+  KnowledgeSource,
   VocalProviderName,
   PodcastScript,
   SourceType,
@@ -473,7 +474,7 @@ describe("ScriptService discussionPoints persistence", () => {
     );
   });
 
-  it("persists editorial cards and conversation beats with the script", async () => {
+  it("persists editorial cards, conversation beats and introduced knowledge with the script", async () => {
     const create = vi.fn().mockResolvedValue({
       id: "record-1",
       createdAt: new Date(),
@@ -504,6 +505,16 @@ describe("ScriptService discussionPoints persistence", () => {
         covered: false,
       },
     ];
+    script.knowledgeLedger = {
+      introducedCards: [
+        {
+          cardId: "m1-card-1",
+          introducedBySpeakerId: "s1",
+          introducedAtTurn: 1,
+          source: KnowledgeSource.SourceMaterial,
+        },
+      ],
+    };
 
     await (service as any).saveScript(script);
 
@@ -511,6 +522,7 @@ describe("ScriptService discussionPoints persistence", () => {
       expect.objectContaining({
         editorialCards: script.editorialCards,
         conversationBeats: script.conversationBeats,
+        knowledgeLedger: script.knowledgeLedger,
       })
     );
   });
@@ -551,5 +563,6 @@ describe("ScriptService discussionPoints persistence", () => {
       updatedAt: new Date(),
     });
     expect(withoutPoints.discussionPoints).toEqual([]);
+    expect(withoutPoints.knowledgeLedger).toEqual({ introducedCards: [] });
   });
 });

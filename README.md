@@ -397,8 +397,41 @@ The system uses LangChain for document processing and semantic search:
 ### Turn Reviewer Agent
 
 - Reviews each turn against its particular editorial purpose
-- Checks clarity, engagement, grounding, progress, and conversational variety
-- Revises unsuitable turns while preserving the speaker's voice
+- Checks clarity, engagement, grounding, progress, conversational variety, role consistency, and knowledge consistency
+- Revises unsuitable turns while preserving the speaker's voice, then reviews the revision once before accepting it
+
+### Speaker Roles and Knowledge
+
+Tweedy separates three concerns that are easy to conflate:
+
+- `SpeakerRoleProfile` describes what a speaker is allowed to know.
+- `TurnBrief` describes what the speaker should contribute now.
+- `NaturalSpeechStylePolicy` describes how the contribution should sound.
+
+The available epistemic roles are defined by the `EpistemicRole` enum:
+
+- `Expert` can introduce and explain source material.
+- `InformedHost` can introduce prepared editorial cards assigned to the turn.
+- `AudienceGuide` can ask, react, challenge, reframe, and summarise material already heard aloud.
+
+Legacy speakers remain compatible: `isExpert: true` resolves to `Expert`, while
+`isExpert: false` resolves to `AudienceGuide`. New speakers can specify a role
+with `tweedy speaker add --role <role>`.
+
+For every directed turn, the generation path is:
+
+1. `DirectorAgent` proposes a speaker, editorial move, and prepared cards.
+2. `SpeakerRolePolicy` validates the proposal and deterministically repairs an invalid assignment.
+3. `KnowledgeLedgerPolicy` exposes only facts available to that speaker.
+4. `DialogueCadencePolicy` prevents role repair from creating consecutive expert monologues.
+5. `ResponseModePolicy` selects tools from the conversational obligation and editorial move.
+6. `SpeakerAgent` applies shared natural delivery guidance, including occasional fillers, pauses, false starts, and self-corrections.
+7. `TurnReviewerAgent` checks the result before accepted card knowledge is added to the episode ledger.
+
+The knowledge ledger is stored with the script. A prepared card becomes shared
+conversation knowledge only after an accepted speech introduces it. This lets
+an audience guide later summarise an expert's explanation without allowing the
+guide to introduce an unseen technical fact.
 
 ## Audio Processing
 

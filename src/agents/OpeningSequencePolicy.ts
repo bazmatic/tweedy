@@ -2,10 +2,13 @@ import {
   AudienceValue,
   EditorialMove,
   EnergyLevel,
+  EpistemicRole,
+  KnowledgeSource,
   PodcastScript,
   Speaker,
   TurnBrief,
 } from "../types";
+import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
 
 export enum OpeningStage {
   Welcome = "welcome",
@@ -29,6 +32,10 @@ export interface OpeningTurn {
  * be resumed without maintaining a second mutable state store.
  */
 export class OpeningSequencePolicy {
+  constructor(
+    private readonly roleProfileResolver = new SpeakerRoleProfileResolver()
+  ) {}
+
   getStage(script: PodcastScript): OpeningStage {
     if (script.speakers.length === 0) return OpeningStage.Complete;
     if (script.speeches.length === 0) return OpeningStage.Welcome;
@@ -66,7 +73,12 @@ export class OpeningSequencePolicy {
   }
 
   private getOpeningOrder(speakers: Speaker[]): Speaker[] {
-    const host = speakers.find((speaker) => !speaker.isExpert) ?? speakers[0];
+    const host =
+      speakers.find(
+        (speaker) =>
+          this.roleProfileResolver.resolve(speaker).epistemicRole !==
+          EpistemicRole.Expert
+      ) ?? speakers[0];
     return [host, ...speakers.filter((speaker) => speaker.id !== host.id)];
   }
 
@@ -89,6 +101,7 @@ export class OpeningSequencePolicy {
         cardIds: [],
         audienceValue: AudienceValue.Connection,
         desiredEnergy: EnergyLevel.Warm,
+        knowledgeSource: KnowledgeSource.CommonKnowledge,
       },
     };
   }
