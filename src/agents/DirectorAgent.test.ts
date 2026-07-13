@@ -117,6 +117,8 @@ describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
       direction: "Talk about A",
       coveredPointIds: ["p1"],
     });
+    // Verification call confirms the claim.
+    chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
 
     await agent.chooseNextSpeaker(script);
 
@@ -131,9 +133,165 @@ describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
 
     await agent.chooseNextSpeaker(script);
 
-    const prompt = (chooseSpy.mock.calls[2][0] as any)[0].content as string;
+    const prompt = (chooseSpy.mock.calls[3][0] as any)[0].content as string;
     expect(prompt).toContain("p2: Point B");
     expect(prompt).not.toContain("p1: Point A");
+  });
+
+  it("does not mark a point covered if verification rejects the director's claim (hallucination regression)", async () => {
+    // Regression test for a bug where the director claimed a point was
+    // covered because the speech mentioned a topically-adjacent detail
+    // (an oxygen tank explosion) rather than the point's actual specific
+    // content (the CO2 scrubber duct-tape hack).
+    const script = makeScript({
+      speeches: [
+        {
+          id: "sp1",
+          speaker: makeSpeaker("s1"),
+          message:
+            "The oxygen tank explosion crippled the spacecraft's power and life support systems.",
+          instructions: "",
+          voice: makeSpeaker("s1").voice,
+          voiceStyle: "neutral",
+          timestamp: new Date(),
+        },
+      ],
+    });
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValueOnce({
+      narrative: "plan",
+      points: ["CO2 scrubber duct-tape hack"],
+    });
+    await agent.createPodcastPlan();
+
+    const chooseSpy = vi.spyOn(agent as any, "callModelForToolInput");
+    chooseSpy.mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Keep going",
+      coveredPointIds: ["p1"],
+    });
+    // Verification call rejects the hallucinated claim.
+    chooseSpy.mockResolvedValueOnce({ confirmedPointIds: [] });
+
+    await agent.chooseNextSpeaker(script);
+
+    expect(script.discussionPoints.find((p) => p.id === "p1")?.covered).toBe(
+      false
+    );
+  });
+
+  it("skips verification and applies coveredPointIds directly when there are no candidate points", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValueOnce({
+      narrative: "plan",
+      points: ["Point A"],
+    });
+    await agent.createPodcastPlan();
+
+    const chooseSpy = vi.spyOn(agent as any, "callModelForToolInput");
+    chooseSpy.mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Talk",
+      coveredPointIds: [],
+    });
+
+    await agent.chooseNextSpeaker(script);
+
+    // Only createPodcastPlan's call plus chooseNextSpeaker's call should have
+    // happened — no verification call, since there were no claimed points.
+    expect(chooseSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("DirectorAgent progress / wrap-up pacing", () => {
+  it("drives progress and the nearly-out-of-time nudge from estimated duration, not turn count", async () => {
+    // 300 words at 150 wpm = 2 minutes elapsed against a 2m20s budget
+    // (140s) => ~86% duration progress, well past the 85% threshold,
+    // even though only a single turn has been used out of a maxTurns of 10.
+    const script = makeScript({
+      speeches: [
+        {
+          id: "sp1",
+          speaker: makeSpeaker("s1"),
+          message: new Array(300).fill("word").join(" "),
+          instructions: "",
+          voice: makeSpeaker("s1").voice,
+          voiceStyle: "neutral",
+          timestamp: new Date(),
+        },
+      ],
+    });
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 140 });
+
+    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValueOnce({
+      narrative: "plan",
+      points: [],
+    });
+    await agent.createPodcastPlan();
+
+    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "keep going",
+      coveredPointIds: [],
+    });
+
+    const result = await agent.chooseNextSpeaker(script);
+
+    expect(result.forceNearlyOutOfTime).toBe(true);
+    expect(result.timeStatus).toContain("almost out of time");
+  });
+
+  it("does not treat rising turn count alone as progress when duration is still low", async () => {
+    // No speeches ever added, so estimated elapsed duration stays at 0
+    // regardless of how many turns are consumed; turnsUsed climbing toward
+    // maxTurns should not trigger the nearly-out-of-time nudge on its own.
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 5, maxDuration: 600 });
+
+    const callModelSpy = vi
+      .spyOn(agent as any, "callModelForToolInput")
+      .mockResolvedValue({
+        speakerId: "s1",
+        direction: "keep going",
+        coveredPointIds: [],
+      });
+    callModelSpy.mockResolvedValueOnce({ narrative: "plan", points: [] });
+    await agent.createPodcastPlan();
+
+    // Consume turns up to (but not including) the maxTurns safety ceiling.
+    let result;
+    for (let i = 0; i < 4; i++) {
+      result = await agent.chooseNextSpeaker(script);
+    }
+
+    expect(result!.forceNearlyOutOfTime).toBe(false);
+    expect(result!.timeStatus).not.toContain("almost out of time");
+  });
+
+  it("still forces a hard close once turnsUsed reaches the maxTurns safety ceiling", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 3, maxDuration: 600 });
+
+    const callModelSpy = vi
+      .spyOn(agent as any, "callModelForToolInput")
+      .mockResolvedValue({
+        speakerId: "s1",
+        direction: "keep going",
+        coveredPointIds: [],
+      });
+    callModelSpy.mockResolvedValueOnce({ narrative: "plan", points: [] });
+    await agent.createPodcastPlan();
+
+    let result;
+    for (let i = 0; i < 3; i++) {
+      result = await agent.chooseNextSpeaker(script);
+    }
+
+    expect(result!.timeStatus).toContain("final turn");
+    expect(result!.forceNearlyOutOfTime).toBe(false);
   });
 });
 

@@ -5,8 +5,10 @@ import { logger } from '../utils/logger';
 import {
   CreatePodcastPlanInput,
   SelectNextSpeakerInput,
+  VerifyCoveredPointsInput,
   toCreatePodcastPlanTool,
   toSelectNextSpeakerTool,
+  toVerifyCoveredPointsTool,
 } from './director-tools';
 
 const WORDS_PER_MINUTE = 150;
@@ -148,7 +150,7 @@ ${speakerDescriptions}
 Conversation so far (each line tagged with the tool used to deliver it — "speak" is substantive content; "interject", "filler_comment", "one_liner", and "short_question" are brief reactions, not real answers or new points):
 ${history || '(nothing said yet — this is the opening of the episode)'}
 
-Decide which speaker should talk next and give them clear direction on what they should talk about and how to make sure that the talking points all get covered in time and that the conversation flows smoothly. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. On the opening of the episode, this should usually be the interviewer. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds.${this.getPacingNote(
+Decide which speaker should talk next and give them clear direction on what they should talk about and how to make sure that the talking points all get covered in time and that the conversation flows smoothly. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. On the opening of the episode, this should usually be the interviewer. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack).${this.getPacingNote(
             script
           )}${wrapUpNote}${velocityNote}`
         }
@@ -162,7 +164,11 @@ Decide which speaker should talk next and give them clear direction on what they
           300
         );
 
-      this.applyCoveredPoints(coveredPointIds);
+      const confirmedPointIds = await this.verifyCoveredPoints(
+        coveredPointIds,
+        script
+      );
+      this.applyCoveredPoints(confirmedPointIds);
       const velocityAfterThisTurn = this.calculateVelocity(script);
       this.logVelocity(velocityAfterThisTurn);
       const requestSummary =
@@ -194,6 +200,66 @@ Decide which speaker should talk next and give them clear direction on what they
     } catch (error) {
       logger.error('Failed to choose next speaker:', error);
       throw error;
+    }
+  }
+
+  /**
+   * The director's coveredPointIds claim comes from the same call that chose
+   * the next speaker, and can hallucinate coverage from a merely
+   * topically-adjacent mention (e.g. an oxygen tank explosion "covering" a
+   * CO2 scrubber duct-tape hack point). Re-check each claim in a dedicated
+   * forced tool call against the actual, already-persisted recent speech
+   * text before ever marking a point covered.
+   */
+  private async verifyCoveredPoints(
+    coveredPointIds: string[] | undefined,
+    script: PodcastScript
+  ): Promise<string[] | undefined> {
+    if (!coveredPointIds || coveredPointIds.length === 0) {
+      return coveredPointIds;
+    }
+
+    const candidatePoints = this.points.filter(
+      (point) => coveredPointIds.includes(point.id) && !point.covered
+    );
+    if (candidatePoints.length === 0) {
+      return coveredPointIds;
+    }
+
+    const recentHistory = this.getConversationHistory(script);
+    const pointsList = candidatePoints
+      .map((point) => `- ${point.id}: ${point.text}`)
+      .join('\n');
+
+    const messages = [
+      {
+        role: 'user' as const,
+        content: `The director claimed the following discussion points were covered by the most recent speech(es) below. Verify each one strictly against the actual text — a point only counts as covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention. For example, if a point is "CO2 scrubber duct-tape hack" and the speech only mentions an oxygen tank explosion, that point is NOT covered.
+
+Recent speech(es):
+${recentHistory || '(nothing said yet)'}
+
+Candidate points claimed as covered:
+${pointsList}
+
+Return only the ids of points that were genuinely, substantively covered.`,
+      },
+    ];
+
+    try {
+      const { confirmedPointIds } =
+        await this.callModelForToolInput<VerifyCoveredPointsInput>(
+          messages,
+          [toVerifyCoveredPointsTool()],
+          150
+        );
+      return confirmedPointIds;
+    } catch (error) {
+      logger.error(
+        'Failed to verify covered points; treating claims as unconfirmed:',
+        error
+      );
+      return [];
     }
   }
 
@@ -318,19 +384,16 @@ Decide which speaker should talk next and give them clear direction on what they
   }
 
   /**
-   * Progress toward whichever budget — turn count or estimated spoken
-   * duration — is closer to running out, since either one can bind first.
+   * Progress toward the estimated spoken duration budget. maxTurns is a
+   * separate hard safety ceiling (see getWrapUpNote/forceNearlyOutOfTime),
+   * not a pacing signal, so it plays no part in this percentage.
    */
   private calculateProgress(script: PodcastScript): number {
-    const turnProgress = this.turnsUsed / this.maxTurns;
     const durationProgress =
       this.maxDuration > 0
         ? this.estimateElapsedSeconds(script) / this.maxDuration
         : 0;
-    return Math.min(
-      100,
-      Math.round(Math.max(turnProgress, durationProgress) * 100)
-    );
+    return Math.min(100, Math.round(durationProgress * 100));
   }
 
   private estimateElapsedSeconds(script: PodcastScript): number {

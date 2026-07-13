@@ -31,10 +31,36 @@ export function toSelectNextSpeakerTool(speakers: Speaker[]): LlmTool {
           type: "array",
           items: { type: "string" },
           description:
-            "IDs of currently-open discussion points that the most recent speech(es) addressed. Omit or leave empty if none were covered.",
+            "IDs of currently-open discussion points that the most recent speech(es) explicitly and substantively discussed with specific detail from the point's text — not merely a topically-adjacent mention. For example, if a point is \"CO2 scrubber duct-tape hack\" and the speech only mentions an oxygen tank explosion, that point is NOT covered. Omit or leave empty if none were covered.",
         },
       },
       required: ["speakerId", "direction"],
+    },
+  };
+}
+
+export interface VerifyCoveredPointsInput {
+  confirmedPointIds: string[];
+}
+
+export const VERIFY_COVERED_POINTS_TOOL_NAME = "verify_covered_points";
+
+export function toVerifyCoveredPointsTool(): LlmTool {
+  return {
+    name: VERIFY_COVERED_POINTS_TOOL_NAME,
+    description:
+      "Verify which candidate discussion points were actually, substantively covered by the recent speech text, strictly rejecting points that were only topically adjacent.",
+    input_schema: {
+      type: "object",
+      properties: {
+        confirmedPointIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "IDs of the candidate points that the recent speech text explicitly and substantively discussed with specific detail from the point's text. Exclude any point that was only topically adjacent or mentioned in passing without matching detail. For example, if a point is \"CO2 scrubber duct-tape hack\" and the speech only mentions an oxygen tank explosion, that point must be excluded.",
+        },
+      },
+      required: ["confirmedPointIds"],
     },
   };
 }

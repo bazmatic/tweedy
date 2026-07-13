@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { toCreatePodcastPlanTool, toSelectNextSpeakerTool } from "./director-tools";
+import {
+  toCreatePodcastPlanTool,
+  toSelectNextSpeakerTool,
+  toVerifyCoveredPointsTool,
+} from "./director-tools";
 import { Speaker, VocalProviderName } from "../types";
 
 function makeSpeaker(id: string): Speaker {
@@ -22,16 +26,34 @@ function makeSpeaker(id: string): Speaker {
 }
 
 describe("director-tools", () => {
-  it("toSelectNextSpeakerTool includes an optional coveredPointIds array field", () => {
+  it("toSelectNextSpeakerTool includes an optional coveredPointIds array field with a strict-coverage description", () => {
     const tool = toSelectNextSpeakerTool([makeSpeaker("s1")]);
 
-    expect(tool.input_schema.properties.coveredPointIds).toEqual({
-      type: "array",
-      items: { type: "string" },
-      description:
-        "IDs of currently-open discussion points that the most recent speech(es) addressed. Omit or leave empty if none were covered.",
-    });
+    const coveredPointIds = tool.input_schema.properties
+      .coveredPointIds as { type: string; items: unknown; description: string };
+    expect(coveredPointIds.type).toBe("array");
+    expect(coveredPointIds.items).toEqual({ type: "string" });
+    expect(coveredPointIds.description).toContain(
+      "explicitly and substantively discussed with specific detail"
+    );
+    expect(coveredPointIds.description).toContain(
+      "not merely a topically-adjacent mention"
+    );
     expect(tool.input_schema.required).toEqual(["speakerId", "direction"]);
+  });
+
+  it("toVerifyCoveredPointsTool requires confirmedPointIds and describes strict verification", () => {
+    const tool = toVerifyCoveredPointsTool();
+
+    expect(tool.name).toBe("verify_covered_points");
+    expect(tool.input_schema.required).toEqual(["confirmedPointIds"]);
+    const confirmedPointIds = tool.input_schema.properties
+      .confirmedPointIds as { type: string; items: unknown; description: string };
+    expect(confirmedPointIds.type).toBe("array");
+    expect(confirmedPointIds.items).toEqual({ type: "string" });
+    expect(confirmedPointIds.description).toContain(
+      "explicitly and substantively discussed with specific detail"
+    );
   });
 
   it("toCreatePodcastPlanTool requires narrative and points", () => {
