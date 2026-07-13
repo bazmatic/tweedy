@@ -44,7 +44,7 @@ export function createVoiceCommands(): Command {
     .option("-d, --description <description>", "Voice description")
     .option(
       "-p, --provider <provider>",
-      "Voice provider (elevenlabs, openai, hume, cartesia)",
+      "Voice provider (elevenlabs, elevenlabs_v3, openai, hume, cartesia)",
       "elevenlabs"
     )
     .option("--provider-id <id>", "Provider-specific voice ID")

@@ -1,5 +1,6 @@
 export { BaseVocalProvider } from './BaseVocalProvider';
 export { ElevenLabsProvider } from './ElevenLabsProvider';
+export { ElevenLabsV3Provider } from './ElevenLabsV3Provider';
 export { OpenAIProvider } from './OpenAIProvider';
 export { HumeProvider } from './HumeProvider';
 export { CartesiaProvider } from './CartesiaProvider';

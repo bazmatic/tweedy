@@ -1,5 +1,6 @@
 import { IVocalProvider, VocalProviderName } from '../types';
 import { ElevenLabsProvider } from './ElevenLabsProvider';
+import { ElevenLabsV3Provider } from './ElevenLabsV3Provider';
 import { OpenAIProvider } from './OpenAIProvider';
 import { HumeProvider } from './HumeProvider';
 import { CartesiaProvider } from './CartesiaProvider';
@@ -15,6 +16,9 @@ export class VocalProviderFactory {
       switch (provider) {
         case VocalProviderName.ElevenLabs:
           this.providers.set(provider, new ElevenLabsProvider());
+          break;
+        case VocalProviderName.ElevenLabsV3:
+          this.providers.set(provider, new ElevenLabsV3Provider());
           break;
         case VocalProviderName.OpenAI:
           this.providers.set(provider, new OpenAIProvider());

@@ -8,8 +8,8 @@ import { appConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 
 export class ElevenLabsProvider extends BaseVocalProvider {
-  private apiKey: string;
-  private baseUrl = 'https://api.elevenlabs.io/v1';
+  protected apiKey: string;
+  protected baseUrl = 'https://api.elevenlabs.io/v1';
 
   constructor() {
     super();

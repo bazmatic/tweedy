@@ -17,6 +17,7 @@ export enum SpeakerAllocation {
 
 export enum VocalProviderName {
   ElevenLabs = "elevenlabs",
+  ElevenLabsV3 = "elevenlabs_v3",
   OpenAI = "openai",
   Hume = "hume",
   Cartesia = "cartesia",
