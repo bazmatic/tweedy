@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { SpeakerAgent } from "./SpeakerAgent";
 import { SpeakerAgentToolName } from "./speaker-tools";
 import {
+  AudienceValue,
+  EditorialCardKind,
+  EditorialMove,
+  EnergyLevel,
   PodcastScript,
   Speaker,
   SourceType,
@@ -92,6 +96,56 @@ describe("SpeakerAgent stopReason threading", () => {
   });
 });
 
+describe("SpeakerAgent editorial context", () => {
+  it("receives the turn's audience value, editorial move and selected cards", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1", true));
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "That letter makes the success feel much less inevitable.",
+      style: "warm",
+      stopReason: "stop",
+    });
+    const script = makeScript();
+
+    await agent.speak(
+      script.speeches,
+      script.speakers,
+      script.materials,
+      script.title,
+      script.description,
+      "Tell the story.",
+      "",
+      false,
+      false,
+      false,
+      {
+        speakerId: "s1",
+        goal: "Humanise the subject.",
+        move: EditorialMove.TellStory,
+        cardIds: ["card-1"],
+        audienceValue: AudienceValue.Connection,
+        desiredEnergy: EnergyLevel.Warm,
+      },
+      [
+        {
+          id: "card-1",
+          materialId: "m1",
+          kind: EditorialCardKind.Story,
+          content: "She kept the rejection letter above her desk.",
+          evidence: [],
+          relatedCardIds: [],
+          tags: [],
+        },
+      ]
+    );
+
+    const prompt = (call.mock.calls[0][0] as any)[0].content as string;
+    expect(prompt).toContain("Editorial move: tell_story");
+    expect(prompt).toContain("Primary audience value: connection");
+    expect(prompt).toContain("She kept the rejection letter");
+  });
+});
+
 describe("SpeakerAgent.interject tool set", () => {
   it("offers CHALLENGE alongside INTERJECT and FILLER_COMMENT", async () => {
     const lastSpeech = {
@@ -179,7 +233,7 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
     );
   });
 
-  it("hard-constrains non-experts to SHORT_REACTION_TOOLS when there are multiple speakers", async () => {
+  it("lets audience guides reframe or tell prepared stories as well as react", async () => {
     const agent = new SpeakerAgent(makeSpeaker("s1", false));
     const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
       toolName: SpeakerAgentToolName.INTERJECT,
@@ -200,20 +254,20 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
 
     const offeredTools = spy.mock.calls[0][1] as { name: string }[];
     const toolNames = offeredTools.map((tool) => tool.name);
-    // Non-experts should have exactly the SHORT_REACTION_TOOLS and nothing else
     expect(new Set(toolNames)).toEqual(
       new Set([
+        SpeakerAgentToolName.SPEAK,
         SpeakerAgentToolName.INTERJECT,
         SpeakerAgentToolName.FILLER_COMMENT,
         SpeakerAgentToolName.SHORT_QUESTION,
         SpeakerAgentToolName.ONE_LINER,
+        SpeakerAgentToolName.CHALLENGE,
       ])
     );
-    expect(toolNames.length).toBe(4);
-    expect(toolNames).not.toContain(SpeakerAgentToolName.SPEAK);
+    expect(toolNames.length).toBe(6);
   });
 
-  it("nudges non-experts toward only ONE_LINER as the short tool when solo", async () => {
+  it("tells a solo audience guide to make the material accessible", async () => {
     const agent = new SpeakerAgent(makeSpeaker("s1", false));
     const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
       toolName: SpeakerAgentToolName.SPEAK,
@@ -233,14 +287,13 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
     );
 
     const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
-    expect(prompt).toContain("only use short tools");
-    expect(prompt).toContain(SpeakerAgentToolName.ONE_LINER);
-    expect(prompt).not.toContain(SpeakerAgentToolName.FILLER_COMMENT);
+    expect(prompt).toContain("make the material accessible and engaging");
+    expect(prompt).toContain("without claiming unsupported expertise");
   });
 });
 
 describe("SpeakerAgent expertise nudge", () => {
-  it("tells experts to favor the speak tool", async () => {
+  it("tells experts to favour the speak tool", async () => {
     const agent = new SpeakerAgent(makeSpeaker("s1", true));
     const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
       toolName: SpeakerAgentToolName.SPEAK,
@@ -263,7 +316,7 @@ describe("SpeakerAgent expertise nudge", () => {
     expect(prompt).toContain("use the speak tool");
   });
 
-  it("tells non-experts to favor short tools and use speak rarely", async () => {
+  it("lets audience guides contribute without introducing unsupported facts", async () => {
     const agent = new SpeakerAgent(makeSpeaker("s1", false));
     const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
       toolName: SpeakerAgentToolName.SPEAK,
@@ -283,8 +336,8 @@ describe("SpeakerAgent expertise nudge", () => {
     );
 
     const prompt = (spy.mock.calls[0] as any)[0][0].content as string;
-    expect(prompt).toContain("only use short tools");
-    expect(prompt).toContain("Do NOT use speak");
+    expect(prompt).toContain("ask, react, challenge, reframe, illustrate");
+    expect(prompt).toContain("never introduce unsupported facts");
   });
 });
 

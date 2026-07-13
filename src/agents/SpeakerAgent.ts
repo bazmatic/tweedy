@@ -1,16 +1,19 @@
 import {
   ISpeakerAgent,
+  EditorialCard,
   LlmMessage,
   PodcastScript,
   Speech,
   Speaker,
   StopReason,
+  TurnBrief,
 } from "../types";
 import { BaseAgent } from "./BaseAgent";
 import { logger } from "../utils/logger";
 import { RAGService } from "../rag";
 import {
   INTERJECTION_TOOLS,
+  INTERVIEWER_TOOLS,
   SHORT_REACTION_TOOLS,
   SOLO_TOOLS,
   SpeakerAgentToolName,
@@ -40,7 +43,9 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     timeStatus = "",
     forceNearlyOutOfTime = false,
     requestSummary = false,
-    isFinalTurn = false
+    isFinalTurn = false,
+    turnBrief?: TurnBrief,
+    editorialCards: EditorialCard[] = []
   ): Promise<Speech> {
     let attempts = 0;
 
@@ -62,7 +67,9 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
             timeStatus,
             forceNearlyOutOfTime,
             requestSummary,
-            isFinalTurn
+            isFinalTurn,
+            turnBrief,
+            editorialCards
           );
 
         const speech: Speech = {
@@ -75,6 +82,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
           timestamp: new Date(),
           tool: toolName,
           stopReason,
+          turnBrief,
         };
 
         logger.info(
@@ -112,7 +120,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
 
 ${lastSpeech.speaker.name} just said: "${lastSpeech.message}"
 
-Give a brief, natural reaction to cut in with — a quick interjection or filler comment. Do not summarize or explain, just react in the moment.`,
+Give a brief, natural reaction to cut in with — a quick interjection or filler comment. Do not summarise or explain, just react in the moment.`,
         },
       ];
 
@@ -149,7 +157,9 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
     timeStatus: string,
     forceNearlyOutOfTime: boolean,
     requestSummary: boolean,
-    isFinalTurn: boolean
+    isFinalTurn: boolean,
+    turnBrief?: TurnBrief,
+    editorialCards: EditorialCard[] = []
   ): Promise<{
     toolName: SpeakerAgentToolName;
     message: string;
@@ -160,13 +170,17 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
     const conversationHistory = this.getConversationHistory(speeches);
     const expertLevel = this.speaker.isExpert
       ? "Expert"
-      : "General audience (no access to source material — you only know what's been discussed aloud or is common knowledge)";
+      : "Audience guide (use only what has been discussed aloud, common knowledge, or the prepared editorial cards assigned to this turn; do not pretend to be a subject-matter expert)";
     const materialsSection = this.speaker.isExpert
       ? `\n\nRelevant Materials:\n${await this.getRelevantMaterials(
           materials,
           direction
         )}`
       : "";
+    const editorialSection = this.getEditorialContext(
+      turnBrief,
+      editorialCards
+    );
 
     const closingPromptAddendum = isFinalTurn
       ? "\n\nThis is the final turn of the episode. Use the closing_statement tool to deliver a warm, authentic closing that wraps up the podcast and signs off naturally."
@@ -189,7 +203,7 @@ Podcast Context:
 Conversation History (speaker: message [tool used]):
 ${conversationHistory}${materialsSection}
 
-Director's guidance: ${direction}${
+Director's guidance: ${direction}${editorialSection}${
           timeStatus
             ? forceNearlyOutOfTime
               ? `\n\nTime status: ${timeStatus} You must use the nearly_out_of_time tool this turn to tell your co-hosts you're running low on time.`
@@ -202,7 +216,7 @@ Respond naturally as ${
         }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getBrevityNudge(
           speeches,
           isSolo
-        )}${this.getExpertiseNudge(isSolo)} **CRITICAL: Keep this to 1-2 sentences max (under 50 words).** Get ONE idea out and then stop. Trust your co-host to ask a follow-up; don't pre-empt their next question. Be authentic to your personality and expertise level. Make the speech sound like real, unscripted talk with filler words (um, uh, like, you know), false starts ("it was — actually, no..."), and occasional stammers. Use ellipsis ("...") to show trailing off or hesitation. Don't include stage directions, emotes, or sound effects — those belong in the style argument only.`,
+        )}${this.getExpertiseNudge(isSolo, turnBrief)} **CRITICAL: Keep this to 1-2 sentences max (under 50 words).** Get ONE idea or conversational beat out and then stop. Serve the assigned audience value without forcing analysis, jokes or profundity where they do not belong. Trust your co-host to ask a follow-up; don't pre-empt their next question. Use Australian/British spelling. Be authentic to your personality and expertise level. Make the speech sound like real, unscripted talk with occasional filler words (um, uh, like, you know), false starts ("it was — actually, no..."), and occasional stammers, but do not overuse them. Use ellipsis ("...") to show trailing off or hesitation. Don't include stage directions, emotes, or sound effects — those belong in the style argument only.`,
       },
     ];
 
@@ -216,7 +230,7 @@ Respond naturally as ${
             ? SOLO_TOOLS
             : this.speaker.isExpert
               ? undefined
-              : SHORT_REACTION_TOOLS;
+              : INTERVIEWER_TOOLS;
 
     const tools = toLlmTools(toolSet);
 
@@ -280,17 +294,18 @@ Respond naturally as ${
    * carry the substantive explaining, non-experts are the audience surrogate
    * and should mostly react/question rather than hold forth.
    */
-  private getExpertiseNudge(isSolo: boolean): string {
+  private getExpertiseNudge(
+    isSolo: boolean,
+    turnBrief?: TurnBrief
+  ): string {
     if (this.speaker.isExpert) {
       return " As the expert here with access to the material, use the speak tool to deliver substantive explanations — that's your role.";
     }
 
-    const shortTools = isSolo
-      ? [SpeakerAgentToolName.ONE_LINER]
-      : SHORT_REACTION_TOOLS;
-    return ` As a non-expert, **only use short tools** (${shortTools.join(
-      ", "
-    )}) — you're the audience, not the teacher. React, ask, or push back briefly. Do NOT use speak.`;
+    if (isSolo) {
+      return ` As the audience's guide, make the material accessible and engaging without claiming unsupported expertise.`;
+    }
+    return ` As the audience's guide, you may ask, react, challenge, reframe, illustrate or tell a prepared story. Use speak only when the assigned move (${turnBrief?.move ?? "the current move"}) calls for a substantive contribution, and never introduce unsupported facts.`;
   }
 
   private async getRelevantMaterials(
@@ -328,13 +343,35 @@ Respond naturally as ${
       .join("\n\n");
   }
 
+  private getEditorialContext(
+    brief: TurnBrief | undefined,
+    cards: EditorialCard[]
+  ): string {
+    if (!brief) return "";
+    const relevantCards = cards
+      .filter((card) => brief.cardIds.includes(card.id))
+      .map((card) => `- ${card.kind}: ${card.content}`)
+      .join("\n");
+    return `
+
+Turn brief:
+- Goal: ${brief.goal}
+- Editorial move: ${brief.move}
+- Primary audience value: ${brief.audienceValue}
+- Desired energy: ${brief.desiredEnergy}${
+      brief.device ? `\n- Optional conversational device: ${brief.device}` : ""
+    }
+Prepared editorial material for this turn:
+${relevantCards || "(No specific editorial cards assigned.)"}`;
+  }
+
   private createFallbackSpeech(): Speech {
     const fallbackMessages = [
-      "That's an interesting point. Could you tell me more about that?",
-      "I see what you mean. What do you think about the implications?",
-      "That's a great question. Let me think about that for a moment.",
-      "I'm not sure I fully understand. Could you elaborate?",
-      "That reminds me of something similar I heard about.",
+      "Hmm...",
+      "Ah ok.",
+      "Huh.",
+      "Wow.",
+      "Oh...",
     ];
 
     const randomMessage =
@@ -355,4 +392,3 @@ Respond naturally as ${
     return Math.random().toString(36).substr(2, 9);
   }
 }
-

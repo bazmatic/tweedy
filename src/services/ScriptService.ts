@@ -214,7 +214,7 @@ export class ScriptService implements IScriptService {
         break;
       }
 
-      const { speaker, direction, timeStatus, forceNearlyOutOfTime, requestSummary, isFinalTurn } =
+      const { speaker, direction, timeStatus, forceNearlyOutOfTime, requestSummary, isFinalTurn, turnBrief } =
         await directorAgent.chooseNextSpeaker(script);
       const speakerAgent = new SpeakerAgent(speaker, this.ragService);
 
@@ -228,9 +228,17 @@ export class ScriptService implements IScriptService {
         timeStatus,
         forceNearlyOutOfTime,
         requestSummary,
-        isFinalTurn
+        isFinalTurn,
+        turnBrief,
+        script.editorialCards ?? []
       );
-      const speech = await directorAgent.reviewSpeech(rawSpeech, direction);
+      const speech = await directorAgent.reviewSpeech(
+        rawSpeech,
+        direction,
+        turnBrief,
+        script.editorialCards ?? [],
+        script.speeches
+      );
       await this.persistSpeech(script, speech);
 
       // If that turn ran long — or was cut off by the token limit — let a
@@ -295,6 +303,8 @@ export class ScriptService implements IScriptService {
       timestamp: speech.timestamp,
       tool: speech.tool,
       stopReason: speech.stopReason,
+      turnBrief: speech.turnBrief,
+      review: speech.review,
     });
 
     speech.id = speechRecord.id;
@@ -332,6 +342,8 @@ export class ScriptService implements IScriptService {
             timestamp: speechRecord.timestamp,
             tool: speechRecord.tool,
             stopReason: speechRecord.stopReason,
+            turnBrief: speechRecord.turnBrief,
+            review: speechRecord.review,
           });
         }
       }
@@ -345,6 +357,8 @@ export class ScriptService implements IScriptService {
       speeches,
       materials,
       discussionPoints: record.discussionPoints ?? [],
+      editorialCards: record.editorialCards ?? [],
+      conversationBeats: record.conversationBeats ?? [],
       createdAt: new Date(record.createdAt),
       updatedAt: new Date(record.updatedAt),
     };
@@ -358,6 +372,8 @@ export class ScriptService implements IScriptService {
       speechIds: script.speeches.map((s) => s.id),
       materialIds: script.materials.map((m) => m.id),
       discussionPoints: script.discussionPoints ?? [],
+      editorialCards: script.editorialCards ?? [],
+      conversationBeats: script.conversationBeats ?? [],
     };
 
     const created = await this.scriptRepository.create(record);

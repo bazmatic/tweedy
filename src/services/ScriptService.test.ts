@@ -1,7 +1,16 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ScriptService } from "./ScriptService";
 import { SpeakerAgentToolName } from "../agents/speaker-tools";
-import { VocalProviderName, PodcastScript, SourceType } from "../types";
+import {
+  AudienceValue,
+  BeatPurpose,
+  EditorialCardKind,
+  EditorialMove,
+  EnergyLevel,
+  VocalProviderName,
+  PodcastScript,
+  SourceType,
+} from "../types";
 import type { RAGService } from "../rag";
 import { logger } from "../utils/logger";
 
@@ -103,12 +112,25 @@ describe("ScriptService stopReason persistence", () => {
       timestamp: new Date(),
       tool: SpeakerAgentToolName.SPEAK,
       stopReason: "max_tokens" as const,
+      turnBrief: {
+        speakerId: "s1",
+        goal: "Explain the turning point.",
+        move: EditorialMove.Explain,
+        cardIds: [],
+        audienceValue: AudienceValue.Understanding,
+        desiredEnergy: EnergyLevel.Curious,
+      },
     };
 
     await (service as any).persistSpeech(script, speech);
 
     expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ stopReason: "max_tokens" })
+      expect.objectContaining({
+        stopReason: "max_tokens",
+        turnBrief: expect.objectContaining({
+          goal: "Explain the turning point.",
+        }),
+      })
     );
   });
 
@@ -363,6 +385,48 @@ describe("ScriptService discussionPoints persistence", () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         discussionPoints: [{ id: "p1", text: "Point A", covered: false }],
+      })
+    );
+  });
+
+  it("persists editorial cards and conversation beats with the script", async () => {
+    const create = vi.fn().mockResolvedValue({
+      id: "record-1",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const service = makeService({ scriptRepository: { create } });
+    const script = makeScript();
+    script.editorialCards = [
+      {
+        id: "m1-card-1",
+        materialId: "m1",
+        kind: EditorialCardKind.Story,
+        content: "A revealing anecdote.",
+        evidence: [],
+        relatedCardIds: [],
+        tags: [],
+      },
+    ];
+    script.conversationBeats = [
+      {
+        id: "b1",
+        purpose: BeatPurpose.Hook,
+        goal: "Open with the anecdote.",
+        cardIds: ["m1-card-1"],
+        prerequisiteBeatIds: [],
+        desiredEnergy: EnergyLevel.Curious,
+        targetTurns: 1,
+        covered: false,
+      },
+    ];
+
+    await (service as any).saveScript(script);
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        editorialCards: script.editorialCards,
+        conversationBeats: script.conversationBeats,
       })
     );
   });

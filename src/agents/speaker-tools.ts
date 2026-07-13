@@ -122,6 +122,19 @@ export const INTERJECTION_TOOLS: SpeakerAgentToolName[] = [
   SpeakerAgentToolName.CHALLENGE,
 ];
 
+/**
+ * Audience guides can add value by reframing, illustrating or telling a
+ * prepared story without pretending to be the subject-matter expert.
+ */
+export const INTERVIEWER_TOOLS: SpeakerAgentToolName[] = [
+  SpeakerAgentToolName.SPEAK,
+  SpeakerAgentToolName.INTERJECT,
+  SpeakerAgentToolName.FILLER_COMMENT,
+  SpeakerAgentToolName.SHORT_QUESTION,
+  SpeakerAgentToolName.ONE_LINER,
+  SpeakerAgentToolName.CHALLENGE,
+];
+
 export function getToolDefinition(name: SpeakerAgentToolName): SpeakerToolDefinition | undefined {
   return SPEAKER_TOOL_DEFINITIONS.find((def) => def.name === name);
 }

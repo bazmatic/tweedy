@@ -60,11 +60,12 @@ describe("director-tools", () => {
     const tool = toCreatePodcastPlanTool();
 
     expect(tool.input_schema.required).toEqual(["narrative", "points"]);
-    expect(tool.input_schema.properties.points).toEqual({
-      type: "array",
-      items: { type: "string" },
-      description:
-        "3-8 concrete, discrete discussion points that must be covered during the episode, each a short phrase.",
-    });
+    expect(tool.input_schema.properties.points).toEqual(
+      expect.objectContaining({
+        type: "array",
+        items: { type: "string" },
+      })
+    );
+    expect(tool.input_schema.properties).toHaveProperty("beats");
   });
 });

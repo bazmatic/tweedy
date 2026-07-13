@@ -38,6 +38,148 @@ The system follows a clean architecture pattern with clear separation of concern
 └─────────────────────────────────────┘
 ```
 
+## How Tweedy Creates Engaging Episodes
+
+Tweedy does more than divide source material between speakers. It prepares the
+material as editorial ingredients, designs a listener journey, and gives each
+speaker a specific conversational job. The aim is to balance three outcomes:
+
+- **Understanding** — listeners can follow and remember the subject.
+- **Entertainment** — the conversation has personality, variety, surprise, and
+  momentum.
+- **Insight** — important connections, tensions, and meanings have room to
+  emerge when the material supports them.
+
+No individual turn must achieve all three. A short reaction may improve rhythm;
+an analogy may make a difficult idea understandable; a story may create an
+emotional connection; and a reflective turn may draw out a broader meaning.
+
+### Editorial Flow
+
+```text
+Source materials
+      ↓
+MaterialPreparerAgent
+      ↓
+Editorial cards
+      ↓
+DirectorAgent
+      ↓
+Episode plan and conversation beats
+      ↓
+Turn brief
+      ↓
+SpeakerAgent
+      ↓
+TurnReviewerAgent
+      ↓
+Accepted speech and updated conversation state
+```
+
+The stages deliberately have separate responsibilities:
+
+1. **Prepare the material.** `MaterialPreparerAgent` identifies useful facts,
+   explanations, examples, stories, characters, quotes, vivid details,
+   surprises, humour opportunities, tensions, perspectives, connections,
+   takeaways, and open questions. These become reusable `EditorialCard`
+   records tied back to their source material.
+2. **Design the episode.** `DirectorAgent` arranges the material into
+   `ConversationBeat` records that describe the listener's journey rather than
+   merely listing facts to mention.
+3. **Direct the next turn.** The director produces a `TurnBrief` describing
+   the next speaker's goal, editorial move, source cards, audience value, and
+   desired energy.
+4. **Perform the turn.** `SpeakerAgent` turns that brief into concise,
+   natural speech consistent with the speaker's personality and role.
+5. **Review the result.** `TurnReviewerAgent` judges the speech according to
+   its assigned purpose. It does not demand analysis from a story, humour from
+   an explanation, or profundity from a brief reaction.
+
+`ConversationRhythmPolicy` also watches recent speech types. It recommends a
+substantive turn after too many reactions, or a question, reframe, or lighter
+turn after several information-heavy contributions.
+
+### Beats and Moves
+
+A **beat** describes where the episode is going. A **move** describes what one
+speaker does next.
+
+| Concept | Scale | Question it answers |
+| --- | --- | --- |
+| `ConversationBeat` | One or more turns | What should this stage of the episode accomplish? |
+| `BeatPurpose` | Episode structure | Why does this stage exist? |
+| `TurnBrief` | One speaker turn | What contribution is needed now? |
+| `EditorialMove` | One speaker turn | What should the speaker do? |
+
+Beat purposes include welcoming, hooking, orienting, explaining, illustrating,
+surprising, exploring, challenging, reflecting, paying off, recapping, and
+closing. Editorial moves include explaining, telling a story, adding context,
+comparing, contrasting, connecting, reframing, questioning, challenging,
+reacting, humanising, finding meaning, summarising, and transitioning.
+
+For example, an episode might contain this beat:
+
+```text
+Beat purpose: Explore
+Goal: Explore why an early rejection became a source of motivation.
+Target: Three turns
+```
+
+The director could serve that beat through several different moves:
+
+```text
+Turn 1 — TellStory: describe the rejection letter kept above the desk
+Turn 2 — Question: ask whether it motivated the subject or preserved the hurt
+Turn 3 — FindMeaning: connect the anecdote to the subject's later identity
+```
+
+The same distinction applies when both levels use a similar word. An
+`Explain` beat means that a stage of the episode exists to build understanding.
+It might be delivered through `Question`, `Explain`, `Illustrate`, and
+`Reframe` moves across several turns. Conversely, an `Explain` move can serve
+an `Orient`, `Explore`, `Challenge`, or `Payoff` beat.
+
+### The Supporting Concepts
+
+- `EditorialCard` answers **what useful material is available**.
+- `ConversationBeat` answers **where the episode is taking the listener**.
+- `BeatPurpose` answers **why that stage exists**.
+- `TurnBrief` answers **what the next contribution must accomplish**.
+- `EditorialMove` answers **what the speaker should do**.
+- `AudienceValue` answers **what the listener gains**: understanding,
+  entertainment, insight, momentum, or connection.
+- `EnergyLevel` answers **how the moment should feel**.
+- `ConversationalDevice` offers an optional technique such as a vivid image,
+  callback, contrast, reveal, or humour.
+
+Discussion points remain separate from beats. A `DiscussionPoint` protects
+against omitting required subject matter; a `ConversationBeat` tracks whether
+the episode has achieved an editorial purpose. Mentioning every fact is not the
+same as creating a satisfying episode.
+
+### Established Foundations
+
+Tweedy's exact taxonomy is custom, but it adapts several established ideas:
+
+- **Story beats and beat sheets** from dramatic writing organise important
+  moments into a progression that creates momentum and payoff. See
+  [Learn About Beats in Screenwriting](https://www.masterclass.com/articles/what-is-a-beat-in-screenwriting).
+- **Rhetorical moves** describe functional parts of discourse that accomplish
+  communicative purposes. See
+  [Move Analysis](https://onlinelibrary.wiley.com/doi/10.1002/9781405198431.wbeal1485).
+- **Dialogue acts** describe actions performed through an utterance, such as
+  questioning, informing, acknowledging, or challenging. See
+  [ISO 24617-2:2020](https://www.iso.org/standard/76443.html).
+- **Hierarchical dialogue planning** separates longer-term conversational goals
+  from individual dialogue actions and their natural-language realisation. See
+  [Follow Me: Conversation Planning for Target-driven Recommendation Dialogue Systems](https://arxiv.org/abs/2208.03516)
+  and
+  [Learning to Plan and Realize Separately for Open-Ended Dialogue Systems](https://aclanthology.org/2020.findings-emnlp.247/).
+
+The combined pipeline is not an industry-standard podcast framework. It is
+Tweedy's synthesis of these techniques for generating conversations that feel
+purposeful without becoming rigid or formulaic.
+
 ## Installation
 
 1. Clone the repository:
@@ -235,15 +377,28 @@ The system uses LangChain for document processing and semantic search:
 
 ### Director Agent
 
-- Creates podcast plans based on materials
-- Provides direction to speakers
-- Manages conversation flow and timing
+- Creates listener-centred episode plans from prepared editorial material
+- Organises the episode into conversation beats
+- Produces structured turn briefs for speakers
+- Manages topic coverage, editorial progress, rhythm, and timing
 
 ### Speaker Agent
 
-- Generates natural speech based on direction
+- Generates natural speech from a structured turn brief
 - Maintains character consistency
-- Handles different speech types (speak, interject, question)
+- Handles different speech types and editorial moves
+
+### Material Preparer Agent
+
+- Converts raw source material into reusable editorial cards
+- Preserves supporting source excerpts for factual grounding
+- Finds material useful for understanding, entertainment, and insight
+
+### Turn Reviewer Agent
+
+- Reviews each turn against its particular editorial purpose
+- Checks clarity, engagement, grounding, progress, and conversational variety
+- Revises unsuitable turns while preserving the speaker's voice
 
 ## Audio Processing
 
@@ -314,4 +469,3 @@ For issues and questions:
 - [ ] Plugin system for custom processors
 - [ ] Advanced AI agent behaviors
 - [ ] Multi-language support
-
