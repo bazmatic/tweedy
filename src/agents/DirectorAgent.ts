@@ -79,7 +79,7 @@ Also provide a separate list of 3-8 concrete discussion points that must be cove
         1200
       );
 
-      this.podcastPlan = narrative;
+      this.podcastPlan = narrative ?? '';
       this.points = (points ?? []).map((text, index) => ({
         id: `p${index + 1}`,
         text,
