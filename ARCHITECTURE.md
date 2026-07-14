@@ -48,6 +48,19 @@ After every real turn, `ScriptService` calls `shouldInterject(speech, speakerCou
 - Otherwise, a long `SPEAK` turn (>80 chars) triggers an interjection with 80% probability.
 - A forced interjection picks a different random speaker, restricts them to `INTERJECTION_TOOLS`, and caps them at 30 tokens (vs. 80 for normal speech).
 
+## Editable script round trip
+
+Human editing is a separate workflow from script generation. It deliberately does not rerun the director, speaker, terminology or editorial policies: once a script is exported, the human editor is authoritative.
+
+The workflow is split into small, independently testable responsibilities:
+
+1. `script-edit-format.ts` formats an existing script as readable text and parses that text back into an `EditableScriptDocument`.
+2. `ScriptEditPlanner` validates script identity, revision, speakers and turn ownership, then produces a side-effect-free `ScriptEditPlan` and change summary.
+3. The CLI shows that summary and obtains confirmation before requesting a write.
+4. `ScriptService.applyEditedScriptImport` rechecks the revision and applies the accepted plan using copy-on-write speech records.
+
+Unchanged turns retain their speech IDs. Edited and added turns receive new speech records; removed and superseded records remain available in storage. Updating the script's ordered `speechIds` is therefore the commit point, so a failed import cannot partially overwrite the existing script. The revision marker prevents an older exported file from silently replacing newer work. Any successful material edit clears the derived knowledge and terminology ledgers, and previously generated audio is considered stale.
+
 ## Provider factory pattern
 
 `AiModelFactory`, `VocalProviderFactory`, `DocumentProcessorFactory`, and `ResearchProviderFactory` all share one shape:

@@ -578,6 +578,28 @@ Displays:
 - All speeches with speaker names
 - Associated materials
 
+#### `script export --editable` and `script import`
+
+Export an editable script, change it in any text editor, preview the result and
+apply it without regenerating the episode:
+
+```bash
+tweedy script export script-id --editable --output episode.edit.txt
+tweedy script import script-id episode.edit.txt --dry-run
+tweedy script import script-id episode.edit.txt
+```
+
+Each turn block contains an `@id`, `@speaker`, optional `@mode`, and its spoken
+message. Edit the message freely, reorder or remove complete blocks, or add a
+block using `@id: new`. Existing turns cannot be reassigned to another speaker;
+new turns may use any speaker already attached to the script.
+
+Import shows the numbers of added, removed, edited and unchanged turns before
+writing. It asks for confirmation unless `--yes` is supplied. The file includes
+the script revision from export, so an older file cannot silently overwrite
+newer script changes. Human edits are applied directly without another AI or
+editorial-policy pass. Regenerate any existing audio after applying edits.
+
 #### `script delete`
 
 Delete a script.
@@ -1202,4 +1224,3 @@ tweedy audio process input.mp3 output.mp3
 
 _For technical documentation, see README.md_  
 _For development details, see the architecture documentation_
-
