@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ScriptService } from "./ScriptService";
 import { SpeakerAgentToolName } from "../agents/speaker-tools";
 import {
+  AudienceProfile,
   AudienceValue,
   BeatPurpose,
   EditorialCardKind,
@@ -515,6 +516,17 @@ describe("ScriptService discussionPoints persistence", () => {
         },
       ],
     };
+    script.audienceProfile = AudienceProfile.General;
+    script.terminologyLedger = {
+      explainedTerms: [
+        {
+          term: "mycelium",
+          plainLanguageMeaning: "the underground fungal network",
+          explainedBySpeakerId: "s1",
+          explainedAtTurn: 1,
+        },
+      ],
+    };
 
     await (service as any).saveScript(script);
 
@@ -523,6 +535,8 @@ describe("ScriptService discussionPoints persistence", () => {
         editorialCards: script.editorialCards,
         conversationBeats: script.conversationBeats,
         knowledgeLedger: script.knowledgeLedger,
+        audienceProfile: AudienceProfile.General,
+        terminologyLedger: script.terminologyLedger,
       })
     );
   });
@@ -564,5 +578,7 @@ describe("ScriptService discussionPoints persistence", () => {
     });
     expect(withoutPoints.discussionPoints).toEqual([]);
     expect(withoutPoints.knowledgeLedger).toEqual({ introducedCards: [] });
+    expect(withoutPoints.audienceProfile).toBe(AudienceProfile.General);
+    expect(withoutPoints.terminologyLedger).toEqual({ explainedTerms: [] });
   });
 });

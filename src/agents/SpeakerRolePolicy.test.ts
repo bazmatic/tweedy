@@ -76,6 +76,22 @@ describe("SpeakerRolePolicy", () => {
     expect(result.repairReason).toBe(RoleRepairReason.IncompatibleMove);
   });
 
+  it("does not let a guide introduce a source-heavy illustration before the expert", () => {
+    const brief = makeBrief(guide.id, EditorialMove.Illustrate);
+    brief.cardIds = [];
+
+    const result = policy.repairAssignment(
+      makeScript(expert, guide),
+      guide,
+      brief,
+      "Describe the technical finding from the source."
+    );
+
+    expect(result.speaker.id).toBe(expert.id);
+    expect(result.repaired).toBe(true);
+    expect(result.repairReason).toBe(RoleRepairReason.InaccessibleKnowledge);
+  });
+
   it("keeps listener-centred questions with the audience guide", () => {
     const brief = makeBrief(guide.id, EditorialMove.Question);
     const script = makeScript(expert, guide);

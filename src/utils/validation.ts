@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  AudienceProfile,
   EpistemicRole,
   SourceAccess,
   SpeakerAllocation,
@@ -67,6 +68,7 @@ export const scriptGenerationSchema = z.object({
   maxTurns: z.number().min(1).max(500),
   maxDuration: z.number().min(60).max(3600),
   allocation: z.nativeEnum(SpeakerAllocation).optional(),
+  audienceProfile: z.nativeEnum(AudienceProfile).optional(),
 });
 
 export function validateEnvironment(): void {

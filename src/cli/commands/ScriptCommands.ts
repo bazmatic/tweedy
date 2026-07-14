@@ -9,8 +9,18 @@ import {
   SpeechRepository,
 } from "../../repositories";
 import { RAGService } from "../../rag";
-import { SpeakerAllocation } from "../../types";
+import { AudienceProfile, SpeakerAllocation } from "../../types";
 import { logger } from "../../utils/logger";
+
+function parseAudienceProfile(value: string): AudienceProfile {
+  const profile = Object.values(AudienceProfile).find(
+    (candidate) => candidate === value
+  );
+  if (!profile) {
+    throw new Error(`Unknown audience profile: ${value}`);
+  }
+  return profile;
+}
 
 export function createScriptCommands(): Command {
   const scriptCommand = new Command("script");
@@ -54,6 +64,7 @@ export function createScriptCommands(): Command {
           );
           console.log(`    Speeches: ${script.speeches.length}`);
           console.log(`    Materials: ${script.materials.length}`);
+          console.log(`    Audience: ${script.audienceProfile}`);
           console.log(`    Created: ${script.createdAt.toLocaleDateString()}`);
           console.log("");
         });
@@ -78,6 +89,11 @@ export function createScriptCommands(): Command {
       "60"
     )
     .option("--max-duration <duration>", "Maximum duration in seconds", "600")
+    .option(
+      "--audience <profile>",
+      `Audience profile (${Object.values(AudienceProfile).join(", ")})`,
+      AudienceProfile.General
+    )
     .option(
       "--allocation <allocation>",
       "Speaker allocation strategy",
@@ -107,6 +123,7 @@ export function createScriptCommands(): Command {
           maxTurns: parseInt(options.maxTurns),
           maxDuration: parseInt(options.maxDuration),
           allocation: options.allocation as SpeakerAllocation,
+          audienceProfile: parseAudienceProfile(options.audience),
         };
 
         logger.progress("Generating script...");
@@ -121,6 +138,7 @@ export function createScriptCommands(): Command {
         );
         console.log(`  Speeches: ${script.speeches.length}`);
         console.log(`  Materials: ${script.materials.length}`);
+        console.log(`  Audience: ${script.audienceProfile}`);
       } catch (error) {
         logger.error("Failed to generate script:", error);
       }
@@ -135,6 +153,7 @@ export function createScriptCommands(): Command {
 
         console.log(`\nScript: ${script.title}`);
         console.log(`Description: ${script.description}`);
+        console.log(`Audience: ${script.audienceProfile}`);
         console.log(
           `Speakers: ${script.speakers.map((s) => s.name).join(", ")}`
         );

@@ -81,4 +81,27 @@ describe("callModelWithTools truncation filler", () => {
       true
     );
   });
+
+  it("reports a malformed tool call instead of dereferencing a missing message", async () => {
+    const fakeModel = {
+      bindTools: () => ({
+        invoke: async () => ({
+          tool_calls: [
+            {
+              name: "SPEAK",
+              args: { style: "thoughtful" },
+            },
+          ],
+          response_metadata: { finish_reason: "length" },
+        }),
+      }),
+    };
+    vi.spyOn(AiModelFactory, "getModel").mockReturnValue(fakeModel as any);
+
+    const agent = new TestAgent();
+
+    await expect(
+      agent.callModelWithTools([{ role: "user", content: "go" }], [], 200)
+    ).rejects.toThrow("AI model tool call omitted a spoken message");
+  });
 });

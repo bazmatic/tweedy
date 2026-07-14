@@ -181,6 +181,28 @@ export interface KnowledgeLedger {
   introducedCards: IntroducedKnowledge[];
 }
 
+export enum AudienceProfile {
+  General = "general",
+  Enthusiast = "enthusiast",
+  Specialist = "specialist",
+}
+
+export interface ExplainedTechnicalTerm {
+  term: string;
+  plainLanguageMeaning: string;
+  explainedBySpeakerId: string;
+  explainedAtTurn: number;
+}
+
+export interface TerminologyLedger {
+  explainedTerms: ExplainedTechnicalTerm[];
+}
+
+export interface ReviewedTechnicalTerm {
+  term: string;
+  plainLanguageMeaning: string;
+}
+
 export interface EditorialCard {
   id: string;
   materialId: string;
@@ -291,7 +313,9 @@ export interface TurnReview {
   addsVariety: boolean;
   roleConsistent?: boolean;
   knowledgeConsistent?: boolean;
+  audienceAccessible?: boolean;
   introducedCardIds?: string[];
+  introducedTerms?: ReviewedTechnicalTerm[];
   feedback?: string;
 }
 
@@ -310,6 +334,8 @@ export interface PodcastScript {
   editorialCards?: EditorialCard[];
   conversationBeats?: ConversationBeat[];
   knowledgeLedger?: KnowledgeLedger;
+  audienceProfile?: AudienceProfile;
+  terminologyLedger?: TerminologyLedger;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -334,6 +360,7 @@ export interface GenerateScriptParams {
   maxTurns: number;
   maxDuration: number; // in seconds
   allocation: SpeakerAllocation;
+  audienceProfile?: AudienceProfile;
 }
 
 // Repository Types
@@ -372,6 +399,8 @@ export interface ScriptRecord {
   editorialCards?: EditorialCard[];
   conversationBeats?: ConversationBeat[];
   knowledgeLedger?: KnowledgeLedger;
+  audienceProfile?: AudienceProfile;
+  terminologyLedger?: TerminologyLedger;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -546,7 +575,9 @@ export interface ISpeakerAgent {
     requestSummary?: boolean,
     isFinalTurn?: boolean,
     turnBrief?: TurnBrief,
-    editorialCards?: EditorialCard[]
+    editorialCards?: EditorialCard[],
+    audienceProfile?: AudienceProfile,
+    terminologyLedger?: TerminologyLedger
   ): Promise<Speech>;
 }
 
@@ -584,7 +615,9 @@ export interface ITurnReviewer {
     brief: TurnBrief,
     cards: EditorialCard[],
     recentSpeeches: Speech[],
-    knowledgeLedger?: KnowledgeLedger
+    knowledgeLedger?: KnowledgeLedger,
+    audienceProfile?: AudienceProfile,
+    terminologyLedger?: TerminologyLedger
   ): Promise<ReviewedTurn>;
 }
 

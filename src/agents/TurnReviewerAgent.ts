@@ -1,10 +1,12 @@
 import {
+  AudienceProfile,
   EditorialCard,
   ITurnReviewer,
   KnowledgeLedger,
   LlmMessage,
   ReviewedTurn,
   Speech,
+  TerminologyLedger,
   TurnBrief,
 } from "../types";
 import { BaseAgent } from "./BaseAgent";
@@ -13,13 +15,16 @@ import {
   toReviewTurnTool,
 } from "./editorial-tools";
 import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
+import { AudienceAccessibilityPolicy } from "./AudienceAccessibilityPolicy";
 
 const EMPTY_KNOWLEDGE_LEDGER: KnowledgeLedger = { introducedCards: [] };
-const MAX_REVIEW_TOKENS = 700;
+const EMPTY_TERMINOLOGY_LEDGER: TerminologyLedger = { explainedTerms: [] };
+const MAX_REVIEW_TOKENS = 850;
 
 export class TurnReviewerAgent extends BaseAgent implements ITurnReviewer {
   constructor(
-    private readonly roleProfileResolver = new SpeakerRoleProfileResolver()
+    private readonly roleProfileResolver = new SpeakerRoleProfileResolver(),
+    private readonly audienceAccessibilityPolicy = new AudienceAccessibilityPolicy()
   ) {
     super();
   }
@@ -29,7 +34,9 @@ export class TurnReviewerAgent extends BaseAgent implements ITurnReviewer {
     brief: TurnBrief,
     cards: EditorialCard[],
     recentSpeeches: Speech[],
-    knowledgeLedger: KnowledgeLedger = EMPTY_KNOWLEDGE_LEDGER
+    knowledgeLedger: KnowledgeLedger = EMPTY_KNOWLEDGE_LEDGER,
+    audienceProfile = AudienceProfile.General,
+    terminologyLedger = EMPTY_TERMINOLOGY_LEDGER
   ): Promise<ReviewedTurn> {
     const roleProfile = this.roleProfileResolver.resolve(speech.speaker);
     const relevantCards = cards
@@ -51,6 +58,9 @@ export class TurnReviewerAgent extends BaseAgent implements ITurnReviewer {
       .slice(-4)
       .map((item) => `${item.speaker.name}: ${item.message}`)
       .join("\n");
+    const explainedTerms = terminologyLedger.explainedTerms
+      .map((entry) => `- ${entry.term}: ${entry.plainLanguageMeaning}`)
+      .join("\n");
 
     const messages: LlmMessage[] = [
       {
@@ -64,6 +74,7 @@ Desired energy: ${brief.desiredEnergy}
 Speaker epistemic role: ${roleProfile.epistemicRole}
 Speaker source access: ${roleProfile.sourceAccess}
 Speaker uncertainty style: ${roleProfile.uncertaintyStyle}
+Audience profile: ${audienceProfile}
 
 Relevant prepared material:
 ${relevantCards || "(No specific cards assigned.)"}
@@ -71,12 +82,15 @@ ${relevantCards || "(No specific cards assigned.)"}
 Knowledge status:
 ${knowledgeStatus || "(No prepared cards assigned.)"}
 
+Technical terms already explained aloud:
+${explainedTerms || "(None.)"}
+
 Recent conversation:
 ${recentText || "(This is the first turn.)"}
 
 ${speech.speaker.name} said: "${speech.message}"
 
-Judge the turn according to what it is trying to do. Do not demand analysis from a story, humour from an explanation, or insight from a brief reaction. It should fulfil the goal, be understandable, sound engaging and natural, remain grounded when it makes factual claims, advance the beat, and avoid needless repetition. It must remain consistent with the speaker's epistemic role and must not use prepared knowledge unavailable to that role. Experts must not feign ignorance of foundational assigned material; audience guides must not suddenly introduce unseen specialist facts. Natural fillers, pauses, hesitations, false starts and self-corrections are desirable delivery features and are not evidence of ignorance. Report in introducedCardIds only assigned cards whose substance this speech explicitly introduced aloud; availability alone is not introduction. Use Australian/British spelling in any revision. If rejected, provide focused feedback and a complete corrected version in the same speaker's voice.`,
+Judge the turn according to what it is trying to do. Do not demand analysis from a story, humour from an explanation, or insight from a brief reaction. It should fulfil the goal, be understandable, sound engaging and natural, remain grounded when it makes factual claims, advance the beat, and avoid needless repetition. It must remain consistent with the speaker's epistemic role and must not use prepared knowledge unavailable to that role. Experts must not feign ignorance of foundational assigned material; audience guides must not suddenly introduce unseen specialist facts. Natural fillers, pauses, hesitations, false starts and self-corrections are desirable delivery features and are not evidence of ignorance. ${this.audienceAccessibilityPolicy.buildReviewerGuidance(audienceProfile)} A term needs explaining when it is likely unfamiliar to this audience, necessary to understand the point, and not already explained above. Familiar words used in a specialised sense can qualify; incidental terminology that listeners do not need to understand does not. Report in introducedTerms only necessary technical terms whose meaning this speech genuinely explains for the first time. Report in introducedCardIds only assigned cards whose substance this speech explicitly introduced aloud; availability alone is not introduction. Use Australian/British spelling in any revision. If rejected, provide focused feedback and a complete corrected version in the same speaker's voice, no longer than 50 words. Never provide feedback or a revisedMessage when accepted is true.`,
       },
     ];
 
@@ -90,7 +104,9 @@ Judge the turn according to what it is trying to do. Do not demand analysis from
       accepted:
         result.accepted &&
         result.roleConsistent &&
-        result.knowledgeConsistent,
+        result.knowledgeConsistent &&
+        result.audienceAccessible &&
+        !result.revisedMessage,
     };
   }
 }

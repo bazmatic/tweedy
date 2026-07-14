@@ -3,6 +3,7 @@ import {
   EpistemicRole,
   KnowledgeSource,
   PodcastScript,
+  SourceAccess,
   Speaker,
   TurnBrief,
 } from "../types";
@@ -206,10 +207,20 @@ export class SpeakerRolePolicy {
       };
     }
 
+    const requiresPreparedKnowledge = MOVES_REQUIRING_CARD_ACCESS.includes(
+      turnBrief.move
+    );
+    const ledger =
+      script.knowledgeLedger ?? this.knowledgeLedgerPolicy.createLedger();
+    const heardOnlySpeakerHasNoSharedKnowledge =
+      profile.sourceAccess === SourceAccess.HeardOnly &&
+      requiresPreparedKnowledge &&
+      turnBrief.cardIds.length === 0 &&
+      ledger.introducedCards.length === 0;
     const hasInaccessibleCard =
-      MOVES_REQUIRING_CARD_ACCESS.includes(turnBrief.move) &&
+      requiresPreparedKnowledge &&
       this.getInaccessibleKnownCardIds(script, speaker, turnBrief).length > 0;
-    if (hasInaccessibleCard) {
+    if (hasInaccessibleCard || heardOnlySpeakerHasNoSharedKnowledge) {
       return {
         valid: false,
         repairReason: RoleRepairReason.InaccessibleKnowledge,

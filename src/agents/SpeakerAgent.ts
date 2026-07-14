@@ -1,4 +1,5 @@
 import {
+  AudienceProfile,
   ISpeakerAgent,
   EditorialCard,
   EpistemicRole,
@@ -8,6 +9,7 @@ import {
   Speaker,
   SourceAccess,
   StopReason,
+  TerminologyLedger,
   TurnBrief,
 } from "../types";
 import { BaseAgent } from "./BaseAgent";
@@ -22,6 +24,9 @@ import {
 import { NaturalSpeechStylePolicy } from "./NaturalSpeechStylePolicy";
 import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
 import { ResponseModePolicy } from "./ResponseModePolicy";
+import { AudienceAccessibilityPolicy } from "./AudienceAccessibilityPolicy";
+
+const EMPTY_TERMINOLOGY_LEDGER: TerminologyLedger = { explainedTerms: [] };
 
 export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
 
@@ -31,13 +36,15 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
   private readonly roleProfileResolver: SpeakerRoleProfileResolver;
   private readonly naturalSpeechStylePolicy: NaturalSpeechStylePolicy;
   private readonly responseModePolicy: ResponseModePolicy;
+  private readonly audienceAccessibilityPolicy: AudienceAccessibilityPolicy;
 
   constructor(
     speaker: Speaker,
     ragService?: RAGService,
     roleProfileResolver = new SpeakerRoleProfileResolver(),
     naturalSpeechStylePolicy = new NaturalSpeechStylePolicy(),
-    responseModePolicy = new ResponseModePolicy(roleProfileResolver)
+    responseModePolicy = new ResponseModePolicy(roleProfileResolver),
+    audienceAccessibilityPolicy = new AudienceAccessibilityPolicy()
   ) {
     super();
     this.speaker = speaker;
@@ -45,6 +52,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     this.roleProfileResolver = roleProfileResolver;
     this.naturalSpeechStylePolicy = naturalSpeechStylePolicy;
     this.responseModePolicy = responseModePolicy;
+    this.audienceAccessibilityPolicy = audienceAccessibilityPolicy;
   }
 
   async speak(
@@ -59,7 +67,9 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     requestSummary = false,
     isFinalTurn = false,
     turnBrief?: TurnBrief,
-    editorialCards: EditorialCard[] = []
+    editorialCards: EditorialCard[] = [],
+    audienceProfile = AudienceProfile.General,
+    terminologyLedger = EMPTY_TERMINOLOGY_LEDGER
   ): Promise<Speech> {
     let attempts = 0;
 
@@ -83,7 +93,9 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
             requestSummary,
             isFinalTurn,
             turnBrief,
-            editorialCards
+            editorialCards,
+            audienceProfile,
+            terminologyLedger
           );
 
         const speech: Speech = {
@@ -125,16 +137,22 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
    */
   async interject(lastSpeech: Speech): Promise<Speech> {
     try {
+      const roleProfile = this.roleProfileResolver.resolve(this.speaker);
+      const roleGuidance =
+        roleProfile.epistemicRole === EpistemicRole.Expert
+          ? "React from an expert stance. Do not perform surprise or confusion about foundational subject matter; briefly acknowledge, clarify, or gently correct it instead."
+          : "React as the audience's guide without introducing new specialist facts.";
       const messages: LlmMessage[] = [
         {
           role: "user" as const,
           content: `You are ${this.speaker.name}, a podcast speaker with the following characteristics:
 - Personality: ${this.speaker.personality}
 - Voice Style: ${this.speaker.voiceStyle}
+- Epistemic Role: ${roleProfile.epistemicRole}
 
 ${lastSpeech.speaker.name} just said: "${lastSpeech.message}"
 
-Give a brief, natural reaction to cut in with — a quick interjection or filler comment. Do not summarise or explain, just react in the moment.`,
+Give a brief, natural reaction to cut in with — a quick interjection or filler comment. Do not summarise or explain, just react in the moment. ${roleGuidance}`,
         },
       ];
 
@@ -173,7 +191,9 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
     requestSummary: boolean,
     isFinalTurn: boolean,
     turnBrief?: TurnBrief,
-    editorialCards: EditorialCard[] = []
+    editorialCards: EditorialCard[] = [],
+    audienceProfile = AudienceProfile.General,
+    terminologyLedger = EMPTY_TERMINOLOGY_LEDGER
   ): Promise<{
     toolName: SpeakerAgentToolName;
     message: string;
@@ -209,6 +229,7 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
 - Epistemic Role: ${roleProfile.epistemicRole}
 - Source Access: ${roleProfile.sourceAccess}
 - Uncertainty Style: ${roleProfile.uncertaintyStyle}
+- Audience Profile: ${audienceProfile}
 
 Podcast Context:
 - Title: ${title}
@@ -227,7 +248,7 @@ Director's guidance: ${direction}${editorialSection}${
 
 Respond naturally as ${
           this.speaker.name
-        }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getExpertiseNudge(isSolo, roleProfile.epistemicRole, turnBrief)} **CRITICAL: Keep this to 1-2 sentences max (under 50 words).** Get ONE idea or conversational beat out and then stop. Serve the assigned audience value without forcing analysis, jokes or profundity where they do not belong. Trust your co-host to ask a follow-up; don't pre-empt their next question. Use Australian/British spelling. Be authentic to your personality and epistemic role. ${this.naturalSpeechStylePolicy.buildGuidance(roleProfile)} Don't include stage directions, emotes, or sound effects — those belong in the style argument only.`,
+        }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getExpertiseNudge(isSolo, roleProfile.epistemicRole, turnBrief)} ${this.audienceAccessibilityPolicy.buildSpeakerGuidance(audienceProfile, terminologyLedger)} **CRITICAL: Keep this to 1-2 sentences max (under 50 words).** Get ONE idea or conversational beat out and then stop. Serve the assigned audience value without forcing analysis, jokes or profundity where they do not belong. Trust your co-host to ask a follow-up; don't pre-empt their next question. Use Australian/British spelling. Be authentic to your personality and epistemic role. ${this.naturalSpeechStylePolicy.buildGuidance(roleProfile)} Don't include stage directions, emotes, or sound effects — those belong in the style argument only.`,
       },
     ];
 

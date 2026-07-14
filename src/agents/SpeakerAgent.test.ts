@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { SpeakerAgent } from "./SpeakerAgent";
 import { SpeakerAgentToolName } from "./speaker-tools";
 import {
+  AudienceProfile,
   AudienceValue,
   EditorialCardKind,
   EditorialMove,
@@ -136,13 +137,27 @@ describe("SpeakerAgent editorial context", () => {
           relatedCardIds: [],
           tags: [],
         },
-      ]
+      ],
+      AudienceProfile.General,
+      {
+        explainedTerms: [
+          {
+            term: "mycelium",
+            plainLanguageMeaning: "the underground fungal network",
+            explainedBySpeakerId: "s2",
+            explainedAtTurn: 1,
+          },
+        ],
+      }
     );
 
     const prompt = (call.mock.calls[0][0] as any)[0].content as string;
     expect(prompt).toContain("Editorial move: tell_story");
     expect(prompt).toContain("Primary audience value: connection");
     expect(prompt).toContain("She kept the rejection letter");
+    expect(prompt).toContain("Audience Profile: general");
+    expect(prompt).toContain("everyday language before naming the term");
+    expect(prompt).toContain("Previously explained terms: mycelium");
   });
 });
 
@@ -176,6 +191,35 @@ describe("SpeakerAgent.interject tool set", () => {
       SpeakerAgentToolName.FILLER_COMMENT,
       SpeakerAgentToolName.CHALLENGE,
     ]);
+  });
+
+  it("keeps expert interjections grounded in the expert stance", async () => {
+    const lastSpeaker = makeSpeaker("s2");
+    const lastSpeech = {
+      id: "sp1",
+      speaker: lastSpeaker,
+      message: "Fungi produce electrical spikes.",
+      instructions: "",
+      voice: lastSpeaker.voice,
+      voiceStyle: "neutral",
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.SPEAK,
+    };
+    const agent = new SpeakerAgent(makeSpeaker("expert", true));
+    const spy = vi
+      .spyOn(agent as any, "callModelWithTools")
+      .mockResolvedValue({
+        toolName: SpeakerAgentToolName.FILLER_COMMENT,
+        message: "Exactly.",
+        style: "assured",
+        stopReason: "stop",
+      });
+
+    await agent.interject(lastSpeech);
+
+    const prompt = (spy.mock.calls[0][0] as any)[0].content as string;
+    expect(prompt).toContain("Epistemic Role: expert");
+    expect(prompt).toContain("Do not perform surprise or confusion");
   });
 });
 

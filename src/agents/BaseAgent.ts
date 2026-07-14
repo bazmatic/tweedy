@@ -269,8 +269,14 @@ export abstract class BaseAgent {
         throw new Error("AI model response did not include a tool call");
       }
 
-      const input = toolCall.args as { message: string; style: string };
+      const input = toolCall.args as { message?: unknown; style?: unknown };
       const stopReason = normalizeStopReason(response.response_metadata);
+      if (
+        typeof input.message !== "string" ||
+        input.message.trim().length === 0
+      ) {
+        throw new Error("AI model tool call omitted a spoken message");
+      }
 
       return {
         toolName: toolCall.name,
@@ -278,7 +284,7 @@ export abstract class BaseAgent {
           stopReason === "max_tokens"
             ? appendTruncationFiller(input.message)
             : input.message,
-        style: input.style,
+        style: typeof input.style === "string" ? input.style : "",
         stopReason,
       };
     } catch (error) {

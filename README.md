@@ -299,6 +299,9 @@ npx tweedy script list
 # Generate a script
 npx tweedy script generate --title "Tech Discussion" --speakers "speaker-id-1,speaker-id-2" --materials "material-id-1,material-id-2"
 
+# Choose the assumed listener knowledge (general is the default)
+npx tweedy script generate --title "Tech Discussion" --speakers "speaker-id-1,speaker-id-2" --audience general
+
 # Show script details
 npx tweedy script show <script-id>
 
@@ -425,13 +428,34 @@ For every directed turn, the generation path is:
 3. `KnowledgeLedgerPolicy` exposes only facts available to that speaker.
 4. `DialogueCadencePolicy` prevents role repair from creating consecutive expert monologues.
 5. `ResponseModePolicy` selects tools from the conversational obligation and editorial move.
-6. `SpeakerAgent` applies shared natural delivery guidance, including occasional fillers, pauses, false starts, and self-corrections.
-7. `TurnReviewerAgent` checks the result before accepted card knowledge is added to the episode ledger.
+6. `AudienceAccessibilityPolicy` tells the speaker how much specialist knowledge listeners can be assumed to have.
+7. `SpeakerAgent` applies the accessibility standard and shared natural delivery guidance, including occasional fillers, pauses, false starts, and self-corrections.
+8. `TurnReviewerAgent` checks role, knowledge, and audience accessibility before accepted knowledge is added to the episode ledgers.
+9. `EpisodeConclusionPolicy` prevents production from ending until the final persisted turn uses the dedicated closing-statement tool.
 
 The knowledge ledger is stored with the script. A prepared card becomes shared
 conversation knowledge only after an accepted speech introduces it. This lets
 an audience guide later summarise an expert's explanation without allowing the
 guide to introduce an unseen technical fact.
+
+### Audience Accessibility and Technical Terms
+
+Episodes default to the `General` audience profile. `Enthusiast` and
+`Specialist` profiles can be selected with `script generate --audience`. For a
+general audience, speakers explain a necessary specialist idea in everyday
+language before naming its technical term.
+
+A term needs explanation when it is likely unfamiliar to the selected
+audience, necessary to understand the current point, and has not already been
+explained in the episode. This is contextual: familiar words used in a
+specialist sense may need explanation, while an incidental proper name may not.
+
+`TerminologyLedgerPolicy` records validated first-use explanations from
+accepted turns. The reviewer rejects unexplained necessary jargon, while terms
+already explained can be reused without repeatedly stopping the conversation.
+This changes how expertise is communicated without suppressing the fillers,
+hesitations, false starts, and self-corrections that make delivery sound
+natural.
 
 ## Audio Processing
 

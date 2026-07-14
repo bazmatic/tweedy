@@ -15,4 +15,10 @@ describe("SpeechRevisionPolicy", () => {
     expect(policy.isUsable("A sprawling network weaving through the soil,"))
       .toBe(false);
   });
+
+  it("rejects revisions that expand a conversational turn into a monologue", () => {
+    const longRevision = `${"word ".repeat(61).trim()}.`;
+
+    expect(policy.isUsable(longRevision)).toBe(false);
+  });
 });

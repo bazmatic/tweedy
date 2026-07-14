@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DirectorAgent } from "./DirectorAgent";
+import { SpeakerAgentToolName } from "./speaker-tools";
 import {
   EditorialCardKind,
   AudienceValue,
@@ -46,6 +47,20 @@ function makeScript(overrides: Partial<PodcastScript> = {}): PodcastScript {
     updatedAt: new Date(),
     ...overrides,
   };
+}
+
+function appendClosingSpeech(script: PodcastScript): void {
+  const speaker = script.speakers[0];
+  script.speeches.push({
+    id: "closing",
+    speaker,
+    message: "Thanks for listening. Until next time.",
+    instructions: "warm",
+    voice: speaker.voice,
+    voiceStyle: speaker.voiceStyle,
+    timestamp: new Date(),
+    tool: SpeakerAgentToolName.CLOSING_STATEMENT,
+  });
 }
 
 function makeMaterial(overrides: Partial<PodcastMaterial> = {}): PodcastMaterial {
@@ -457,6 +472,7 @@ describe("DirectorAgent.isConversationComplete", () => {
     });
     chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
     await agent.chooseNextSpeaker(script);
+    appendClosingSpeech(script);
 
     chooseSpy.mockResolvedValueOnce({ isComplete: true });
 
@@ -483,6 +499,7 @@ describe("DirectorAgent.isConversationComplete", () => {
     });
     chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
     await agent.chooseNextSpeaker(script);
+    appendClosingSpeech(script);
 
     chooseSpy.mockResolvedValueOnce({ isComplete: false });
 
@@ -509,12 +526,51 @@ describe("DirectorAgent.isConversationComplete", () => {
     });
     chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
     await agent.chooseNextSpeaker(script);
+    appendClosingSpeech(script);
 
     chooseSpy.mockRejectedValueOnce(new Error("model error"));
 
     const result = await agent.isConversationComplete(script);
 
     expect(result).toBe(false);
+  });
+
+  it("cannot finish after a summary without a dedicated sign-off", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValueOnce({
+      narrative: "plan",
+      points: ["Point A"],
+    });
+    await agent.createPodcastPlan();
+
+    const chooseSpy = vi.spyOn(agent as any, "callModelForToolInput");
+    chooseSpy.mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Talk about A",
+      coveredPointIds: ["p1"],
+    });
+    chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
+    await agent.chooseNextSpeaker(script);
+
+    const speaker = script.speakers[0];
+    script.speeches.push({
+      id: "summary",
+      speaker,
+      message: "That is the key takeaway.",
+      instructions: "reflective",
+      voice: speaker.voice,
+      voiceStyle: speaker.voiceStyle,
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.SUMMARIZE,
+    });
+    chooseSpy.mockClear();
+
+    const result = await agent.isConversationComplete(script);
+
+    expect(result).toBe(false);
+    expect(chooseSpy).not.toHaveBeenCalled();
   });
 });
 
