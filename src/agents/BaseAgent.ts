@@ -4,8 +4,10 @@ import {
   HumanMessage,
   SystemMessage,
 } from "@langchain/core/messages";
+import { z } from "zod";
 import { AiModelFactory } from "../providers/AiModelFactory";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
+import { StructuredOutputMethodPolicy } from "../providers/StructuredOutputMethodPolicy";
 import { appConfig } from "../utils/config";
 import { LlmMessage, LlmTool, StopReason } from "../types";
 import { logger } from "../utils/logger";
@@ -113,65 +115,6 @@ function recoverTruncatedToolCall(
   };
 }
 
-/**
- * Best-effort repair of a JSON object that was cut off mid-generation by the
- * token limit: closes any still-open string, drops a dangling trailing comma,
- * then closes any still-open objects/arrays in the correct order.
- */
-function repairTruncatedJson(raw: string): unknown | null {
-  let inString = false;
-  let escape = false;
-  const stack: string[] = [];
-
-  for (const ch of raw) {
-    if (inString) {
-      if (escape) {
-        escape = false;
-      } else if (ch === "\\") {
-        escape = true;
-      } else if (ch === '"') {
-        inString = false;
-      }
-      continue;
-    }
-    if (ch === '"') {
-      inString = true;
-    } else if (ch === "{" || ch === "[") {
-      stack.push(ch);
-    } else if (ch === "}" || ch === "]") {
-      stack.pop();
-    }
-  }
-
-  let repaired = raw;
-  if (inString) repaired += '"';
-  repaired = repaired.replace(/,\s*$/, "");
-  for (let i = stack.length - 1; i >= 0; i--) {
-    repaired += stack[i] === "{" ? "}" : "]";
-  }
-
-  try {
-    return JSON.parse(repaired);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * When a forced tool call is cut off by the token limit, LangChain can't parse
- * the (invalid, unterminated) JSON arguments and leaves `tool_calls` empty, so
- * a long-running turn would otherwise hard-fail. Recover whatever structured
- * data was actually generated instead of discarding it.
- */
-function recoverTruncatedToolInput<T>(response: AIMessage): T | null {
-  const rawCall = (response.additional_kwargs?.tool_calls as any[] | undefined)?.[0];
-  const args = rawCall?.function?.arguments;
-  if (typeof args !== "string") return null;
-
-  const repaired = repairTruncatedJson(args);
-  return repaired === null ? null : (repaired as T);
-}
-
 const TRUNCATION_FILLER_WORDS = [
   "um",
   "uh",
@@ -189,6 +132,7 @@ function appendTruncationFiller(message: string): string {
 const MAX_TOKENS_REASONS = new Set(["max_tokens", "length"]);
 const TOOL_USE_REASONS = new Set(["tool_use", "tool_calls"]);
 const STOP_REASONS = new Set(["end_turn", "stop_sequence", "stop"]);
+const structuredOutputMethodPolicy = new StructuredOutputMethodPolicy();
 
 export function normalizeStopReason(
   metadata: Record<string, unknown> | undefined
@@ -298,10 +242,12 @@ export abstract class BaseAgent {
     }
   }
 
-  protected async callModelForToolInput<T>(
+  protected async callModelForStructuredOutput<
+    T extends Record<string, unknown>
+  >(
     task: ModelTask,
     messages: LlmMessage[],
-    tools: LlmTool[],
+    schema: z.ZodType<T>,
     maxTokens: number = 200
   ): Promise<T> {
     try {
@@ -310,25 +256,15 @@ export abstract class BaseAgent {
         task,
         maxTokens
       );
-      const response = (await model
-        .bindTools!(toOpenAiTools(tools), { tool_choice: "any" })
-        .invoke(toBaseMessages(messages))) as AIMessage;
-
-      const toolCall = response.tool_calls?.[0];
-      if (!toolCall) {
-        const recovered = recoverTruncatedToolInput<T>(response);
-        if (recovered) {
-          logger.warn(
-            "Tool call truncated by the token limit; using the repaired partial response instead of retrying"
-          );
-          return recovered;
-        }
-        throw new Error("AI model response did not include a tool call");
-      }
-
-      return toolCall.args as T;
+      return await model
+        .withStructuredOutput<T>(schema, {
+          method: structuredOutputMethodPolicy.resolve(
+            appConfig.defaultAiProvider
+          ),
+        })
+        .invoke(toBaseMessages(messages));
     } catch (error) {
-      logger.error("AI model tool-use call failed:", error);
+      logger.error("AI model structured-output call failed:", error);
       throw error;
     }
   }

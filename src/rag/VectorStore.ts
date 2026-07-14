@@ -1,7 +1,7 @@
-import { MemoryVectorStore } from "langchain/vectorstores/memory";
+import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
 import { LocalLangChainEmbeddings } from "./LocalLangChainEmbeddings";
-import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
-import { Document } from "langchain/document";
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
+import { Document } from "@langchain/core/documents";
 import * as fs from "fs-extra";
 import * as path from "path";
 import {

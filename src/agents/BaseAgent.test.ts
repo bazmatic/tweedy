@@ -3,10 +3,27 @@ import { normalizeStopReason, BaseAgent } from "./BaseAgent";
 import { AiModelFactory } from "../providers/AiModelFactory";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
 import { appConfig } from "../utils/config";
+import { z } from "zod";
+import { StructuredOutputMethod } from "../providers/StructuredOutputMethodPolicy";
+import { AiProviderName, LlmMessage } from "../types";
 
 class TestAgent extends BaseAgent {
   callModelWithTools(...args: Parameters<BaseAgent["callModelWithTools"]>) {
     return super.callModelWithTools(...args);
+  }
+
+  callModelForStructuredOutput<T extends Record<string, unknown>>(
+    task: ModelTask,
+    messages: LlmMessage[],
+    schema: z.ZodType<T>,
+    maxTokens?: number
+  ): Promise<T> {
+    return super.callModelForStructuredOutput(
+      task,
+      messages,
+      schema,
+      maxTokens
+    );
   }
 }
 
@@ -118,5 +135,32 @@ describe("callModelWithTools truncation filler", () => {
         200
       )
     ).rejects.toThrow("AI model tool call omitted a spoken message");
+  });
+});
+
+describe("callModelForStructuredOutput", () => {
+  it("uses LangChain structured output and returns the validated result", async () => {
+    const schema = z.object({ isComplete: z.boolean() });
+    const invoke = vi.fn().mockResolvedValue({ isComplete: true });
+    const withStructuredOutput = vi.fn().mockReturnValue({ invoke });
+    vi.spyOn(AiModelFactory, "getModel").mockReturnValue({
+      withStructuredOutput,
+    } as any);
+
+    const result = await new TestAgent().callModelForStructuredOutput(
+      ModelTask.ConclusionCheck,
+      [{ role: "user", content: "Has the episode finished?" }],
+      schema,
+      50
+    );
+
+    expect(withStructuredOutput).toHaveBeenCalledWith(schema, {
+      method:
+        appConfig.defaultAiProvider === AiProviderName.Anthropic
+          ? StructuredOutputMethod.JsonSchema
+          : StructuredOutputMethod.FunctionCalling,
+    });
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(result).toEqual({ isComplete: true });
   });
 });

@@ -26,18 +26,19 @@ import {
   CreatePodcastPlanInput,
   SelectNextSpeakerInput,
   VerifyCoveredPointsInput,
-  toCheckConversationCompleteTool,
-  toCreatePodcastPlanTool,
-  toSelectNextSpeakerTool,
-  toVerifyCoveredPointsTool,
-} from './director-tools';
-import { ConversationBeatInput } from './editorial-tools';
+  checkConversationCompleteSchema,
+  createPodcastPlanSchema,
+  createSelectNextSpeakerSchema,
+  verifyCoveredPointsSchema,
+  ConversationBeatInput,
+} from './director-schemas';
 import { SpeakerRolePolicy } from './SpeakerRolePolicy';
 import { SpeechRevisionPolicy } from './SpeechRevisionPolicy';
 import { SpeakerRoleProfileResolver } from './SpeakerRoleProfileResolver';
 import { DialogueCadencePolicy } from './DialogueCadencePolicy';
 import { AudienceAccessibilityPolicy } from './AudienceAccessibilityPolicy';
 import { EpisodeConclusionPolicy } from './EpisodeConclusionPolicy';
+import { SpeakerAgentToolName } from './speaker-tools';
 import { ModelTask } from '../providers/ModelRoutingPolicy';
 
 const WORDS_PER_MINUTE = 150;
@@ -53,7 +54,6 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private maxTurns: number;
   private maxDuration: number;
   private turnsUsed = 0;
-  private hasForcedTimeWarning = false;
   private points: DiscussionPoint[] = [];
   private materialPreparer: IMaterialPreparer;
   private turnReviewer: ITurnReviewer;
@@ -167,11 +167,10 @@ Also provide a sequence of conversation beats. Each beat must have a listener-ce
         }
       ];
 
-      const tools = [toCreatePodcastPlanTool()];
-      const { narrative, points, beats } = await this.callModelForToolInput<CreatePodcastPlanInput>(
+      const { narrative, points, beats } = await this.callModelForStructuredOutput<CreatePodcastPlanInput>(
         ModelTask.EpisodePlanning,
         messages,
-        tools,
+        createPodcastPlanSchema,
         MAX_PLAN_TOKENS
       );
 
@@ -218,7 +217,15 @@ Also provide a sequence of conversation beats. Each beat must have a listener-ce
       // generous safety ceiling, not the real pacing signal).
       const isFinalTurn =
         this.turnsUsed >= this.maxTurns || progress >= 100;
-      const wrapUpNote = this.getWrapUpNote(progress, isFinalTurn);
+      const hasAnnouncedTimePressure = script.speeches.some(
+        (speech) =>
+          speech.tool === SpeakerAgentToolName.NEARLY_OUT_OF_TIME
+      );
+      const wrapUpNote = this.getWrapUpNote(
+        progress,
+        isFinalTurn,
+        hasAnnouncedTimePressure
+      );
       const velocityBeforeThisTurn = this.calculateVelocity(script);
       const velocityNote = this.getVelocityNote(velocityBeforeThisTurn);
       const openPointsSection = this.getOpenPointsSection();
@@ -226,11 +233,10 @@ Also provide a sequence of conversation beats. Each beat must have a listener-ce
       const rhythmNote = this.getRhythmNote(script);
       const editorialSection = this.getEditorialSection(script);
 
-      // Force explicit "we're almost out of time" tool call.
-      const forceNearlyOutOfTime = progress >= 85 && !isFinalTurn;
-      if (forceNearlyOutOfTime) {
-        this.hasForcedTimeWarning = true;
-      }
+      // Announce time pressure once. Later turns should shorten and close
+      // without repeatedly telling listeners that time is running out.
+      const forceNearlyOutOfTime =
+        progress >= 85 && !isFinalTurn && !hasAnnouncedTimePressure;
 
       const history = this.getConversationHistory(script);
       const speakerDescriptions = script.speakers
@@ -263,12 +269,11 @@ Decide which speaker should talk next and give them clear direction. Also choose
         }
       ];
 
-      const tools = [toSelectNextSpeakerTool(script.speakers)];
       const result =
-        await this.callModelForToolInput<SelectNextSpeakerInput>(
+        await this.callModelForStructuredOutput<SelectNextSpeakerInput>(
           ModelTask.DirectionSelection,
           messages,
-          tools,
+          createSelectNextSpeakerSchema(script.speakers),
           MAX_TURN_DIRECTION_TOKENS
         );
       const { speakerId, direction, coveredPointIds } = result;
@@ -286,7 +291,7 @@ Decide which speaker should talk next and give them clear direction. Also choose
         velocityAfterThisTurn.openCount >= 2;
       const turnBrief = this.toTurnBrief(result, direction);
 
-      const proposedSpeaker = script.speakers.find((s) => s.id === speakerId);
+      const proposedSpeaker = this.resolveSpeakerReference(script, speakerId);
       const fallback = proposedSpeaker ?? this.fallbackSpeaker(script);
       if (!proposedSpeaker) {
         logger.warn(
@@ -321,7 +326,8 @@ Decide which speaker should talk next and give them clear direction. Also choose
       return {
         speaker: assignment.speaker,
         direction: assignment.direction,
-        timeStatus: wrapUpNote,
+        timeStatus:
+          forceNearlyOutOfTime || isFinalTurn ? wrapUpNote : "",
         forceNearlyOutOfTime,
         requestSummary,
         isFinalTurn,
@@ -361,10 +367,10 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
 
     try {
       const { isComplete } =
-        await this.callModelForToolInput<CheckConversationCompleteInput>(
+        await this.callModelForStructuredOutput<CheckConversationCompleteInput>(
           ModelTask.ConclusionCheck,
           messages,
-          [toCheckConversationCompleteTool()],
+          checkConversationCompleteSchema,
           50
         );
       return isComplete;
@@ -444,7 +450,7 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
    * the next speaker, and can hallucinate coverage from a merely
    * topically-adjacent mention (e.g. an oxygen tank explosion "covering" a
    * CO2 scrubber duct-tape hack point). Re-check each claim in a dedicated
-   * forced tool call against the actual, already-persisted recent speech
+   * structured verification against the actual, already-persisted recent speech
    * text before ever marking a point covered.
    */
   private async verifyCoveredPoints(
@@ -484,10 +490,10 @@ Return only the ids of points that were genuinely, substantively covered.`,
 
     try {
       const { confirmedPointIds } =
-        await this.callModelForToolInput<VerifyCoveredPointsInput>(
+        await this.callModelForStructuredOutput<VerifyCoveredPointsInput>(
           ModelTask.CoverageVerification,
           messages,
-          [toVerifyCoveredPointsTool()],
+          verifyCoveredPointsSchema,
           150
         );
       return confirmedPointIds;
@@ -675,6 +681,19 @@ Return only the ids of points that were genuinely, substantively covered.`,
     return eligible[Math.floor(Math.random() * eligible.length)];
   }
 
+  private resolveSpeakerReference(
+    script: PodcastScript,
+    reference: string
+  ): Speaker | undefined {
+    const normalisedReference = reference.trim().toLocaleLowerCase();
+    return script.speakers.find(
+      (speaker) =>
+        speaker.id.toLocaleLowerCase() === normalisedReference ||
+        speaker.slug.toLocaleLowerCase() === normalisedReference ||
+        speaker.name.toLocaleLowerCase() === normalisedReference
+    );
+  }
+
   /**
    * Progress toward the estimated spoken duration budget. maxTurns is a
    * separate hard safety ceiling (see getWrapUpNote/forceNearlyOutOfTime),
@@ -701,12 +720,19 @@ Return only the ids of points that were genuinely, substantively covered.`,
    * Tells the director to start steering toward a close as the turn/duration
    * budget runs low, and to force a sign-off on the final turn.
    */
-  private getWrapUpNote(progress: number, isFinalTurn: boolean): string {
+  private getWrapUpNote(
+    progress: number,
+    isFinalTurn: boolean,
+    hasAnnouncedTimePressure: boolean
+  ): string {
     if (isFinalTurn) {
       return ' This is the final turn of the episode — direct this speaker to deliver a closing statement that wraps up the conversation and signs off naturally.';
     }
 
     if (progress >= 85) {
+      if (hasAnnouncedTimePressure) {
+        return ' The speakers have already told listeners that time is running out. Keep the remaining turns concise and move directly towards the close without mentioning the time pressure again.';
+      }
       return ' The episode is almost out of time — direct the speakers to wrap up remaining points and head toward a close within the next turn or two, rather than opening new topics.';
     }
 

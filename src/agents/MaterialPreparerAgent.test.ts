@@ -16,7 +16,7 @@ const material = {
 describe("MaterialPreparerAgent", () => {
   it("turns subject-neutral material into stable editorial cards", async () => {
     const agent = new MaterialPreparerAgent();
-    const callModel = vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValue({
+    const callModel = vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
       synopsis: "A profile about persistence and public success.",
       cards: [
         {
@@ -50,7 +50,7 @@ describe("MaterialPreparerAgent", () => {
 
   it("falls back to a grounded essential-point card if preparation fails", async () => {
     const agent = new MaterialPreparerAgent();
-    vi.spyOn(agent as any, "callModelForToolInput").mockRejectedValue(
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockRejectedValue(
       new Error("model unavailable")
     );
 

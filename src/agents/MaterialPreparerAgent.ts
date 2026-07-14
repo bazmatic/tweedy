@@ -10,8 +10,8 @@ import { logger } from "../utils/logger";
 import { BaseAgent } from "./BaseAgent";
 import {
   PrepareMaterialInput,
-  toPrepareMaterialTool,
-} from "./editorial-tools";
+  prepareMaterialSchema,
+} from "./editorial-schemas";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
 
 const MAX_PREPARATION_TOKENS = 3000;
@@ -42,10 +42,10 @@ ${material.content}`,
 
     try {
       const result =
-        await this.callModelForToolInput<PrepareMaterialInput>(
+        await this.callModelForStructuredOutput<PrepareMaterialInput>(
           ModelTask.MaterialPreparation,
           messages,
-          [toPrepareMaterialTool()],
+          prepareMaterialSchema,
           MAX_PREPARATION_TOKENS
         );
       return this.toPreparedMaterial(material, result);
