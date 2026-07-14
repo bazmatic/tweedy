@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { EditorialCardKind, SourceType } from "../types";
 import { MaterialPreparerAgent } from "./MaterialPreparerAgent";
+import { ModelTask } from "../providers/ModelRoutingPolicy";
 
 const material = {
   id: "m1",
@@ -15,7 +16,7 @@ const material = {
 describe("MaterialPreparerAgent", () => {
   it("turns subject-neutral material into stable editorial cards", async () => {
     const agent = new MaterialPreparerAgent();
-    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValue({
+    const callModel = vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValue({
       synopsis: "A profile about persistence and public success.",
       cards: [
         {
@@ -44,6 +45,7 @@ describe("MaterialPreparerAgent", () => {
       materialId: "m1",
       excerpt: "kept the rejection letter above her desk for a decade",
     });
+    expect(callModel.mock.calls[0][0]).toBe(ModelTask.MaterialPreparation);
   });
 
   it("falls back to a grounded essential-point card if preparation fails", async () => {

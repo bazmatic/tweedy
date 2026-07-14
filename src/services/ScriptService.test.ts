@@ -2,11 +2,13 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ScriptService } from "./ScriptService";
 import { SpeakerAgentToolName } from "../agents/speaker-tools";
 import {
+  AudienceProfile,
   AudienceValue,
   BeatPurpose,
   EditorialCardKind,
   EditorialMove,
   EnergyLevel,
+  KnowledgeSource,
   VocalProviderName,
   PodcastScript,
   SourceType,
@@ -473,7 +475,7 @@ describe("ScriptService discussionPoints persistence", () => {
     );
   });
 
-  it("persists editorial cards and conversation beats with the script", async () => {
+  it("persists editorial cards, conversation beats and introduced knowledge with the script", async () => {
     const create = vi.fn().mockResolvedValue({
       id: "record-1",
       createdAt: new Date(),
@@ -504,6 +506,27 @@ describe("ScriptService discussionPoints persistence", () => {
         covered: false,
       },
     ];
+    script.knowledgeLedger = {
+      introducedCards: [
+        {
+          cardId: "m1-card-1",
+          introducedBySpeakerId: "s1",
+          introducedAtTurn: 1,
+          source: KnowledgeSource.SourceMaterial,
+        },
+      ],
+    };
+    script.audienceProfile = AudienceProfile.General;
+    script.terminologyLedger = {
+      explainedTerms: [
+        {
+          term: "mycelium",
+          plainLanguageMeaning: "the underground fungal network",
+          explainedBySpeakerId: "s1",
+          explainedAtTurn: 1,
+        },
+      ],
+    };
 
     await (service as any).saveScript(script);
 
@@ -511,6 +534,9 @@ describe("ScriptService discussionPoints persistence", () => {
       expect.objectContaining({
         editorialCards: script.editorialCards,
         conversationBeats: script.conversationBeats,
+        knowledgeLedger: script.knowledgeLedger,
+        audienceProfile: AudienceProfile.General,
+        terminologyLedger: script.terminologyLedger,
       })
     );
   });
@@ -551,5 +577,8 @@ describe("ScriptService discussionPoints persistence", () => {
       updatedAt: new Date(),
     });
     expect(withoutPoints.discussionPoints).toEqual([]);
+    expect(withoutPoints.knowledgeLedger).toEqual({ introducedCards: [] });
+    expect(withoutPoints.audienceProfile).toBe(AudienceProfile.General);
+    expect(withoutPoints.terminologyLedger).toEqual({ explainedTerms: [] });
   });
 });

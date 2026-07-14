@@ -2,6 +2,18 @@ import { Command } from "commander";
 import { SpeakerService } from "../../services";
 import { SpeakerRepository, VoiceRepository } from "../../repositories";
 import { logger } from "../../utils/logger";
+import { EpistemicRole } from "../../types";
+import { SpeakerRoleProfileFactory } from "../../agents/SpeakerRoleProfileFactory";
+
+function parseEpistemicRole(value: string): EpistemicRole {
+  const role = Object.values(EpistemicRole).find(
+    (candidate) => candidate === value
+  );
+  if (!role) {
+    throw new Error(`Unknown epistemic role: ${value}`);
+  }
+  return role;
+}
 
 export function createSpeakerCommands(): Command {
   const speakerCommand = new Command("speaker");
@@ -9,6 +21,7 @@ export function createSpeakerCommands(): Command {
   const speakerRepository = new SpeakerRepository();
   const voiceRepository = new VoiceRepository();
   const speakerService = new SpeakerService(speakerRepository, voiceRepository);
+  const roleProfileFactory = new SpeakerRoleProfileFactory();
 
   speakerCommand
     .description("Manage speakers for podcast generation")
@@ -34,6 +47,7 @@ export function createSpeakerCommands(): Command {
           );
           console.log(`    ID: ${speaker.id}`);
           console.log(`    Expert: ${speaker.isExpert ? "Yes" : "No"}`);
+          console.log(`    Epistemic role: ${speaker.roleProfile?.epistemicRole}`);
           console.log(`    Voice Style: ${speaker.voiceStyle}`);
           console.log("");
         });
@@ -50,6 +64,10 @@ export function createSpeakerCommands(): Command {
     .option("-v, --voice-id <voiceId>", "Voice ID to use")
     .option("-s, --voice-style <style>", "Voice style/instructions")
     .option("-e, --expert", "Mark as expert speaker")
+    .option(
+      "-r, --role <role>",
+      `Epistemic role (${Object.values(EpistemicRole).join(", ")})`
+    )
     .action(async (options) => {
       try {
         if (!options.name || !options.personality || !options.voiceId) {
@@ -57,12 +75,18 @@ export function createSpeakerCommands(): Command {
           return;
         }
 
+        const epistemicRole = options.role
+          ? parseEpistemicRole(options.role)
+          : options.expert
+            ? EpistemicRole.Expert
+            : EpistemicRole.AudienceGuide;
         const speaker = await speakerService.createSpeaker({
           name: options.name,
           personality: options.personality,
           voiceId: options.voiceId,
           voiceStyle: options.voiceStyle || "Natural conversational tone",
-          isExpert: options.expert || false,
+          isExpert: epistemicRole === EpistemicRole.Expert,
+          roleProfile: roleProfileFactory.create(epistemicRole),
         });
 
         logger.success(`Speaker created: ${speaker.slug}`);
@@ -80,6 +104,10 @@ export function createSpeakerCommands(): Command {
     .option("-s, --voice-style <style>", "New voice style")
     .option("-e, --expert", "Mark as expert")
     .option("--no-expert", "Remove expert status")
+    .option(
+      "-r, --role <role>",
+      `New epistemic role (${Object.values(EpistemicRole).join(", ")})`
+    )
     .option("--slug <slug>", "New speaker slug (must be unique)")
     .action(async (id, options) => {
       try {
@@ -88,7 +116,17 @@ export function createSpeakerCommands(): Command {
         if (options.personality) updateData.personality = options.personality;
         if (options.voiceId) updateData.voiceId = options.voiceId;
         if (options.voiceStyle) updateData.voiceStyle = options.voiceStyle;
-        if (options.expert !== undefined) updateData.isExpert = options.expert;
+        if (options.role) {
+          const epistemicRole = parseEpistemicRole(options.role);
+          updateData.roleProfile = roleProfileFactory.create(epistemicRole);
+          updateData.isExpert = epistemicRole === EpistemicRole.Expert;
+        } else if (options.expert !== undefined) {
+          const epistemicRole = options.expert
+            ? EpistemicRole.Expert
+            : EpistemicRole.AudienceGuide;
+          updateData.roleProfile = roleProfileFactory.create(epistemicRole);
+          updateData.isExpert = options.expert;
+        }
         if (options.slug) updateData.slug = options.slug;
 
         await speakerService.updateSpeaker(id, updateData);

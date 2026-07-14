@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { normalizeStopReason, BaseAgent } from "./BaseAgent";
 import { AiModelFactory } from "../providers/AiModelFactory";
+import { ModelTask } from "../providers/ModelRoutingPolicy";
+import { appConfig } from "../utils/config";
 
 class TestAgent extends BaseAgent {
   callModelWithTools(...args: Parameters<BaseAgent["callModelWithTools"]>) {
@@ -66,10 +68,13 @@ describe("callModelWithTools truncation filler", () => {
         }),
       }),
     };
-    vi.spyOn(AiModelFactory, "getModel").mockReturnValue(fakeModel as any);
+    const getModel = vi
+      .spyOn(AiModelFactory, "getModel")
+      .mockReturnValue(fakeModel as any);
 
     const agent = new TestAgent();
     const result = await agent.callModelWithTools(
+      ModelTask.SpeechGeneration,
       [{ role: "user", content: "go" }],
       [],
       200
@@ -80,5 +85,38 @@ describe("callModelWithTools truncation filler", () => {
     expect(result.message.startsWith("how did they not just suffocate?")).toBe(
       true
     );
+    expect(getModel).toHaveBeenCalledWith(
+      appConfig.defaultAiProvider,
+      ModelTask.SpeechGeneration,
+      200
+    );
+  });
+
+  it("reports a malformed tool call instead of dereferencing a missing message", async () => {
+    const fakeModel = {
+      bindTools: () => ({
+        invoke: async () => ({
+          tool_calls: [
+            {
+              name: "SPEAK",
+              args: { style: "thoughtful" },
+            },
+          ],
+          response_metadata: { finish_reason: "length" },
+        }),
+      }),
+    };
+    vi.spyOn(AiModelFactory, "getModel").mockReturnValue(fakeModel as any);
+
+    const agent = new TestAgent();
+
+    await expect(
+      agent.callModelWithTools(
+        ModelTask.SpeechGeneration,
+        [{ role: "user", content: "go" }],
+        [],
+        200
+      )
+    ).rejects.toThrow("AI model tool call omitted a spoken message");
   });
 });

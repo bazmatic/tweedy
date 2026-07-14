@@ -77,6 +77,31 @@ export interface Speaker {
   voice: Voice;
   voiceStyle: string;
   isExpert: boolean;
+  roleProfile?: SpeakerRoleProfile;
+}
+
+export enum EpistemicRole {
+  Expert = "expert",
+  InformedHost = "informed_host",
+  AudienceGuide = "audience_guide",
+}
+
+export enum SourceAccess {
+  Full = "full",
+  PreparedCards = "prepared_cards",
+  HeardOnly = "heard_only",
+}
+
+export enum UncertaintyStyle {
+  Precise = "precise",
+  Exploratory = "exploratory",
+  ListenerSurrogate = "listener_surrogate",
+}
+
+export interface SpeakerRoleProfile {
+  epistemicRole: EpistemicRole;
+  sourceAccess: SourceAccess;
+  uncertaintyStyle: UncertaintyStyle;
 }
 
 export type StopReason = "max_tokens" | "stop" | "tool_use" | "unknown";
@@ -135,6 +160,47 @@ export interface EvidenceRef {
   materialId: string;
   excerpt: string;
   section?: string;
+}
+
+export enum KnowledgeSource {
+  SourceMaterial = "source_material",
+  PreparedCard = "prepared_card",
+  Conversation = "conversation",
+  CommonKnowledge = "common_knowledge",
+  PersonalExperience = "personal_experience",
+}
+
+export interface IntroducedKnowledge {
+  cardId: string;
+  introducedBySpeakerId: string;
+  introducedAtTurn: number;
+  source: KnowledgeSource;
+}
+
+export interface KnowledgeLedger {
+  introducedCards: IntroducedKnowledge[];
+}
+
+export enum AudienceProfile {
+  General = "general",
+  Enthusiast = "enthusiast",
+  Specialist = "specialist",
+}
+
+export interface ExplainedTechnicalTerm {
+  term: string;
+  plainLanguageMeaning: string;
+  explainedBySpeakerId: string;
+  explainedAtTurn: number;
+}
+
+export interface TerminologyLedger {
+  explainedTerms: ExplainedTechnicalTerm[];
+}
+
+export interface ReviewedTechnicalTerm {
+  term: string;
+  plainLanguageMeaning: string;
 }
 
 export interface EditorialCard {
@@ -235,6 +301,7 @@ export interface TurnBrief {
   audienceValue: AudienceValue;
   desiredEnergy: EnergyLevel;
   device?: ConversationalDevice;
+  knowledgeSource?: KnowledgeSource;
 }
 
 export interface TurnReview {
@@ -244,7 +311,16 @@ export interface TurnReview {
   grounded: boolean;
   advancesBeat: boolean;
   addsVariety: boolean;
+  roleConsistent?: boolean;
+  knowledgeConsistent?: boolean;
+  audienceAccessible?: boolean;
+  introducedCardIds?: string[];
+  introducedTerms?: ReviewedTechnicalTerm[];
   feedback?: string;
+}
+
+export interface ReviewedTurn extends TurnReview {
+  revisedMessage?: string;
 }
 
 export interface PodcastScript {
@@ -257,6 +333,9 @@ export interface PodcastScript {
   discussionPoints: DiscussionPoint[];
   editorialCards?: EditorialCard[];
   conversationBeats?: ConversationBeat[];
+  knowledgeLedger?: KnowledgeLedger;
+  audienceProfile?: AudienceProfile;
+  terminologyLedger?: TerminologyLedger;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -281,6 +360,7 @@ export interface GenerateScriptParams {
   maxTurns: number;
   maxDuration: number; // in seconds
   allocation: SpeakerAllocation;
+  audienceProfile?: AudienceProfile;
 }
 
 // Repository Types
@@ -303,6 +383,7 @@ export interface SpeakerRecord {
   voiceId: string;
   voiceStyle: string;
   isExpert: boolean;
+  roleProfile?: SpeakerRoleProfile;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -317,6 +398,9 @@ export interface ScriptRecord {
   discussionPoints: DiscussionPoint[];
   editorialCards?: EditorialCard[];
   conversationBeats?: ConversationBeat[];
+  knowledgeLedger?: KnowledgeLedger;
+  audienceProfile?: AudienceProfile;
+  terminologyLedger?: TerminologyLedger;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -491,7 +575,9 @@ export interface ISpeakerAgent {
     requestSummary?: boolean,
     isFinalTurn?: boolean,
     turnBrief?: TurnBrief,
-    editorialCards?: EditorialCard[]
+    editorialCards?: EditorialCard[],
+    audienceProfile?: AudienceProfile,
+    terminologyLedger?: TerminologyLedger
   ): Promise<Speech>;
 }
 
@@ -528,8 +614,11 @@ export interface ITurnReviewer {
     speech: Speech,
     brief: TurnBrief,
     cards: EditorialCard[],
-    recentSpeeches: Speech[]
-  ): Promise<TurnReview & { revisedMessage?: string }>;
+    recentSpeeches: Speech[],
+    knowledgeLedger?: KnowledgeLedger,
+    audienceProfile?: AudienceProfile,
+    terminologyLedger?: TerminologyLedger
+  ): Promise<ReviewedTurn>;
 }
 
 // Service Interfaces

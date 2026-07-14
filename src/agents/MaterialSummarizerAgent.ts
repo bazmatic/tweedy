@@ -1,6 +1,7 @@
 import { LlmMessage, PodcastMaterial } from "../types";
 import { BaseAgent } from "./BaseAgent";
 import { logger } from "../utils/logger";
+import { ModelTask } from "../providers/ModelRoutingPolicy";
 
 const SUMMARY_MAX_TOKENS = 300;
 const FALLBACK_CONTENT_LENGTH = 500;
@@ -24,7 +25,11 @@ ${material.content}`,
     ];
 
     try {
-      return await this.callModel(messages, SUMMARY_MAX_TOKENS);
+      return await this.callModel(
+        ModelTask.MaterialSummary,
+        messages,
+        SUMMARY_MAX_TOKENS
+      );
     } catch (error) {
       logger.warn(
         `Failed to summarize material "${material.title}"; falling back to truncated raw content:`,

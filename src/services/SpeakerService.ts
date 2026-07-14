@@ -1,11 +1,13 @@
 import { ISpeakerService, Speaker, SpeakerRecord, Voice } from "../types";
 import { SpeakerRepository, VoiceRepository } from "../repositories";
 import { logger } from "../utils/logger";
+import { SpeakerRoleProfileResolver } from "../agents/SpeakerRoleProfileResolver";
 
 export class SpeakerService implements ISpeakerService {
   constructor(
     private readonly speakerRepository: SpeakerRepository,
-    private readonly voiceRepository: VoiceRepository
+    private readonly voiceRepository: VoiceRepository,
+    private readonly roleProfileResolver = new SpeakerRoleProfileResolver()
   ) {}
 
   async createSpeaker(
@@ -105,7 +107,7 @@ export class SpeakerService implements ISpeakerService {
       voice,
       voiceStyle: record.voiceStyle,
       isExpert: record.isExpert,
+      roleProfile: this.roleProfileResolver.resolve(record),
     };
   }
 }
-
