@@ -9,6 +9,7 @@ export { GrokProvider } from './GrokProvider';
 export { VocalProviderFactory } from './VocalProviderFactory';
 export { AudioProcessor } from './AudioProcessor';
 export { AiModelFactory } from './AiModelFactory';
+export { ModelRoutingPolicy, ModelTask, ModelTier } from './ModelRoutingPolicy';
+export { ProviderModelCatalogue } from './ProviderModelCatalogue';
 export { PerplexityProvider } from "./PerplexityProvider";
 export { ResearchProviderFactory } from "./ResearchProviderFactory";
-

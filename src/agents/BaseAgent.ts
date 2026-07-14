@@ -5,6 +5,7 @@ import {
   SystemMessage,
 } from "@langchain/core/messages";
 import { AiModelFactory } from "../providers/AiModelFactory";
+import { ModelTask } from "../providers/ModelRoutingPolicy";
 import { appConfig } from "../utils/config";
 import { LlmMessage, LlmTool, StopReason } from "../types";
 import { logger } from "../utils/logger";
@@ -217,12 +218,14 @@ function toBaseMessages(messages: LlmMessage[]): BaseMessage[] {
 
 export abstract class BaseAgent {
   protected async callModel(
+    task: ModelTask,
     messages: LlmMessage[],
     maxTokens: number = 200
   ): Promise<string> {
     try {
       const model = AiModelFactory.getModel(
         appConfig.defaultAiProvider,
+        task,
         maxTokens
       );
       const response = await model.invoke(toBaseMessages(messages));
@@ -235,6 +238,7 @@ export abstract class BaseAgent {
   }
 
   protected async callModelWithTools(
+    task: ModelTask,
     messages: LlmMessage[],
     tools: LlmTool[],
     maxTokens: number = 200
@@ -247,6 +251,7 @@ export abstract class BaseAgent {
     try {
       const model = AiModelFactory.getModel(
         appConfig.defaultAiProvider,
+        task,
         maxTokens
       );
       const response = (await model
@@ -294,6 +299,7 @@ export abstract class BaseAgent {
   }
 
   protected async callModelForToolInput<T>(
+    task: ModelTask,
     messages: LlmMessage[],
     tools: LlmTool[],
     maxTokens: number = 200
@@ -301,6 +307,7 @@ export abstract class BaseAgent {
     try {
       const model = AiModelFactory.getModel(
         appConfig.defaultAiProvider,
+        task,
         maxTokens
       );
       const response = (await model

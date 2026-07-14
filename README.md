@@ -403,6 +403,26 @@ The system uses LangChain for document processing and semantic search:
 - Checks clarity, engagement, grounding, progress, conversational variety, role consistency, and knowledge consistency
 - Revises unsuitable turns while preserving the speaker's voice, then reviews the revision once before accepting it
 
+### Model Routing
+
+Tweedy assigns models programmatically according to the work being performed.
+Agents pass a `ModelTask` enum value with each request; they never select a
+provider, model name, or quality tier themselves. `ModelRoutingPolicy` maps
+that task to an abstract tier, and `ProviderModelCatalogue` maps the tier to a
+model offered by the configured provider.
+
+| Model tier | Tasks |
+| --- | --- |
+| Premium | Material preparation, material summaries, episode planning, substantive speech, and turn review |
+| Balanced | Direction and speaker selection |
+| Economy | Coverage verification, conclusion checks, interjections, and speech effect tagging |
+
+This routing is deterministic and does not require an additional model call.
+Provider-specific model identifiers remain confined to the provider catalogue,
+so the editorial agents and routing policy work unchanged with Anthropic,
+DeepSeek, or a future provider. If a provider has fewer model classes, multiple
+tiers can resolve to the same model.
+
 ### Speaker Roles and Knowledge
 
 Tweedy separates three concerns that are easy to conflate:

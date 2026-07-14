@@ -14,6 +14,7 @@ import {
 import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
 
 export enum ConversationalObligation {
+  AnswerChallenge = "answer_challenge",
   AnswerQuestion = "answer_question",
   ExecuteBrief = "execute_brief",
 }
@@ -29,6 +30,11 @@ export interface ResponseModeContext {
 }
 
 const QUESTION_MARK = "?";
+
+const MOVES_THAT_MUST_NOT_BECOME_SUMMARIES = Object.freeze([
+  EditorialMove.Question,
+  EditorialMove.React,
+]);
 
 const EXPERT_DEFAULT_TOOLS = Object.freeze([
   SpeakerAgentToolName.SPEAK,
@@ -50,6 +56,11 @@ const SUBSTANTIVE_TOOLS = Object.freeze([
 const CHALLENGE_TOOLS = Object.freeze([
   SpeakerAgentToolName.CHALLENGE,
   SpeakerAgentToolName.SPEAK,
+]);
+
+const CHALLENGE_RESPONSE_TOOLS = Object.freeze([
+  SpeakerAgentToolName.SPEAK,
+  SpeakerAgentToolName.CHALLENGE,
 ]);
 
 const MOVE_TO_TOOLS: Readonly<
@@ -89,15 +100,25 @@ export class ResponseModePolicy {
     if (context.forceNearlyOutOfTime) {
       return [SpeakerAgentToolName.NEARLY_OUT_OF_TIME];
     }
-    if (context.requestSummary) {
+    if (
+      context.requestSummary &&
+      (!context.turnBrief ||
+        !MOVES_THAT_MUST_NOT_BECOME_SUMMARIES.includes(context.turnBrief.move))
+    ) {
       return [SpeakerAgentToolName.SUMMARIZE];
     }
     if (context.isSolo) return [...SOLO_TOOLS];
 
     const profile = this.roleProfileResolver.resolve(context.speaker);
     if (
+      this.getObligation(context.speeches, context.speaker) ===
+      ConversationalObligation.AnswerChallenge
+    ) {
+      return [...CHALLENGE_RESPONSE_TOOLS];
+    }
+    if (
       profile.epistemicRole === EpistemicRole.Expert &&
-      this.getObligation(context.speeches) ===
+      this.getObligation(context.speeches, context.speaker) ===
         ConversationalObligation.AnswerQuestion
     ) {
       return [...EXPERT_ANSWER_TOOLS];
@@ -113,8 +134,17 @@ export class ResponseModePolicy {
       : [...INTERVIEWER_TOOLS];
   }
 
-  private getObligation(speeches: Speech[]): ConversationalObligation {
+  private getObligation(
+    speeches: Speech[],
+    speaker: Speaker
+  ): ConversationalObligation {
     const previousSpeech = speeches.at(-1);
+    if (
+      previousSpeech?.tool === SpeakerAgentToolName.CHALLENGE &&
+      previousSpeech.speaker.id !== speaker.id
+    ) {
+      return ConversationalObligation.AnswerChallenge;
+    }
     if (
       previousSpeech?.tool === SpeakerAgentToolName.SHORT_QUESTION ||
       previousSpeech?.message.trim().endsWith(QUESTION_MARK)

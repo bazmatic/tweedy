@@ -88,18 +88,18 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.SUMMARIZE,
     toolDescription:
-      "Deliver a compact recap that briefly touches each of several named discussion points, one short clause per point, instead of one idea per turn. Use only when directed to catch up on multiple remaining points at once.",
+      "Deliver a compact recap that briefly touches each of several named discussion points, one short clause per point, instead of one idea per turn. Use only when directed to catch up on multiple remaining points at once. Complete the recap cleanly rather than trailing off part-way through a point.",
     styleDescription:
       "How to deliver the summary. Include pacing and tone. Example: 'Brisk, matter-of-fact pace, quick transitions between points'",
-    maxTokens: 120,
+    maxTokens: 400,
   },
   {
     name: SpeakerAgentToolName.CLOSING_STATEMENT,
     toolDescription:
-      "Deliver a closing statement that wraps up the podcast. Briefly summarize key takeaways or themes, thank your co-host(s), and sign off naturally. Keep it warm and authentic to your personality — 2-3 sentences maximum. This is the final word of the episode.",
+      "Deliver a closing statement that wraps up the podcast. Reflect on the key takeaway or theme, thank your co-host(s), and sign off naturally. Keep it warm and authentic to your personality. Take enough space to land the ending properly, and always finish the final sentence. This is the final word of the episode.",
     styleDescription:
       "How to deliver the closing. Include tone and delivery style for signing off. Example: 'Warm, genuine, slightly reflective tone, natural pacing'",
-    maxTokens: 120,
+    maxTokens: 400,
   },
 ];
 

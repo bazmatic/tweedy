@@ -12,6 +12,7 @@ import {
   PrepareMaterialInput,
   toPrepareMaterialTool,
 } from "./editorial-tools";
+import { ModelTask } from "../providers/ModelRoutingPolicy";
 
 const MAX_PREPARATION_TOKENS = 3000;
 const FALLBACK_CONTENT_LENGTH = 700;
@@ -42,6 +43,7 @@ ${material.content}`,
     try {
       const result =
         await this.callModelForToolInput<PrepareMaterialInput>(
+          ModelTask.MaterialPreparation,
           messages,
           [toPrepareMaterialTool()],
           MAX_PREPARATION_TOKENS

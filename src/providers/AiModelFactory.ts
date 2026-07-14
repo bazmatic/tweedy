@@ -2,12 +2,22 @@ import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatOpenAI } from "@langchain/openai";
 import { AiProviderName } from "../types";
+import { ModelRoutingPolicy, ModelTask } from "./ModelRoutingPolicy";
+import { ProviderModelCatalogue } from "./ProviderModelCatalogue";
 
 export class AiModelFactory {
   private static models: Map<string, BaseChatModel> = new Map();
+  private static routingPolicy = new ModelRoutingPolicy();
+  private static modelCatalogue = new ProviderModelCatalogue();
 
-  static getModel(provider: AiProviderName, maxTokens: number): BaseChatModel {
-    const key = `${provider}:${maxTokens}`;
+  static getModel(
+    provider: AiProviderName,
+    task: ModelTask,
+    maxTokens: number
+  ): BaseChatModel {
+    const tier = this.routingPolicy.resolve(task);
+    const modelId = this.modelCatalogue.resolve(provider, tier);
+    const key = `${provider}:${modelId}:${maxTokens}`;
 
     if (!this.models.has(key)) {
       switch (provider) {
@@ -30,7 +40,7 @@ export class AiModelFactory {
           // bump this project isn't taking yet.
           const model = new ChatAnthropic({
             apiKey,
-            model: "claude-sonnet-4-5",
+            model: modelId,
             maxTokens,
             invocationKwargs: { top_p: undefined, top_k: undefined },
           });
@@ -50,7 +60,7 @@ export class AiModelFactory {
           // these short conversational turns don't need reasoning.
           const model = new ChatOpenAI({
             apiKey,
-            model: "deepseek-v4-pro",
+            model: modelId,
             maxTokens,
             configuration: { baseURL: "https://api.deepseek.com" },
             modelKwargs: { thinking: { type: "disabled" } },

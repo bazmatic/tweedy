@@ -9,6 +9,7 @@ import { aggregateWordTimestamps } from './grok-word-timestamps';
 import { VALID_TAG_PATTERN } from './grok-effect-tags';
 import { appConfig } from '../utils/config';
 import { logger } from '../utils/logger';
+import { ModelTask } from './ModelRoutingPolicy';
 
 function normalizeWhitespace(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
@@ -61,7 +62,11 @@ export class GrokProvider extends BaseVocalProvider {
 
   private async addEffectTags(text: string): Promise<string> {
     try {
-      const model = AiModelFactory.getModel(appConfig.defaultAiProvider, 500);
+      const model = AiModelFactory.getModel(
+        appConfig.defaultAiProvider,
+        ModelTask.SpeechEffectTagging,
+        500
+      );
       const response = await model.invoke([
         new SystemMessage(
           "You add expressive speech markup to text for xAI's Grok text-to-speech engine. " +

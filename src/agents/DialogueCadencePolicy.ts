@@ -11,6 +11,7 @@ import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
 
 export enum CadenceRepairReason {
   ConsecutiveExpertExplanation = "consecutive_expert_explanation",
+  ChallengeRequiresResponse = "challenge_requires_response",
 }
 
 export interface CadenceAssignment extends RoleAssignment {
@@ -33,6 +34,30 @@ export class DialogueCadencePolicy {
     assignment: RoleAssignment
   ): CadenceAssignment {
     const previousSpeech = script.speeches.at(-1);
+    const challengedSpeech = script.speeches.at(-2);
+    if (
+      previousSpeech?.tool === SpeakerAgentToolName.CHALLENGE &&
+      challengedSpeech &&
+      challengedSpeech.speaker.id !== previousSpeech.speaker.id &&
+      assignment.speaker.id !== challengedSpeech.speaker.id
+    ) {
+      return {
+        ...assignment,
+        speaker: challengedSpeech.speaker,
+        direction: `Respond directly to ${previousSpeech.speaker.name}'s challenge before moving the conversation on. Preserve your established position, acknowledge any fair nuance, and then continue this goal: ${assignment.turnBrief.goal}`,
+        turnBrief: {
+          ...assignment.turnBrief,
+          speakerId: challengedSpeech.speaker.id,
+          move: EditorialMove.React,
+          cardIds: [],
+          audienceValue: AudienceValue.Momentum,
+          knowledgeSource: KnowledgeSource.Conversation,
+        },
+        repaired: true,
+        cadenceRepairReason: CadenceRepairReason.ChallengeRequiresResponse,
+      };
+    }
+
     const assignedProfile = this.roleProfileResolver.resolve(
       assignment.speaker
     );

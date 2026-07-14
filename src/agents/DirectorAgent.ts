@@ -38,6 +38,7 @@ import { SpeakerRoleProfileResolver } from './SpeakerRoleProfileResolver';
 import { DialogueCadencePolicy } from './DialogueCadencePolicy';
 import { AudienceAccessibilityPolicy } from './AudienceAccessibilityPolicy';
 import { EpisodeConclusionPolicy } from './EpisodeConclusionPolicy';
+import { ModelTask } from '../providers/ModelRoutingPolicy';
 
 const WORDS_PER_MINUTE = 150;
 const MINUTES_PER_DISCUSSION_POINT = 2;
@@ -168,6 +169,7 @@ Also provide a sequence of conversation beats. Each beat must have a listener-ce
 
       const tools = [toCreatePodcastPlanTool()];
       const { narrative, points, beats } = await this.callModelForToolInput<CreatePodcastPlanInput>(
+        ModelTask.EpisodePlanning,
         messages,
         tools,
         MAX_PLAN_TOKENS
@@ -255,7 +257,7 @@ ${speakerDescriptions}
 Conversation so far (each line tagged with the tool used to deliver it — "speak" is substantive content; "interject", "filler_comment", "one_liner", and "short_question" are brief reactions, not real answers or new points):
 ${history || '(nothing said yet — this is the opening of the episode)'}
 
-Decide which speaker should talk next and give them clear direction. Also choose a subject-neutral editorial move, the primary audience value, desired energy, relevant beat and prepared card ids. Every turn should help the listener understand, entertain them, reveal something meaningful, create connection, or move the conversation forwards; it need not do all of these. Don't force analysis onto a story or humour onto an explanation. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. On the opening of the episode (nothing said yet), this must be the interviewer, and the direction must have them deliver a warm, friendly welcome to listeners — greeting them, naming the episode ("${this.script.title}"), and introducing the speakers by name — before moving into substantive content. Don't repeat this welcome on later turns. Mark genuinely completed beat ids in coveredBeatIds. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack). Use Australian/British spelling.${this.getPacingNote(
+Decide which speaker should talk next and give them clear direction. Also choose a subject-neutral editorial move, the primary audience value, desired energy, relevant beat and prepared card ids. Every turn should help the listener understand, entertain them, reveal something meaningful, create connection, or move the conversation forwards; it need not do all of these. Don't force analysis onto a story or humour onto an explanation. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. A challenge creates a right of reply: direct the speaker who was challenged to respond before the challenger speaks again. Respect the chronological order shown above; a remark made before a challenge cannot be described as a response to that challenge. On the opening of the episode (nothing said yet), this must be the interviewer, and the direction must have them deliver a warm, friendly welcome to listeners — greeting them, naming the episode ("${this.script.title}"), and introducing the speakers by name — before moving into substantive content. Don't repeat this welcome on later turns. Mark genuinely completed beat ids in coveredBeatIds. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack). Use Australian/British spelling.${this.getPacingNote(
             script
           )}${wrapUpNote}${velocityNote}${balanceNote}${rhythmNote}${this.speakerRolePolicy.buildDirectorGuidance(script)}${this.audienceAccessibilityPolicy.buildDirectorGuidance(script.audienceProfile ?? AudienceProfile.General)}`
         }
@@ -264,6 +266,7 @@ Decide which speaker should talk next and give them clear direction. Also choose
       const tools = [toSelectNextSpeakerTool(script.speakers)];
       const result =
         await this.callModelForToolInput<SelectNextSpeakerInput>(
+          ModelTask.DirectionSelection,
           messages,
           tools,
           MAX_TURN_DIRECTION_TOKENS
@@ -359,6 +362,7 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
     try {
       const { isComplete } =
         await this.callModelForToolInput<CheckConversationCompleteInput>(
+          ModelTask.ConclusionCheck,
           messages,
           [toCheckConversationCompleteTool()],
           50
@@ -481,6 +485,7 @@ Return only the ids of points that were genuinely, substantively covered.`,
     try {
       const { confirmedPointIds } =
         await this.callModelForToolInput<VerifyCoveredPointsInput>(
+          ModelTask.CoverageVerification,
           messages,
           [toVerifyCoveredPointsTool()],
           150

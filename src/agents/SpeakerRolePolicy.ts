@@ -14,6 +14,20 @@ export enum RoleRepairReason {
   IncompatibleMove = "incompatible_move",
   InaccessibleKnowledge = "inaccessible_knowledge",
   NoEligibleSpeaker = "no_eligible_speaker",
+  SelfTargetingDirection = "self_targeting_direction",
+}
+
+enum SelfTargetingCue {
+  Ask = "ask ",
+  BringIn = "bring in ",
+  Get = "get ",
+  HandOver = "hand over to ",
+  Invite = "invite ",
+  SetUp = "set up ",
+  SetsUp = "sets up ",
+  Tee = "tee ",
+  Tees = "tees ",
+  TurnTo = "turn to ",
 }
 
 export interface RoleAssignment {
@@ -82,6 +96,27 @@ export class SpeakerRolePolicy {
     turnBrief: TurnBrief,
     direction: string
   ): RoleAssignment {
+    if (this.targetsProposedSpeaker(proposedSpeaker, turnBrief, direction)) {
+      const alternativeSpeaker = script.speakers.find(
+        (speaker) =>
+          speaker.id !== proposedSpeaker.id &&
+          this.isAssignmentValid(script, speaker, turnBrief)
+      );
+      if (alternativeSpeaker) {
+        return {
+          speaker: alternativeSpeaker,
+          direction,
+          turnBrief: {
+            ...turnBrief,
+            speakerId: alternativeSpeaker.id,
+            knowledgeSource: this.getKnowledgeSource(alternativeSpeaker),
+          },
+          repaired: true,
+          repairReason: RoleRepairReason.SelfTargetingDirection,
+        };
+      }
+    }
+
     const inaccessibleCardIds = this.getInaccessibleKnownCardIds(
       script,
       proposedSpeaker,
@@ -172,7 +207,19 @@ export class SpeakerRolePolicy {
       })
       .join("\n");
 
-    return `\n\nEpistemic role constraints:\n${speakerGuidance}\nAudience guides must not introduce unseen prepared cards or perform specialist explanations. Experts should introduce new technical material and must not feign ignorance of foundational material.`;
+    return `\n\nEpistemic role constraints:\n${speakerGuidance}\nAudience guides must not introduce unseen prepared cards or perform specialist explanations. Experts should introduce new technical material and must not feign ignorance of foundational material. Never select a speaker for a brief that asks them to ask, invite, tee up, or hand over to themselves.`;
+  }
+
+  private targetsProposedSpeaker(
+    proposedSpeaker: Speaker,
+    turnBrief: TurnBrief,
+    direction: string
+  ): boolean {
+    const assignmentText = `${turnBrief.goal} ${direction}`.toLocaleLowerCase();
+    const speakerName = proposedSpeaker.name.toLocaleLowerCase();
+    return Object.values(SelfTargetingCue).some((cue) =>
+      assignmentText.includes(`${cue}${speakerName}`)
+    );
   }
 
   private isAssignmentValid(

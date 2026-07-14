@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DirectorAgent } from "./DirectorAgent";
+import { ModelTask } from "../providers/ModelRoutingPolicy";
 import { SpeakerAgentToolName } from "./speaker-tools";
 import {
   EditorialCardKind,
@@ -112,7 +113,10 @@ describe("DirectorAgent.createPodcastPlan", () => {
 
     await agent.createPodcastPlan();
 
-    const promptContent = (callModelForToolInputSpy.mock.calls[0][0] as any)[0]
+    expect(callModelForToolInputSpy.mock.calls[0][0]).toBe(
+      ModelTask.EpisodePlanning
+    );
+    const promptContent = (callModelForToolInputSpy.mock.calls[0][1] as any)[0]
       .content as string;
     expect(promptContent).toContain("A concise podcast-ready summary of the article.");
     expect(promptContent).not.toContain(material.content);
@@ -260,7 +264,7 @@ describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
 
     await agent.chooseNextSpeaker(script);
 
-    const prompt = (chooseSpy.mock.calls[3][0] as any)[0].content as string;
+    const prompt = (chooseSpy.mock.calls[3][1] as any)[0].content as string;
     expect(prompt).toContain("p2: Point B");
     expect(prompt).not.toContain("p1: Point A");
   });
@@ -608,7 +612,7 @@ describe("DirectorAgent balance note", () => {
     });
     await agent.chooseNextSpeaker(script);
 
-    const prompt = (chooseSpy.mock.calls[1][0] as any)[0].content as string;
+    const prompt = (chooseSpy.mock.calls[1][1] as any)[0].content as string;
     expect(prompt).not.toContain("dominated the conversation");
   });
 
@@ -637,7 +641,7 @@ describe("DirectorAgent balance note", () => {
     });
     await agent.chooseNextSpeaker(script);
 
-    const prompt = (chooseSpy.mock.calls[1][0] as any)[0].content as string;
+    const prompt = (chooseSpy.mock.calls[1][1] as any)[0].content as string;
     expect(prompt).toContain(`${s1.name} has dominated the conversation`);
   });
 
@@ -666,7 +670,7 @@ describe("DirectorAgent balance note", () => {
     });
     await agent.chooseNextSpeaker(script);
 
-    const prompt = (chooseSpy.mock.calls[1][0] as any)[0].content as string;
+    const prompt = (chooseSpy.mock.calls[1][1] as any)[0].content as string;
     expect(prompt).not.toContain("dominated the conversation");
   });
 });

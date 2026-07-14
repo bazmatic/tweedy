@@ -8,6 +8,7 @@ import {
   VocalProviderName,
 } from "../types";
 import { TurnReviewerAgent } from "./TurnReviewerAgent";
+import { ModelTask } from "../providers/ModelRoutingPolicy";
 
 const speaker = {
   id: "s1",
@@ -69,7 +70,8 @@ describe("TurnReviewerAgent", () => {
       []
     );
 
-    const prompt = (call.mock.calls[0][0] as any)[0].content as string;
+    expect(call.mock.calls[0][0]).toBe(ModelTask.TurnReview);
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
     expect(prompt).toContain("Humanise the subject");
     expect(prompt).toContain("Do not demand analysis from a story");
     expect(prompt).toContain("Australian/British spelling");

@@ -16,6 +16,8 @@ import {
 } from "./editorial-tools";
 import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
 import { AudienceAccessibilityPolicy } from "./AudienceAccessibilityPolicy";
+import { ModelTask } from "../providers/ModelRoutingPolicy";
+import { SpeakerAgentToolName } from "./speaker-tools";
 
 const EMPTY_KNOWLEDGE_LEDGER: KnowledgeLedger = { introducedCards: [] };
 const EMPTY_TERMINOLOGY_LEDGER: TerminologyLedger = { explainedTerms: [] };
@@ -56,7 +58,17 @@ export class TurnReviewerAgent extends BaseAgent implements ITurnReviewer {
       .join("\n");
     const recentText = recentSpeeches
       .slice(-4)
-      .map((item) => `${item.speaker.name}: ${item.message}`)
+      .map(
+        (item) =>
+          `${item.speaker.name}: ${item.message} [${
+            item.tool ?? SpeakerAgentToolName.SPEAK
+          }]`
+      )
+      .join("\n");
+    const sameSpeakerHistory = recentSpeeches
+      .filter((item) => item.speaker.id === speech.speaker.id)
+      .slice(-3)
+      .map((item) => `- ${item.message}`)
       .join("\n");
     const explainedTerms = terminologyLedger.explainedTerms
       .map((entry) => `- ${entry.term}: ${entry.plainLanguageMeaning}`)
@@ -88,13 +100,17 @@ ${explainedTerms || "(None.)"}
 Recent conversation:
 ${recentText || "(This is the first turn.)"}
 
+What this speaker has already said recently:
+${sameSpeakerHistory || "(This speaker has not spoken yet.)"}
+
 ${speech.speaker.name} said: "${speech.message}"
 
-Judge the turn according to what it is trying to do. Do not demand analysis from a story, humour from an explanation, or insight from a brief reaction. It should fulfil the goal, be understandable, sound engaging and natural, remain grounded when it makes factual claims, advance the beat, and avoid needless repetition. It must remain consistent with the speaker's epistemic role and must not use prepared knowledge unavailable to that role. Experts must not feign ignorance of foundational assigned material; audience guides must not suddenly introduce unseen specialist facts. Natural fillers, pauses, hesitations, false starts and self-corrections are desirable delivery features and are not evidence of ignorance. ${this.audienceAccessibilityPolicy.buildReviewerGuidance(audienceProfile)} A term needs explaining when it is likely unfamiliar to this audience, necessary to understand the point, and not already explained above. Familiar words used in a specialised sense can qualify; incidental terminology that listeners do not need to understand does not. Report in introducedTerms only necessary technical terms whose meaning this speech genuinely explains for the first time. Report in introducedCardIds only assigned cards whose substance this speech explicitly introduced aloud; availability alone is not introduction. Use Australian/British spelling in any revision. If rejected, provide focused feedback and a complete corrected version in the same speaker's voice, no longer than 50 words. Never provide feedback or a revisedMessage when accepted is true.`,
+Judge the turn according to what it is trying to do. Do not demand analysis from a story, humour from an explanation, or insight from a brief reaction. It should fulfil the goal, be understandable, sound engaging and natural, remain grounded when it makes factual claims, advance the beat, and avoid needless repetition. It must remain consistent with the speaker's epistemic role and must not use prepared knowledge unavailable to that role. Experts must not feign ignorance of foundational assigned material; audience guides must not suddenly introduce unseen specialist facts. An expert has regressed out of character if they express discovery, confusion, or audience-surrogate surprise about a source fact they should know or have already explained. Phrases such as "So wait", "you mean", or an incredulous question about their own material are not harmless conversational colour in that context: set roleConsistent and accepted to false, then rewrite the turn as a confident clarification of why the fact matters. Preserve stance continuity as well as factual consistency. When the immediately preceding turn is a challenge, the challenged speaker must receive a real opportunity to respond; the challenger must not concede, reverse position, or claim that somebody replied when no such reply appears after the challenge in the chronological history. Reject and revise any unsupported reversal. Natural fillers, pauses, hesitations, false starts and self-corrections are desirable delivery features and are not evidence of ignorance. ${this.audienceAccessibilityPolicy.buildReviewerGuidance(audienceProfile)} A term needs explaining when it is likely unfamiliar to this audience, necessary to understand the point, and not already explained above. Familiar words used in a specialised sense can qualify; incidental terminology that listeners do not need to understand does not. Report in introducedTerms only necessary technical terms whose meaning this speech genuinely explains for the first time. Report in introducedCardIds only assigned cards whose substance this speech explicitly introduced aloud; availability alone is not introduction. Use Australian/British spelling in any revision. If rejected, provide focused feedback and a complete corrected version in the same speaker's voice, no longer than 50 words. Never provide feedback or a revisedMessage when accepted is true.`,
       },
     ];
 
     const result = await this.callModelForToolInput<ReviewTurnInput>(
+      ModelTask.TurnReview,
       messages,
       [toReviewTurnTool()],
       MAX_REVIEW_TOKENS
