@@ -6,6 +6,9 @@ import {
   PodcastMaterial,
   Speech,
   AudienceProfile,
+  ScriptEditPlan,
+  ScriptEditSummary,
+  ScriptEditTurnAction,
 } from "../types";
 import {
   ScriptRepository,
@@ -14,13 +17,26 @@ import {
   VoiceRepository,
   SpeechRepository,
 } from "../repositories";
-import { DirectorAgent, SpeakerAgent, SpeechRepetitionPolicy } from "../agents";
+import {
+  DirectorAgent,
+  SpeakerAgent,
+  SpeakerAgentToolName,
+  SpeechRepetitionPolicy,
+} from "../agents";
 import { logger } from "../utils/logger";
 import { shouldInterject } from "./interjection-policy";
 import { RAGService } from "../rag";
 import { OpeningSequencePolicy } from "../agents/OpeningSequencePolicy";
 import { KnowledgeLedgerPolicy } from "../agents/KnowledgeLedgerPolicy";
 import { TerminologyLedgerPolicy } from "../agents/TerminologyLedgerPolicy";
+import {
+  formatScriptForEditing,
+  parseEditableScript,
+} from "./script-edit-format";
+import {
+  hasScriptEditChanges,
+  ScriptEditPlanner,
+} from "./ScriptEditPlanner";
 
 export class ScriptService implements IScriptService {
   constructor(
@@ -32,7 +48,8 @@ export class ScriptService implements IScriptService {
     private readonly ragService: RAGService,
     private readonly knowledgeLedgerPolicy = new KnowledgeLedgerPolicy(),
     private readonly terminologyLedgerPolicy = new TerminologyLedgerPolicy(),
-    private readonly speechRepetitionPolicy = new SpeechRepetitionPolicy()
+    private readonly speechRepetitionPolicy = new SpeechRepetitionPolicy(),
+    private readonly scriptEditPlanner = new ScriptEditPlanner()
   ) {}
 
   async generateScript(params: GenerateScriptParams): Promise<PodcastScript> {
@@ -125,6 +142,134 @@ export class ScriptService implements IScriptService {
     }
 
     return lines.join("\n").trimEnd() + "\n";
+  }
+
+  async exportScriptEditable(id: string): Promise<string> {
+    return formatScriptForEditing(await this.getScript(id));
+  }
+
+  async planEditedScriptImport(
+    id: string,
+    text: string
+  ): Promise<ScriptEditPlan> {
+    const script = await this.getScript(id);
+    return this.scriptEditPlanner.plan(script, parseEditableScript(text));
+  }
+
+  async applyEditedScriptImport(
+    plan: ScriptEditPlan
+  ): Promise<ScriptEditSummary> {
+    const script = await this.getScript(plan.scriptId);
+    // Planning and confirmation may be separated by user think-time, so check
+    // the optimistic-concurrency token again immediately before any writes.
+    if (script.updatedAt.toISOString() !== plan.expectedRevision) {
+      throw new Error(
+        `Script ${plan.scriptId} changed after the edit was previewed. Preview the import again before applying it.`
+      );
+    }
+    if (!hasScriptEditChanges(plan.summary)) {
+      return plan.summary;
+    }
+
+    const existingById = new Map(
+      script.speeches.map((speech) => [speech.id, speech])
+    );
+    const speakersBySlug = new Map(
+      script.speakers.map((speaker) => [speaker.slug, speaker])
+    );
+    const orderedSpeechIds: string[] = [];
+    const createdSpeechIds: string[] = [];
+
+    try {
+      for (const turn of plan.turns) {
+        const requiresExistingTurn =
+          turn.action === ScriptEditTurnAction.Reuse ||
+          turn.action === ScriptEditTurnAction.Replace;
+        if (requiresExistingTurn && !turn.sourceId) {
+          throw new Error(
+            `A ${turn.action} edit must reference an existing speech id.`
+          );
+        }
+        if (turn.action === ScriptEditTurnAction.Add && turn.sourceId) {
+          throw new Error(
+            "An added turn must not reference an existing speech id."
+          );
+        }
+
+        const existing = turn.sourceId
+          ? existingById.get(turn.sourceId)
+          : undefined;
+        if (turn.sourceId && !existing) {
+          throw new Error(
+            `Speech ${turn.sourceId} is no longer part of script ${script.id}.`
+          );
+        }
+        if (existing && existing.speaker.slug !== turn.speakerSlug) {
+          throw new Error(
+            `Speech ${existing.id} belongs to ${existing.speaker.slug}, not ${turn.speakerSlug}.`
+          );
+        }
+
+        if (turn.action === ScriptEditTurnAction.Reuse && turn.sourceId) {
+          // Reusing the ID preserves the original speech metadata and avoids a
+          // write for turns the editor did not materially change.
+          orderedSpeechIds.push(turn.sourceId);
+          continue;
+        }
+
+        const speaker =
+          existing?.speaker ?? speakersBySlug.get(turn.speakerSlug);
+        if (!speaker) {
+          throw new Error(
+            `Speaker ${turn.speakerSlug} is no longer attached to script ${script.id}.`
+          );
+        }
+
+        // Replacements are copy-on-write. We never mutate the old speech, so a
+        // failure before the script manifest update leaves the script intact.
+        const created = await this.speechRepository.create({
+          speakerId: speaker.id,
+          message: turn.message,
+          instructions: existing?.instructions ?? speaker.voiceStyle,
+          voiceId: speaker.voice.id,
+          voiceStyle: existing?.voiceStyle ?? speaker.voiceStyle,
+          timestamp: new Date(),
+          tool: turn.mode,
+        });
+        createdSpeechIds.push(created.id);
+        orderedSpeechIds.push(created.id);
+      }
+
+      // Updating the ordered ID manifest is the commit point. Editorial ledgers
+      // describe generated dialogue, so they are invalid after a human edit.
+      const updated = await this.scriptRepository.update(script.id, {
+        speechIds: orderedSpeechIds,
+        knowledgeLedger: this.knowledgeLedgerPolicy.createLedger(),
+        terminologyLedger: this.terminologyLedgerPolicy.createLedger(),
+      });
+      if (!updated) {
+        throw new Error(
+          `Script with id ${script.id} not found while applying edits.`
+        );
+      }
+      return plan.summary;
+    } catch (error) {
+      // Only records created by this attempt are safe to remove. Superseded and
+      // deleted source speeches are intentionally retained for recoverability.
+      await Promise.all(
+        createdSpeechIds.map(async (speechId) => {
+          try {
+            await this.speechRepository.delete(speechId);
+          } catch (cleanupError) {
+            logger.warn(
+              `Failed to clean up unreferenced speech ${speechId}:`,
+              cleanupError
+            );
+          }
+        })
+      );
+      throw error;
+    }
   }
 
   private async loadSpeakers(speakerConfigs: any[]): Promise<Speaker[]> {

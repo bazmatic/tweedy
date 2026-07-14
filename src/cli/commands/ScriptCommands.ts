@@ -1,6 +1,7 @@
 import { Command } from "commander";
-import { writeFile } from "fs/promises";
-import { ScriptService } from "../../services";
+import { readFile, writeFile } from "fs/promises";
+import inquirer from "inquirer";
+import { hasScriptEditChanges, ScriptService } from "../../services";
 import {
   ScriptRepository,
   SpeakerRepository,
@@ -9,7 +10,11 @@ import {
   SpeechRepository,
 } from "../../repositories";
 import { RAGService } from "../../rag";
-import { AudienceProfile, SpeakerAllocation } from "../../types";
+import {
+  AudienceProfile,
+  ScriptEditSummary,
+  SpeakerAllocation,
+} from "../../types";
 import { logger } from "../../utils/logger";
 
 function parseAudienceProfile(value: string): AudienceProfile {
@@ -20,6 +25,16 @@ function parseAudienceProfile(value: string): AudienceProfile {
     throw new Error(`Unknown audience profile: ${value}`);
   }
   return profile;
+}
+
+function describeEditSummary(summary: ScriptEditSummary): string {
+  return [
+    `${summary.added} added`,
+    `${summary.removed} removed`,
+    `${summary.edited} edited`,
+    `${summary.unchanged} unchanged`,
+    `reordered: ${summary.reordered ? "yes" : "no"}`,
+  ].join(", ");
 }
 
 export function createScriptCommands(): Command {
@@ -180,9 +195,15 @@ export function createScriptCommands(): Command {
     .command("export <id>")
     .description("Export a script as a single human-readable document")
     .option("-o, --output <file>", "Write the document to a file instead of stdout")
+    .option(
+      "--editable",
+      "Export an id-tagged document that can be changed and imported"
+    )
     .action(async (id, options) => {
       try {
-        const document = await scriptService.exportScriptAsText(id);
+        const document = options.editable
+          ? await scriptService.exportScriptEditable(id)
+          : await scriptService.exportScriptAsText(id);
 
         if (options.output) {
           await writeFile(options.output, document, "utf-8");
@@ -192,6 +213,53 @@ export function createScriptCommands(): Command {
         }
       } catch (error) {
         logger.error("Failed to export script:", error);
+      }
+    });
+
+  scriptCommand
+    .command("import <id> <file>")
+    .description("Preview and apply edits from an editable script export")
+    .option("-y, --yes", "Apply changes without confirmation")
+    .option("--dry-run", "Validate and preview changes without writing them")
+    .action(async (id, file, options) => {
+      try {
+        const text = await readFile(file, "utf-8");
+        const plan = await scriptService.planEditedScriptImport(id, text);
+        const summaryText = describeEditSummary(plan.summary);
+        logger.info(`Script edit preview: ${summaryText}`);
+
+        if (!hasScriptEditChanges(plan.summary)) {
+          logger.info("No script changes to apply.");
+          return;
+        }
+        if (options.dryRun) {
+          logger.info("Dry run complete; no files were changed.");
+          return;
+        }
+
+        if (!options.yes) {
+          const { confirmed } = await inquirer.prompt([
+            {
+              type: "confirm",
+              name: "confirmed",
+              message: `Apply script edits (${summaryText})?`,
+              default: false,
+            },
+          ]);
+          if (!confirmed) {
+            logger.info("Cancelled.");
+            return;
+          }
+        }
+
+        const result = await scriptService.applyEditedScriptImport(plan);
+        logger.success(`Script edits applied: ${describeEditSummary(result)}`);
+        logger.warn(
+          `Any audio previously generated from this script is now stale. Run "tweedy audio generate ${id}" to regenerate it.`
+        );
+      } catch (error) {
+        logger.error("Failed to import script edits:", error);
+        process.exitCode = 1;
       }
     });
 

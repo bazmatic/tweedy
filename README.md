@@ -310,7 +310,26 @@ npx tweedy script show <script-id>
 # Export a script as a human-readable document
 npx tweedy script export <script-id>
 npx tweedy script export <script-id> --output script.txt
+
+# Export, edit and safely apply a script without regenerating it
+npx tweedy script export <script-id> --editable --output script.edit.txt
+npx tweedy script import <script-id> script.edit.txt --dry-run
+npx tweedy script import <script-id> script.edit.txt
 ```
+
+Editable exports contain stable turn ids, speaker slugs, conversational modes,
+the script id and its current revision. Message text can be changed freely;
+whole blocks can be reordered or removed, and a block with `@id: new` inserts a
+turn. Keep the `@end` marker at the bottom of each turn; write `\@end` when the
+spoken message itself needs a line containing `@end`. Import validates and
+previews the complete change before asking for confirmation. Use `--yes` for a
+non-interactive apply. A stale editable file is rejected if the saved script
+changed after export.
+
+Human edits are authoritative and do not run the director or reviewer again.
+Changed turns are stored as new speech records and the script order is updated
+only after every new record has been written successfully. Any audio generated
+before an edit must be regenerated.
 
 ### Audio Generation
 

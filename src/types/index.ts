@@ -340,6 +340,46 @@ export interface PodcastScript {
   updatedAt: Date;
 }
 
+export enum ScriptEditTurnAction {
+  Reuse = "reuse",
+  Replace = "replace",
+  Add = "add",
+}
+
+export interface EditableScriptTurn {
+  sourceId?: string;
+  speakerSlug: string;
+  message: string;
+  mode?: SpeakerAgentToolName;
+}
+
+export interface EditableScriptDocument {
+  formatVersion: number;
+  scriptId: string;
+  revision: string;
+  turns: EditableScriptTurn[];
+}
+
+export interface PlannedScriptTurn extends Omit<EditableScriptTurn, "mode"> {
+  mode: SpeakerAgentToolName;
+  action: ScriptEditTurnAction;
+}
+
+export interface ScriptEditSummary {
+  added: number;
+  removed: number;
+  edited: number;
+  unchanged: number;
+  reordered: boolean;
+}
+
+export interface ScriptEditPlan {
+  scriptId: string;
+  expectedRevision: string;
+  turns: PlannedScriptTurn[];
+  summary: ScriptEditSummary;
+}
+
 // Configuration Types
 export interface AppConfig {
   dataDir: string;
@@ -655,6 +695,9 @@ export interface IScriptService {
   getAllScripts(): Promise<PodcastScript[]>;
   deleteScript(id: string): Promise<void>;
   exportScriptAsText(id: string): Promise<string>;
+  exportScriptEditable(id: string): Promise<string>;
+  planEditedScriptImport(id: string, text: string): Promise<ScriptEditPlan>;
+  applyEditedScriptImport(plan: ScriptEditPlan): Promise<ScriptEditSummary>;
 }
 
 export interface IMaterialService {
