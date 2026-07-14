@@ -14,7 +14,7 @@ import {
   VoiceRepository,
   SpeechRepository,
 } from "../repositories";
-import { DirectorAgent, SpeakerAgent } from "../agents";
+import { DirectorAgent, SpeakerAgent, SpeechRepetitionPolicy } from "../agents";
 import { logger } from "../utils/logger";
 import { shouldInterject } from "./interjection-policy";
 import { RAGService } from "../rag";
@@ -31,7 +31,8 @@ export class ScriptService implements IScriptService {
     private readonly speechRepository: SpeechRepository,
     private readonly ragService: RAGService,
     private readonly knowledgeLedgerPolicy = new KnowledgeLedgerPolicy(),
-    private readonly terminologyLedgerPolicy = new TerminologyLedgerPolicy()
+    private readonly terminologyLedgerPolicy = new TerminologyLedgerPolicy(),
+    private readonly speechRepetitionPolicy = new SpeechRepetitionPolicy()
   ) {}
 
   async generateScript(params: GenerateScriptParams): Promise<PodcastScript> {
@@ -259,6 +260,14 @@ export class ScriptService implements IScriptService {
         script.editorialCards ?? [],
         script.speeches
       );
+      if (
+        this.speechRepetitionPolicy.isRepetition(speech, script.speeches)
+      ) {
+        logger.warn(
+          `Discarded repeated speech from ${speech.speaker.name}; asking the director for a fresh turn`
+        );
+        continue;
+      }
       this.knowledgeLedgerPolicy.recordAcceptedTurn(script, speech);
       this.terminologyLedgerPolicy.recordAcceptedTurn(script, speech);
       await this.persistSpeech(script, speech);

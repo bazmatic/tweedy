@@ -41,7 +41,7 @@ describe("TurnReviewerAgent", () => {
   it("reviews according to the assigned editorial purpose", async () => {
     const agent = new TurnReviewerAgent();
     const call = vi
-      .spyOn(agent as any, "callModelForToolInput")
+      .spyOn(agent as any, "callModelForStructuredOutput")
       .mockResolvedValue({
         accepted: true,
         clear: true,
@@ -54,9 +54,11 @@ describe("TurnReviewerAgent", () => {
         audienceAccessible: true,
         introducedCardIds: [],
         introducedTerms: [],
+        feedback: [],
+        revisedMessages: [],
       });
 
-    await agent.review(
+    const result = await agent.review(
       speech,
       {
         speakerId: "s1",
@@ -79,11 +81,14 @@ describe("TurnReviewerAgent", () => {
     expect(prompt).toContain("Natural fillers, pauses, hesitations");
     expect(prompt).toContain("Audience profile: general");
     expect(prompt).toContain("likely unfamiliar to this audience");
+    expect(result.accepted).toBe(true);
+    expect(result.feedback).toBe("");
+    expect(result.revisedMessage).toBe("");
   });
 
   it("cannot accept a turn that violates role consistency", async () => {
     const agent = new TurnReviewerAgent();
-    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValue({
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
       accepted: true,
       clear: true,
       engaging: true,
@@ -116,7 +121,7 @@ describe("TurnReviewerAgent", () => {
 
   it("cannot accept necessary jargon that is inaccessible to the audience", async () => {
     const agent = new TurnReviewerAgent();
-    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValue({
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
       accepted: true,
       clear: true,
       engaging: true,
@@ -151,7 +156,7 @@ describe("TurnReviewerAgent", () => {
 
   it("treats a supplied revision as evidence that the original needs revision", async () => {
     const agent = new TurnReviewerAgent();
-    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValue({
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
       accepted: true,
       clear: true,
       engaging: true,
@@ -163,7 +168,8 @@ describe("TurnReviewerAgent", () => {
       audienceAccessible: true,
       introducedCardIds: [],
       introducedTerms: [],
-      revisedMessage: "A clearer version.",
+      feedback: ["Make the explanation clearer."],
+      revisedMessages: ["A clearer version."],
     });
 
     const result = await agent.review(

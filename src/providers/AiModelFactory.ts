@@ -28,21 +28,10 @@ export class AiModelFactory {
               "ANTHROPIC_API_KEY environment variable is required"
             );
           }
-          // @langchain/anthropic@0.2.x defaults topP/topK to a -1 sentinel and
-          // always sends it, which claude-sonnet-4-5 rejects ("top_p cannot be
-          // set to -1"). Passing a valid topP instead conflicts with the
-          // also-always-sent temperature default ("temperature and top_p
-          // cannot both be specified"). invocationKwargs is spread into the
-          // request after top_p/top_k are set, so overriding them there to
-          // undefined drops both from the serialized request, matching the
-          // original SDK calls that never sent either param. Fixed upstream
-          // in @langchain/anthropic@0.3.20+, which requires a @langchain/core
-          // bump this project isn't taking yet.
           const model = new ChatAnthropic({
             apiKey,
             model: modelId,
             maxTokens,
-            invocationKwargs: { top_p: undefined, top_k: undefined },
           });
           this.models.set(key, model);
           break;

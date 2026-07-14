@@ -12,6 +12,7 @@ import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
 export enum CadenceRepairReason {
   ConsecutiveExpertExplanation = "consecutive_expert_explanation",
   ChallengeRequiresResponse = "challenge_requires_response",
+  QuestionRequiresResponse = "question_requires_response",
 }
 
 export interface CadenceAssignment extends RoleAssignment {
@@ -56,6 +57,46 @@ export class DialogueCadencePolicy {
         repaired: true,
         cadenceRepairReason: CadenceRepairReason.ChallengeRequiresResponse,
       };
+    }
+
+    const repeatsQuestioner =
+      previousSpeech?.tool === SpeakerAgentToolName.SHORT_QUESTION &&
+      previousSpeech.speaker.id === assignment.speaker.id;
+    if (repeatsQuestioner) {
+      const respondent =
+        script.speakers.find(
+          (speaker) =>
+            speaker.id !== previousSpeech.speaker.id &&
+            this.roleProfileResolver.resolve(speaker).epistemicRole ===
+              EpistemicRole.Expert
+        ) ??
+        script.speakers.find(
+          (speaker) => speaker.id !== previousSpeech.speaker.id
+        );
+
+      if (respondent) {
+        const respondentIsExpert =
+          this.roleProfileResolver.resolve(respondent).epistemicRole ===
+          EpistemicRole.Expert;
+        return {
+          ...assignment,
+          speaker: respondent,
+          direction: `Answer ${previousSpeech.speaker.name}'s question directly before moving the conversation on: "${previousSpeech.message}"`,
+          turnBrief: {
+            ...assignment.turnBrief,
+            speakerId: respondent.id,
+            goal: `Answer ${previousSpeech.speaker.name}'s question for the listener.`,
+            move: respondentIsExpert
+              ? EditorialMove.Explain
+              : EditorialMove.React,
+            cardIds: [],
+            audienceValue: AudienceValue.Understanding,
+            knowledgeSource: KnowledgeSource.Conversation,
+          },
+          repaired: true,
+          cadenceRepairReason: CadenceRepairReason.QuestionRequiresResponse,
+        };
+      }
     }
 
     const assignedProfile = this.roleProfileResolver.resolve(

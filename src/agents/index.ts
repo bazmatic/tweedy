@@ -11,6 +11,7 @@ export { SpeakerRoleProfileFactory } from './SpeakerRoleProfileFactory';
 export { SpeakerRolePolicy, RoleRepairReason } from './SpeakerRolePolicy';
 export { ResponseModePolicy, ConversationalObligation } from './ResponseModePolicy';
 export { SpeechRevisionPolicy } from './SpeechRevisionPolicy';
+export { SpeechRepetitionPolicy } from './SpeechRepetitionPolicy';
 export { DialogueCadencePolicy, CadenceRepairReason } from './DialogueCadencePolicy';
 export { AudienceAccessibilityPolicy } from './AudienceAccessibilityPolicy';
 export { TerminologyLedgerPolicy } from './TerminologyLedgerPolicy';

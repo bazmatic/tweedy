@@ -11,5 +11,9 @@ export { AudioProcessor } from './AudioProcessor';
 export { AiModelFactory } from './AiModelFactory';
 export { ModelRoutingPolicy, ModelTask, ModelTier } from './ModelRoutingPolicy';
 export { ProviderModelCatalogue } from './ProviderModelCatalogue';
+export {
+  StructuredOutputMethod,
+  StructuredOutputMethodPolicy,
+} from './StructuredOutputMethodPolicy';
 export { PerplexityProvider } from "./PerplexityProvider";
 export { ResearchProviderFactory } from "./ResearchProviderFactory";

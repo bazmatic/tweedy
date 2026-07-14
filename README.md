@@ -182,6 +182,8 @@ purposeful without becoming rigid or formulaic.
 
 ## Installation
 
+Requires Node.js 20 or later and pnpm.
+
 1. Clone the repository:
 
 ```bash
@@ -422,6 +424,22 @@ Provider-specific model identifiers remain confined to the provider catalogue,
 so the editorial agents and routing policy work unchanged with Anthropic,
 DeepSeek, or a future provider. If a provider has fewer model classes, multiple
 tiers can resolve to the same model.
+
+### Structured Model Responses
+
+Tweedy distinguishes structured data from genuine actions. Episode planning,
+direction, material preparation, coverage verification, conclusion checks and
+turn review use LangChain's `withStructuredOutput` API with Zod schemas. The
+schemas validate model responses at runtime and also provide their TypeScript
+types, avoiding parallel interfaces and hand-written faux tool definitions.
+
+Speaker delivery modes remain genuine tools: the model chooses whether the
+moment calls for substantive speech, a challenge, a short reaction or the
+dedicated closing statement. Keeping these two paths separate makes intent
+clear and allows LangChain to use the structured-output strategy supported by
+the configured provider. `StructuredOutputMethodPolicy` currently selects
+Anthropic's native JSON-schema mode and LangChain's compatible function-calling
+structured-output strategy for the DeepSeek endpoint.
 
 ### Speaker Roles and Knowledge
 

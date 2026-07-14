@@ -225,7 +225,7 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
     );
 
     const closingPromptAddendum = isFinalTurn
-      ? "\n\nThis is the final turn of the episode. Use the closing_statement tool to deliver a warm, authentic closing that wraps up the podcast and signs off naturally. Take enough time to complete the thought and finish the final sentence cleanly; do not trail off."
+      ? `\n\nThis is the final turn of the episode. Use the closing_statement tool to deliver a warm, authentic closing that wraps up the podcast and signs off naturally. Name the episode exactly "${title}" if you name it at all. Do not invent a different programme name, release schedule or future episode details. Take enough time to complete the thought and finish the final sentence cleanly; do not trail off.`
       : "";
     const lengthGuidance = isFinalTurn
       ? "This closing is exempt from the normal 50-word turn limit. Let it breathe for a few natural sentences so the reflection, thanks, and sign-off all land without rushing."
@@ -252,7 +252,7 @@ Conversation History (speaker: message [tool used]):
 ${conversationHistory}${materialsSection}
 
 Director's guidance: ${direction}${editorialSection}${
-          timeStatus
+          timeStatus && !isFinalTurn
             ? forceNearlyOutOfTime
               ? `\n\nTime status: ${timeStatus} You must use the nearly_out_of_time tool this turn to tell your co-hosts you're running low on time.`
               : `\n\nTime status: ${timeStatus} If it fits naturally, you can use the nearly_out_of_time tool to flag the time to your co-hosts.`

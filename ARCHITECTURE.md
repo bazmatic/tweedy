@@ -23,10 +23,14 @@ CLI  →  Service  →  Repository  →  Provider
 1. Builds one `DirectorAgent` per script.
 2. Calls `createPodcastPlan()` once to produce the episode plan.
 3. Loops up to `maxTurns` times:
-   - `directorAgent.chooseNextSpeaker(script)` — forces a `select_next_speaker` tool call.
+   - `directorAgent.chooseNextSpeaker(script)` — returns a validated structured direction.
    - `new SpeakerAgent(speaker).speak(script, direction)` — the chosen speaker's turn.
 
-Both `DirectorAgent` and `SpeakerAgent` extend `BaseAgent` (`src/agents/BaseAgent.ts`), which wraps `AiModelFactory.getModel` with LangChain `bindTools({ tool_choice: "any" })`. Every turn is forced to be a tool call — the model never returns freeform text.
+Both `DirectorAgent` and `SpeakerAgent` extend `BaseAgent` (`src/agents/BaseAgent.ts`). `BaseAgent.callModelForStructuredOutput` uses LangChain `withStructuredOutput` with Zod schemas for planning, direction, preparation, verification and review. These calls request data, not actions, and their results are validated at runtime. `BaseAgent.callModelWithTools` remains separate and uses `bindTools` only when a speaker genuinely chooses a conversational action.
+
+The Zod schemas in `director-schemas.ts` and `editorial-schemas.ts` are the single source of truth for structured response shape, descriptions, enum constraints and TypeScript result types. This avoids maintaining parallel TypeScript interfaces and hand-written JSON tool schemas.
+
+`StructuredOutputMethodPolicy` keeps transport details out of the agents. It selects Anthropic's native JSON-schema mode and the compatible function-calling structured-output strategy for DeepSeek; another provider can add its preferred method in one place.
 
 ### Speaker tools
 
@@ -74,7 +78,7 @@ To add a new provider: add the enum value, add the `case`, implement the shared 
 
 ```
 src/
-  agents/         DirectorAgent, SpeakerAgent, BaseAgent, MaterialSummarizerAgent, tool defs
+  agents/         DirectorAgent, SpeakerAgent, BaseAgent, policies, structured-output schemas, speaker tools
   cli/            command entrypoints (one file per domain) + index.ts
   processors/     document ingestion (PDF/HTML/Text) behind DocumentProcessorFactory
   providers/      LLM, TTS (ElevenLabs/Hume/Cartesia/Kokoro/OpenAI/Grok), Perplexity, audio timeline/processing

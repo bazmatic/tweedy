@@ -35,6 +35,9 @@ vi.mock("../agents", () => ({
     speakerAgentConstructorMock(speaker, ragService);
     return { speak: speakMock, interject: interjectMock };
   }),
+  SpeechRepetitionPolicy: vi.fn().mockImplementation(function () {
+    return { isRepetition: vi.fn().mockReturnValue(false) };
+  }),
 }));
 
 function makeScript(): PodcastScript {
