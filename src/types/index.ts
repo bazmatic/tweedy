@@ -77,6 +77,31 @@ export interface Speaker {
   voice: Voice;
   voiceStyle: string;
   isExpert: boolean;
+  roleProfile?: SpeakerRoleProfile;
+}
+
+export enum EpistemicRole {
+  Expert = "expert",
+  InformedHost = "informed_host",
+  AudienceGuide = "audience_guide",
+}
+
+export enum SourceAccess {
+  Full = "full",
+  PreparedCards = "prepared_cards",
+  HeardOnly = "heard_only",
+}
+
+export enum UncertaintyStyle {
+  Precise = "precise",
+  Exploratory = "exploratory",
+  ListenerSurrogate = "listener_surrogate",
+}
+
+export interface SpeakerRoleProfile {
+  epistemicRole: EpistemicRole;
+  sourceAccess: SourceAccess;
+  uncertaintyStyle: UncertaintyStyle;
 }
 
 export type StopReason = "max_tokens" | "stop" | "tool_use" | "unknown";
@@ -91,6 +116,8 @@ export interface Speech {
   timestamp: Date;
   tool?: SpeakerAgentToolName;
   stopReason?: StopReason;
+  turnBrief?: TurnBrief;
+  review?: TurnReview;
 }
 
 export interface PodcastMaterial {
@@ -110,6 +137,192 @@ export interface DiscussionPoint {
   coveredAtTurn?: number;
 }
 
+/** Subject-neutral editorial ingredients prepared from source material. */
+export enum EditorialCardKind {
+  EssentialPoint = "essential_point",
+  Background = "background",
+  Explanation = "explanation",
+  Example = "example",
+  Story = "story",
+  Character = "character",
+  Quote = "quote",
+  VividDetail = "vivid_detail",
+  Surprise = "surprise",
+  HumourOpportunity = "humour_opportunity",
+  Tension = "tension",
+  DifferentPerspective = "different_perspective",
+  Connection = "connection",
+  Takeaway = "takeaway",
+  OpenQuestion = "open_question",
+}
+
+export interface EvidenceRef {
+  materialId: string;
+  excerpt: string;
+  section?: string;
+}
+
+export enum KnowledgeSource {
+  SourceMaterial = "source_material",
+  PreparedCard = "prepared_card",
+  Conversation = "conversation",
+  CommonKnowledge = "common_knowledge",
+  PersonalExperience = "personal_experience",
+}
+
+export interface IntroducedKnowledge {
+  cardId: string;
+  introducedBySpeakerId: string;
+  introducedAtTurn: number;
+  source: KnowledgeSource;
+}
+
+export interface KnowledgeLedger {
+  introducedCards: IntroducedKnowledge[];
+}
+
+export enum AudienceProfile {
+  General = "general",
+  Enthusiast = "enthusiast",
+  Specialist = "specialist",
+}
+
+export interface ExplainedTechnicalTerm {
+  term: string;
+  plainLanguageMeaning: string;
+  explainedBySpeakerId: string;
+  explainedAtTurn: number;
+}
+
+export interface TerminologyLedger {
+  explainedTerms: ExplainedTechnicalTerm[];
+}
+
+export interface ReviewedTechnicalTerm {
+  term: string;
+  plainLanguageMeaning: string;
+}
+
+export interface EditorialCard {
+  id: string;
+  materialId: string;
+  kind: EditorialCardKind;
+  content: string;
+  evidence: EvidenceRef[];
+  relatedCardIds: string[];
+  tags: string[];
+}
+
+export interface PreparedMaterial {
+  materialId: string;
+  synopsis: string;
+  cards: EditorialCard[];
+}
+
+export enum BeatPurpose {
+  Welcome = "welcome",
+  Hook = "hook",
+  Orient = "orient",
+  Explain = "explain",
+  Illustrate = "illustrate",
+  Surprise = "surprise",
+  Explore = "explore",
+  Challenge = "challenge",
+  Reflect = "reflect",
+  Payoff = "payoff",
+  Recap = "recap",
+  Close = "close",
+}
+
+export enum EnergyLevel {
+  Calm = "calm",
+  Curious = "curious",
+  Playful = "playful",
+  Energetic = "energetic",
+  Tense = "tense",
+  Reflective = "reflective",
+  Warm = "warm",
+}
+
+export interface ConversationBeat {
+  id: string;
+  purpose: BeatPurpose;
+  goal: string;
+  cardIds: string[];
+  prerequisiteBeatIds: string[];
+  desiredEnergy: EnergyLevel;
+  targetTurns: number;
+  covered: boolean;
+  coveredAtTurn?: number;
+}
+
+export enum EditorialMove {
+  Explain = "explain",
+  Illustrate = "illustrate",
+  TellStory = "tell_story",
+  AddContext = "add_context",
+  Compare = "compare",
+  Contrast = "contrast",
+  Connect = "connect",
+  Reframe = "reframe",
+  Question = "question",
+  Challenge = "challenge",
+  React = "react",
+  Humanise = "humanise",
+  FindMeaning = "find_meaning",
+  Summarise = "summarise",
+  Transition = "transition",
+}
+
+export enum AudienceValue {
+  Understanding = "understanding",
+  Entertainment = "entertainment",
+  Insight = "insight",
+  Momentum = "momentum",
+  Connection = "connection",
+}
+
+export enum ConversationalDevice {
+  PersonalReaction = "personal_reaction",
+  VividImage = "vivid_image",
+  Humour = "humour",
+  Callback = "callback",
+  Contrast = "contrast",
+  Reveal = "reveal",
+  ThoughtExperiment = "thought_experiment",
+}
+
+export interface TurnBrief {
+  speakerId: string;
+  beatId?: string;
+  goal: string;
+  move: EditorialMove;
+  cardIds: string[];
+  audienceValue: AudienceValue;
+  desiredEnergy: EnergyLevel;
+  device?: ConversationalDevice;
+  knowledgeSource?: KnowledgeSource;
+}
+
+export interface TurnReview {
+  accepted: boolean;
+  clear: boolean;
+  engaging: boolean;
+  grounded: boolean;
+  advancesBeat: boolean;
+  addsVariety: boolean;
+  roleConsistent?: boolean;
+  knowledgeConsistent?: boolean;
+  audienceAccessible?: boolean;
+  introducedCardIds?: string[];
+  introducedTerms?: ReviewedTechnicalTerm[];
+  feedback?: string;
+}
+
+export interface ReviewedTurn extends TurnReview {
+  revisedMessage?: string;
+}
+
 export interface PodcastScript {
   id: string;
   title: string;
@@ -118,6 +331,11 @@ export interface PodcastScript {
   speeches: Speech[];
   materials: PodcastMaterial[];
   discussionPoints: DiscussionPoint[];
+  editorialCards?: EditorialCard[];
+  conversationBeats?: ConversationBeat[];
+  knowledgeLedger?: KnowledgeLedger;
+  audienceProfile?: AudienceProfile;
+  terminologyLedger?: TerminologyLedger;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -142,6 +360,7 @@ export interface GenerateScriptParams {
   maxTurns: number;
   maxDuration: number; // in seconds
   allocation: SpeakerAllocation;
+  audienceProfile?: AudienceProfile;
 }
 
 // Repository Types
@@ -164,6 +383,7 @@ export interface SpeakerRecord {
   voiceId: string;
   voiceStyle: string;
   isExpert: boolean;
+  roleProfile?: SpeakerRoleProfile;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -176,6 +396,11 @@ export interface ScriptRecord {
   speechIds: string[];
   materialIds: string[];
   discussionPoints: DiscussionPoint[];
+  editorialCards?: EditorialCard[];
+  conversationBeats?: ConversationBeat[];
+  knowledgeLedger?: KnowledgeLedger;
+  audienceProfile?: AudienceProfile;
+  terminologyLedger?: TerminologyLedger;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -200,6 +425,8 @@ export interface SpeechRecord {
   timestamp: Date;
   tool?: SpeakerAgentToolName;
   stopReason?: StopReason;
+  turnBrief?: TurnBrief;
+  review?: TurnReview;
 }
 
 // Service Interfaces
@@ -346,7 +573,11 @@ export interface ISpeakerAgent {
     timeStatus?: string,
     forceNearlyOutOfTime?: boolean,
     requestSummary?: boolean,
-    isFinalTurn?: boolean
+    isFinalTurn?: boolean,
+    turnBrief?: TurnBrief,
+    editorialCards?: EditorialCard[],
+    audienceProfile?: AudienceProfile,
+    terminologyLedger?: TerminologyLedger
   ): Promise<Speech>;
 }
 
@@ -359,9 +590,35 @@ export interface IDirectorAgent {
     forceNearlyOutOfTime: boolean;
     requestSummary: boolean;
     isFinalTurn: boolean;
+    turnBrief: TurnBrief;
   }>;
   isConversationComplete(script: PodcastScript): Promise<boolean>;
-  reviewSpeech(speech: Speech, direction: string): Promise<Speech>;
+  reviewSpeech(
+    speech: Speech,
+    direction: string,
+    turnBrief?: TurnBrief,
+    editorialCards?: EditorialCard[],
+    recentSpeeches?: Speech[]
+  ): Promise<Speech>;
+}
+
+export interface IMaterialPreparer {
+  prepare(
+    material: PodcastMaterial,
+    context: { title: string; description: string }
+  ): Promise<PreparedMaterial>;
+}
+
+export interface ITurnReviewer {
+  review(
+    speech: Speech,
+    brief: TurnBrief,
+    cards: EditorialCard[],
+    recentSpeeches: Speech[],
+    knowledgeLedger?: KnowledgeLedger,
+    audienceProfile?: AudienceProfile,
+    terminologyLedger?: TerminologyLedger
+  ): Promise<ReviewedTurn>;
 }
 
 // Service Interfaces

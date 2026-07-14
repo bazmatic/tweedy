@@ -1,22 +1,49 @@
-import { DiscussionPoint, IDirectorAgent, PodcastScript, Speaker, Speech } from '../types';
+import {
+  AudienceProfile,
+  AudienceValue,
+  BeatPurpose,
+  ConversationBeat,
+  DiscussionPoint,
+  EditorialCard,
+  EditorialMove,
+  EnergyLevel,
+  EpistemicRole,
+  IDirectorAgent,
+  IMaterialPreparer,
+  ITurnReviewer,
+  PodcastScript,
+  Speaker,
+  Speech,
+  TurnBrief,
+} from '../types';
 import { BaseAgent } from './BaseAgent';
-import { MaterialSummarizerAgent } from './MaterialSummarizerAgent';
+import { MaterialPreparerAgent } from './MaterialPreparerAgent';
+import { ConversationRhythmPolicy } from './ConversationRhythmPolicy';
+import { TurnReviewerAgent } from './TurnReviewerAgent';
 import { logger } from '../utils/logger';
 import {
   CheckConversationCompleteInput,
   CreatePodcastPlanInput,
-  ReviewSpeechInput,
   SelectNextSpeakerInput,
   VerifyCoveredPointsInput,
   toCheckConversationCompleteTool,
   toCreatePodcastPlanTool,
-  toReviewSpeechTool,
   toSelectNextSpeakerTool,
   toVerifyCoveredPointsTool,
 } from './director-tools';
+import { ConversationBeatInput } from './editorial-tools';
+import { SpeakerRolePolicy } from './SpeakerRolePolicy';
+import { SpeechRevisionPolicy } from './SpeechRevisionPolicy';
+import { SpeakerRoleProfileResolver } from './SpeakerRoleProfileResolver';
+import { DialogueCadencePolicy } from './DialogueCadencePolicy';
+import { AudienceAccessibilityPolicy } from './AudienceAccessibilityPolicy';
+import { EpisodeConclusionPolicy } from './EpisodeConclusionPolicy';
+import { ModelTask } from '../providers/ModelRoutingPolicy';
 
 const WORDS_PER_MINUTE = 150;
 const MINUTES_PER_DISCUSSION_POINT = 2;
+const MAX_PLAN_TOKENS = 5000;
+const MAX_TURN_DIRECTION_TOKENS = 600;
 const DOMINANT_SPEAKER_SHARE_THRESHOLD = 0.55;
 const MIN_SPEECHES_FOR_BALANCE_CHECK = 3;
 
@@ -28,32 +55,78 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private turnsUsed = 0;
   private hasForcedTimeWarning = false;
   private points: DiscussionPoint[] = [];
-  private materialSummarizer = new MaterialSummarizerAgent();
+  private materialPreparer: IMaterialPreparer;
+  private turnReviewer: ITurnReviewer;
+  private rhythmPolicy: ConversationRhythmPolicy;
+  private speakerRolePolicy: SpeakerRolePolicy;
+  private speechRevisionPolicy: SpeechRevisionPolicy;
+  private roleProfileResolver: SpeakerRoleProfileResolver;
+  private dialogueCadencePolicy: DialogueCadencePolicy;
+  private audienceAccessibilityPolicy: AudienceAccessibilityPolicy;
+  private episodeConclusionPolicy: EpisodeConclusionPolicy;
 
   constructor(
     script: PodcastScript,
-    budget: { maxTurns: number; maxDuration: number }
+    budget: { maxTurns: number; maxDuration: number },
+    dependencies: {
+      materialPreparer?: IMaterialPreparer;
+      turnReviewer?: ITurnReviewer;
+      rhythmPolicy?: ConversationRhythmPolicy;
+      speakerRolePolicy?: SpeakerRolePolicy;
+      speechRevisionPolicy?: SpeechRevisionPolicy;
+      roleProfileResolver?: SpeakerRoleProfileResolver;
+      dialogueCadencePolicy?: DialogueCadencePolicy;
+      audienceAccessibilityPolicy?: AudienceAccessibilityPolicy;
+      episodeConclusionPolicy?: EpisodeConclusionPolicy;
+    } = {}
   ) {
     super();
     this.script = script;
     this.maxTurns = budget.maxTurns;
     this.maxDuration = budget.maxDuration;
+    this.materialPreparer =
+      dependencies.materialPreparer ?? new MaterialPreparerAgent();
+    this.turnReviewer = dependencies.turnReviewer ?? new TurnReviewerAgent();
+    this.rhythmPolicy =
+      dependencies.rhythmPolicy ?? new ConversationRhythmPolicy();
+    this.speakerRolePolicy =
+      dependencies.speakerRolePolicy ?? new SpeakerRolePolicy();
+    this.speechRevisionPolicy =
+      dependencies.speechRevisionPolicy ?? new SpeechRevisionPolicy();
+    this.roleProfileResolver =
+      dependencies.roleProfileResolver ?? new SpeakerRoleProfileResolver();
+    this.dialogueCadencePolicy =
+      dependencies.dialogueCadencePolicy ?? new DialogueCadencePolicy();
+    this.audienceAccessibilityPolicy =
+      dependencies.audienceAccessibilityPolicy ??
+      new AudienceAccessibilityPolicy();
+    this.episodeConclusionPolicy =
+      dependencies.episodeConclusionPolicy ?? new EpisodeConclusionPolicy();
   }
 
   async createPodcastPlan(): Promise<string> {
     try {
       this.logAgentAction('Creating podcast plan');
 
-      const summaries = await Promise.all(
+      const preparedMaterials = await Promise.all(
         this.script.materials.map((material) =>
-          this.materialSummarizer.summarize(material, {
+          this.materialPreparer.prepare(material, {
             title: this.script.title,
             description: this.script.description,
           })
         )
       );
+      this.script.editorialCards = preparedMaterials.flatMap(
+        (prepared) => prepared.cards
+      );
       const materialText = this.script.materials
-        .map((material, index) => `${material.title}: ${summaries[index]}`)
+        .map((material, index) => {
+          const prepared = preparedMaterials[index];
+          const cards = prepared.cards
+            .map((card) => `- ${card.id} [${card.kind}]: ${card.content}`)
+            .join('\n');
+          return `${material.title}: ${prepared.synopsis}\n${cards}`;
+        })
         .join('\n\n');
 
       const durationMinutes = this.maxDuration / 60;
@@ -72,8 +145,8 @@ Description: ${this.script.description}
 Duration: Approximately ${Math.round(durationMinutes)} minutes, across up to ${this.maxTurns} speaking turns
 Speakers: ${this.script.speakers.map(s => s.name).join(', ')}
 
-Available materials:
-${materialText}
+Available prepared materials:
+${materialText || '(No source materials were supplied.)'}
 
 Create a detailed plan for how the conversation should flow, including:
 1. Opening segment — a warm, friendly welcome where the interviewer greets listeners, introduces the episode by name ("${this.script.title}"), and introduces the speakers, before any points are mentioned. After naming the speakers, the speaker must stop and let them respond.
@@ -81,17 +154,25 @@ Create a detailed plan for how the conversation should flow, including:
 3. Key topics to cover
 4. Closing segment
 
-Keep it engaging and natural, with clear direction for each speaker.
+Design a listener journey rather than a list of facts. Balance understanding,
+entertainment, insight and conversational momentum. Use stories, examples,
+vivid details, surprises, tensions, different perspectives and takeaways only
+when the prepared material supports them. Do not force scientific analysis or
+formal tests onto topics that do not call for them. Use Australian/British
+spelling.
 
-Also provide a separate list of at least ${minDiscussionPoints} concrete discussion points that must be covered during the episode (roughly one per ${MINUTES_PER_DISCUSSION_POINT} minutes of runtime) — short, discrete phrases rather than full sentences, since they'll be tracked individually as the conversation progresses.`
+Also provide a separate list of at least ${minDiscussionPoints} concrete discussion points that must be covered during the episode (roughly one per ${MINUTES_PER_DISCUSSION_POINT} minutes of runtime) — short, discrete phrases rather than full sentences, since they'll be tracked individually as the conversation progresses.
+
+Also provide a sequence of conversation beats. Each beat must have a listener-centred purpose and goal, suitable energy, useful prepared card ids and realistic target turn count. Vary the beat purposes so the episode has shape rather than becoming a run of explanations.`,
         }
       ];
 
       const tools = [toCreatePodcastPlanTool()];
-      const { narrative, points } = await this.callModelForToolInput<CreatePodcastPlanInput>(
+      const { narrative, points, beats } = await this.callModelForToolInput<CreatePodcastPlanInput>(
+        ModelTask.EpisodePlanning,
         messages,
         tools,
-        2000
+        MAX_PLAN_TOKENS
       );
 
       this.podcastPlan = narrative ?? '';
@@ -101,6 +182,10 @@ Also provide a separate list of at least ${minDiscussionPoints} concrete discuss
         covered: false,
       }));
       this.script.discussionPoints = this.points;
+      this.script.conversationBeats = this.toConversationBeats(
+        beats,
+        this.points
+      );
 
       logger.info(
         `Podcast plan created successfully with ${this.points.length} discussion points`
@@ -120,6 +205,7 @@ Also provide a separate list of at least ${minDiscussionPoints} concrete discuss
     forceNearlyOutOfTime: boolean;
     requestSummary: boolean;
     isFinalTurn: boolean;
+    turnBrief: TurnBrief;
   }> {
     try {
       this.logAgentAction('Choosing next speaker');
@@ -137,6 +223,8 @@ Also provide a separate list of at least ${minDiscussionPoints} concrete discuss
       const velocityNote = this.getVelocityNote(velocityBeforeThisTurn);
       const openPointsSection = this.getOpenPointsSection();
       const balanceNote = this.getBalanceNote(script);
+      const rhythmNote = this.getRhythmNote(script);
+      const editorialSection = this.getEditorialSection(script);
 
       // Force explicit "we're almost out of time" tool call.
       const forceNearlyOutOfTime = progress >= 85 && !isFinalTurn;
@@ -149,7 +237,7 @@ Also provide a separate list of at least ${minDiscussionPoints} concrete discuss
         .map(
           (speaker) =>
             `- ${speaker.name} (id: ${speaker.id}, ${
-              speaker.isExpert ? 'expert' : 'interviewer'
+              this.roleProfileResolver.resolve(speaker).epistemicRole
             }): ${speaker.personality}`
         )
         .join('\n');
@@ -161,7 +249,7 @@ Also provide a separate list of at least ${minDiscussionPoints} concrete discuss
 
 Podcast Plan: ${this.podcastPlan}
 
-Progress: ${progress}% complete${openPointsSection}
+Progress: ${progress}% complete${openPointsSection}${editorialSection}
 
 Speakers:
 ${speakerDescriptions}
@@ -169,54 +257,75 @@ ${speakerDescriptions}
 Conversation so far (each line tagged with the tool used to deliver it — "speak" is substantive content; "interject", "filler_comment", "one_liner", and "short_question" are brief reactions, not real answers or new points):
 ${history || '(nothing said yet — this is the opening of the episode)'}
 
-Decide which speaker should talk next and give them clear direction on what they should talk about and how to make sure that the talking points all get covered in time and that the conversation flows smoothly. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. On the opening of the episode (nothing said yet), this must be the interviewer, and the direction must have them deliver a warm, friendly welcome to listeners — greeting them, naming the episode ("${this.script.title}"), and introducing the speakers by name — before moving into substantive content. Don't repeat this welcome on later turns. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack).${this.getPacingNote(
+Decide which speaker should talk next and give them clear direction. Also choose a subject-neutral editorial move, the primary audience value, desired energy, relevant beat and prepared card ids. Every turn should help the listener understand, entertain them, reveal something meaningful, create connection, or move the conversation forwards; it need not do all of these. Don't force analysis onto a story or humour onto an explanation. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. A challenge creates a right of reply: direct the speaker who was challenged to respond before the challenger speaks again. Respect the chronological order shown above; a remark made before a challenge cannot be described as a response to that challenge. On the opening of the episode (nothing said yet), this must be the interviewer, and the direction must have them deliver a warm, friendly welcome to listeners — greeting them, naming the episode ("${this.script.title}"), and introducing the speakers by name — before moving into substantive content. Don't repeat this welcome on later turns. Mark genuinely completed beat ids in coveredBeatIds. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack). Use Australian/British spelling.${this.getPacingNote(
             script
-          )}${wrapUpNote}${velocityNote}${balanceNote}`
+          )}${wrapUpNote}${velocityNote}${balanceNote}${rhythmNote}${this.speakerRolePolicy.buildDirectorGuidance(script)}${this.audienceAccessibilityPolicy.buildDirectorGuidance(script.audienceProfile ?? AudienceProfile.General)}`
         }
       ];
 
       const tools = [toSelectNextSpeakerTool(script.speakers)];
-      const { speakerId, direction, coveredPointIds } =
+      const result =
         await this.callModelForToolInput<SelectNextSpeakerInput>(
+          ModelTask.DirectionSelection,
           messages,
           tools,
-          300
+          MAX_TURN_DIRECTION_TOKENS
         );
+      const { speakerId, direction, coveredPointIds } = result;
 
       const confirmedPointIds = await this.verifyCoveredPoints(
         coveredPointIds,
         script
       );
       this.applyCoveredPoints(confirmedPointIds);
+      this.applyCoveredBeats(result.coveredBeatIds);
       const velocityAfterThisTurn = this.calculateVelocity(script);
       this.logVelocity(velocityAfterThisTurn);
       const requestSummary =
         velocityAfterThisTurn.paceStatus === 'behind' &&
         velocityAfterThisTurn.openCount >= 2;
+      const turnBrief = this.toTurnBrief(result, direction);
 
-      const speaker = script.speakers.find((s) => s.id === speakerId);
-      if (!speaker) {
+      const proposedSpeaker = script.speakers.find((s) => s.id === speakerId);
+      const fallback = proposedSpeaker ?? this.fallbackSpeaker(script);
+      if (!proposedSpeaker) {
         logger.warn(
           `Director chose unknown speakerId "${speakerId}"; falling back to alternating speaker`
         );
-        return {
-          speaker: this.fallbackSpeaker(script),
-          direction,
-          timeStatus: wrapUpNote,
-          forceNearlyOutOfTime,
-          requestSummary,
-          isFinalTurn,
-        };
       }
 
-      logger.debug(`Director chose ${speaker.name}: ${direction}`);
+      const roleAssignment = this.speakerRolePolicy.repairAssignment(
+        script,
+        fallback,
+        { ...turnBrief, speakerId: fallback.id },
+        direction
+      );
+      if (roleAssignment.repaired) {
+        logger.info(
+          `Repaired role-inconsistent turn assignment (${roleAssignment.repairReason})`
+        );
+      }
+      const assignment = this.dialogueCadencePolicy.repairAssignment(
+        script,
+        roleAssignment
+      );
+      if (assignment.cadenceRepairReason) {
+        logger.info(
+          `Repaired repetitive dialogue cadence (${assignment.cadenceRepairReason})`
+        );
+      }
+
+      logger.debug(
+        `Director chose ${assignment.speaker.name}: ${assignment.direction}`
+      );
       return {
-        speaker,
-        direction,
+        speaker: assignment.speaker,
+        direction: assignment.direction,
         timeStatus: wrapUpNote,
         forceNearlyOutOfTime,
         requestSummary,
         isFinalTurn,
+        turnBrief: assignment.turnBrief,
       };
     } catch (error) {
       logger.error('Failed to choose next speaker:', error);
@@ -225,14 +334,15 @@ Decide which speaker should talk next and give them clear direction on what they
   }
 
   /**
-   * True once all discussion points are covered AND the model judges the
-   * recent speeches show the conversation has actually wrapped up naturally
-   * (farewells, sense of closure) rather than just having hit point coverage
-   * while still mid-thought. Skips the model call entirely unless every point
-   * is covered, since that's a cheap, deterministic prerequisite.
+   * True once all discussion points are covered, the final persisted turn is
+   * a dedicated closing statement, and the model agrees that the words form a
+   * natural conclusion. Summaries and time warnings cannot end the episode.
    */
   async isConversationComplete(script: PodcastScript): Promise<boolean> {
     if (this.points.length === 0 || this.points.some((point) => !point.covered)) {
+      return false;
+    }
+    if (!this.episodeConclusionPolicy.hasFinalSignOff(script)) {
       return false;
     }
 
@@ -252,6 +362,7 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
     try {
       const { isComplete } =
         await this.callModelForToolInput<CheckConversationCompleteInput>(
+          ModelTask.ConclusionCheck,
           messages,
           [toCheckConversationCompleteTool()],
           50
@@ -267,44 +378,64 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
   }
 
   /**
-   * Judges a just-generated speech against the direction the director gave
-   * for that turn — flagging both rambling/too-long speeches and speeches
-   * too short to deliver on a direction that called for real substance —
-   * and, in the same call, corrects it if needed. Fails open on error,
-   * returning the speech unchanged rather than blocking production.
+   * Delegates review to the intent-aware reviewer. A story is judged as a
+   * story, a reaction as a reaction, and factual claims remain grounded.
+   * Review fails open so production can continue if the model is unavailable.
    */
-  async reviewSpeech(speech: Speech, direction: string): Promise<Speech> {
-    const messages = [
-      {
-        role: 'user' as const,
-        content: `You are a podcast director reviewing a speaker's turn against the direction you gave them.
-
-Direction given: ${direction}
-
-${speech.speaker.name} said: "${speech.message}"
-
-Judge whether this speech matches the direction in both length and substance — flag it if it rambled on too long, or if it was too short and under-delivered on a direction that called for real content. If it needs fixing, write a corrected version in ${speech.speaker.name}'s same voice and delivery register.`,
-      },
-    ];
-
+  async reviewSpeech(
+    speech: Speech,
+    direction: string,
+    turnBrief = this.defaultTurnBrief(speech.speaker.id, direction),
+    editorialCards: EditorialCard[] = this.script.editorialCards ?? [],
+    recentSpeeches: Speech[] = this.script.speeches
+  ): Promise<Speech> {
     try {
-      const { needsFix, revisedMessage } =
-        await this.callModelForToolInput<ReviewSpeechInput>(
-          messages,
-          [toReviewSpeechTool()],
-          300
+      const review = await this.turnReviewer.review(
+        speech,
+        turnBrief,
+        editorialCards,
+        recentSpeeches,
+        this.script.knowledgeLedger,
+        this.script.audienceProfile,
+        this.script.terminologyLedger
+      );
+      if (
+        !review.accepted &&
+        review.revisedMessage &&
+        this.speechRevisionPolicy.isUsable(review.revisedMessage)
+      ) {
+        const revisedSpeech = {
+          ...speech,
+          message: review.revisedMessage,
+          turnBrief,
+        };
+        const revisedReview = await this.turnReviewer.review(
+          revisedSpeech,
+          turnBrief,
+          editorialCards,
+          recentSpeeches,
+          this.script.knowledgeLedger,
+          this.script.audienceProfile,
+          this.script.terminologyLedger
         );
-
-      if (needsFix && revisedMessage) {
+        if (!revisedReview.accepted) {
+          logger.warn(
+            `Turn reviewer rejected its revision for ${speech.speaker.name}; keeping the original speech`
+          );
+          return { ...speech, turnBrief, review };
+        }
         logger.info(
-          `Director revised ${speech.speaker.name}'s speech for length/substance`
+          `Turn reviewer revised ${speech.speaker.name}'s speech for editorial fit`
         );
-        return { ...speech, message: revisedMessage };
+        return {
+          ...revisedSpeech,
+          review: revisedReview,
+        };
       }
-      return speech;
+      return { ...speech, turnBrief, review };
     } catch (error) {
-      logger.error('Failed to review speech; keeping original:', error);
-      return speech;
+      logger.error('Failed to review turn; keeping original:', error);
+      return { ...speech, turnBrief };
     }
   }
 
@@ -354,6 +485,7 @@ Return only the ids of points that were genuinely, substantively covered.`,
     try {
       const { confirmedPointIds } =
         await this.callModelForToolInput<VerifyCoveredPointsInput>(
+          ModelTask.CoverageVerification,
           messages,
           [toVerifyCoveredPointsTool()],
           150
@@ -376,6 +508,16 @@ Return only the ids of points that were genuinely, substantively covered.`,
       if (coveredPointIds.includes(point.id) && !point.covered) {
         point.covered = true;
         point.coveredAtTurn = this.turnsUsed;
+      }
+    }
+  }
+
+  private applyCoveredBeats(coveredBeatIds?: string[]): void {
+    if (!coveredBeatIds || coveredBeatIds.length === 0) return;
+    for (const beat of this.script.conversationBeats ?? []) {
+      if (coveredBeatIds.includes(beat.id) && !beat.covered) {
+        beat.covered = true;
+        beat.coveredAtTurn = this.turnsUsed;
       }
     }
   }
@@ -480,14 +622,17 @@ Return only the ids of points that were genuinely, substantively covered.`,
     }
 
     for (const speaker of script.speakers) {
-      if (speaker.isExpert) {
+      if (
+        this.roleProfileResolver.resolve(speaker).epistemicRole ===
+        EpistemicRole.Expert
+      ) {
         continue;
       }
       const share = (wordCounts.get(speaker.id) ?? 0) / totalWords;
       if (share > DOMINANT_SPEAKER_SHARE_THRESHOLD) {
         return ` ${speaker.name} has dominated the conversation so far (${Math.round(
           share * 100
-        )}% of words spoken) — favor other speakers for the next turn unless the next point specifically calls for ${speaker.name}'s input.`;
+        )}% of words spoken) — favour other speakers for the next turn unless the next point specifically calls for ${speaker.name}'s input.`;
       }
     }
 
@@ -591,6 +736,107 @@ Return only the ids of points that were genuinely, substantively covered.`,
     }
 
     return '';
+  }
+
+  private toConversationBeats(
+    inputs: ConversationBeatInput[] | undefined,
+    points: DiscussionPoint[]
+  ): ConversationBeat[] {
+    if (!inputs || inputs.length === 0) {
+      return points.map((point, index) => ({
+        id: `b${index + 1}`,
+        purpose: BeatPurpose.Explore,
+        goal: point.text,
+        cardIds: [],
+        prerequisiteBeatIds: index === 0 ? [] : [`b${index}`],
+        desiredEnergy: EnergyLevel.Curious,
+        targetTurns: 2,
+        covered: false,
+      }));
+    }
+
+    return inputs.map((input, index) => ({
+      id: `b${index + 1}`,
+      purpose: Object.values(BeatPurpose).includes(input.purpose)
+        ? input.purpose
+        : BeatPurpose.Explore,
+      goal: input.goal,
+      cardIds: input.cardIds ?? [],
+      prerequisiteBeatIds: input.prerequisiteBeatIds ?? [],
+      desiredEnergy:
+        input.desiredEnergy &&
+        Object.values(EnergyLevel).includes(input.desiredEnergy)
+          ? input.desiredEnergy
+          : EnergyLevel.Curious,
+      targetTurns: Math.max(1, input.targetTurns ?? 1),
+      covered: false,
+    }));
+  }
+
+  private toTurnBrief(
+    input: SelectNextSpeakerInput,
+    direction: string
+  ): TurnBrief {
+    return {
+      speakerId: input.speakerId,
+      beatId: input.beatId,
+      goal: input.goal ?? direction,
+      move:
+        input.move && Object.values(EditorialMove).includes(input.move)
+          ? input.move
+          : EditorialMove.Explain,
+      cardIds: input.cardIds ?? [],
+      audienceValue:
+        input.audienceValue &&
+        Object.values(AudienceValue).includes(input.audienceValue)
+          ? input.audienceValue
+          : AudienceValue.Understanding,
+      desiredEnergy:
+        input.desiredEnergy &&
+        Object.values(EnergyLevel).includes(input.desiredEnergy)
+          ? input.desiredEnergy
+          : EnergyLevel.Curious,
+      device: input.device,
+    };
+  }
+
+  private defaultTurnBrief(speakerId: string, direction: string): TurnBrief {
+    return {
+      speakerId,
+      goal: direction,
+      move: EditorialMove.Explain,
+      cardIds: [],
+      audienceValue: AudienceValue.Understanding,
+      desiredEnergy: EnergyLevel.Curious,
+    };
+  }
+
+  private getEditorialSection(script: PodcastScript): string {
+    const beats = (script.conversationBeats ?? []).filter(
+      (beat) => !beat.covered
+    );
+    const cards = script.editorialCards ?? [];
+    if (beats.length === 0 && cards.length === 0) return '';
+
+    const beatText = beats
+      .map(
+        (beat) =>
+          `- ${beat.id} [${beat.purpose}, ${beat.desiredEnergy}]: ${beat.goal}`
+      )
+      .join('\n');
+    const cardText = cards
+      .slice(0, 20)
+      .map((card) => `- ${card.id} [${card.kind}]: ${card.content}`)
+      .join('\n');
+    return `\n\nOpen conversation beats:\n${beatText || '(none)'}\n\nPrepared editorial cards:\n${cardText || '(none)'}`;
+  }
+
+  private getRhythmNote(script: PodcastScript): string {
+    const recommendation = this.rhythmPolicy.recommend(script.speeches);
+    if (!recommendation) return '';
+    return ` Rhythm guidance: ${recommendation.reason} Prefer ${recommendation.preferredMoves.join(
+      ', '
+    )}; avoid ${recommendation.avoidedMoves.join(', ')}.`;
   }
 
   private getConversationHistory(script: PodcastScript): string {

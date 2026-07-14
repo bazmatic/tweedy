@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { DirectorAgent } from "./DirectorAgent";
-import { MaterialSummarizerAgent } from "./MaterialSummarizerAgent";
+import { ModelTask } from "../providers/ModelRoutingPolicy";
+import { SpeakerAgentToolName } from "./speaker-tools";
 import {
+  EditorialCardKind,
+  AudienceValue,
+  BeatPurpose,
+  EditorialMove,
+  EnergyLevel,
   PodcastMaterial,
   PodcastScript,
   SourceType,
@@ -44,6 +50,20 @@ function makeScript(overrides: Partial<PodcastScript> = {}): PodcastScript {
   };
 }
 
+function appendClosingSpeech(script: PodcastScript): void {
+  const speaker = script.speakers[0];
+  script.speeches.push({
+    id: "closing",
+    speaker,
+    message: "Thanks for listening. Until next time.",
+    instructions: "warm",
+    voice: speaker.voice,
+    voiceStyle: speaker.voiceStyle,
+    timestamp: new Date(),
+    tool: SpeakerAgentToolName.CLOSING_STATEMENT,
+  });
+}
+
 function makeMaterial(overrides: Partial<PodcastMaterial> = {}): PodcastMaterial {
   return {
     id: "m1",
@@ -58,15 +78,31 @@ function makeMaterial(overrides: Partial<PodcastMaterial> = {}): PodcastMaterial
 }
 
 describe("DirectorAgent.createPodcastPlan", () => {
-  it("builds the plan prompt from summarized materials, not raw content", async () => {
+  it("builds the plan prompt from prepared materials, not raw content", async () => {
     const material = makeMaterial();
     const script = makeScript({ materials: [material] });
-    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
-
-    vi.spyOn(
-      MaterialSummarizerAgent.prototype,
-      "summarize"
-    ).mockResolvedValue("A concise podcast-ready summary of the article.");
+    const materialPreparer = {
+      prepare: vi.fn().mockResolvedValue({
+        materialId: material.id,
+        synopsis: "A concise podcast-ready summary of the article.",
+        cards: [
+          {
+            id: "m1-card-1",
+            materialId: material.id,
+            kind: EditorialCardKind.Surprise,
+            content: "A memorable detail.",
+            evidence: [],
+            relatedCardIds: [],
+            tags: [],
+          },
+        ],
+      }),
+    };
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      { materialPreparer }
+    );
 
     const callModelForToolInputSpy = vi
       .spyOn(agent as any, "callModelForToolInput")
@@ -77,7 +113,10 @@ describe("DirectorAgent.createPodcastPlan", () => {
 
     await agent.createPodcastPlan();
 
-    const promptContent = (callModelForToolInputSpy.mock.calls[0][0] as any)[0]
+    expect(callModelForToolInputSpy.mock.calls[0][0]).toBe(
+      ModelTask.EpisodePlanning
+    );
+    const promptContent = (callModelForToolInputSpy.mock.calls[0][1] as any)[0]
       .content as string;
     expect(promptContent).toContain("A concise podcast-ready summary of the article.");
     expect(promptContent).not.toContain(material.content);
@@ -98,6 +137,97 @@ describe("DirectorAgent.createPodcastPlan", () => {
       { id: "p2", text: "Point B", covered: false },
       { id: "p3", text: "Point C", covered: false },
     ]);
+  });
+
+  it("stores a listener-centred sequence of conversation beats", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValue({
+      narrative: "Hook, explain, then pay off.",
+      points: ["A turning point"],
+      beats: [
+        {
+          purpose: BeatPurpose.Hook,
+          goal: "Open with the surprising rejection letter.",
+          cardIds: ["m1-card-1"],
+          desiredEnergy: EnergyLevel.Curious,
+          targetTurns: 1,
+        },
+      ],
+    });
+
+    await agent.createPodcastPlan();
+
+    expect(script.conversationBeats).toEqual([
+      expect.objectContaining({
+        id: "b1",
+        purpose: BeatPurpose.Hook,
+        goal: "Open with the surprising rejection letter.",
+        covered: false,
+      }),
+    ]);
+  });
+});
+
+describe("DirectorAgent editorial turn briefs", () => {
+  it("returns the selected move and audience value as a structured brief", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    const call = vi.spyOn(agent as any, "callModelForToolInput");
+    call.mockResolvedValueOnce({ narrative: "plan", points: [] });
+    await agent.createPodcastPlan();
+    call.mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Tell the short backstage story.",
+      goal: "Humanise the subject.",
+      move: EditorialMove.TellStory,
+      audienceValue: AudienceValue.Connection,
+      desiredEnergy: EnergyLevel.Warm,
+      cardIds: ["m1-card-1"],
+      coveredPointIds: [],
+    });
+
+    const result = await agent.chooseNextSpeaker(script);
+
+    expect(result.turnBrief).toEqual(
+      expect.objectContaining({
+        speakerId: "s1",
+        goal: "Humanise the subject.",
+        move: EditorialMove.TellStory,
+        audienceValue: AudienceValue.Connection,
+        desiredEnergy: EnergyLevel.Warm,
+      })
+    );
+  });
+
+  it("tracks completed conversation beats independently of discussion points", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    const call = vi.spyOn(agent as any, "callModelForToolInput");
+    call.mockResolvedValueOnce({
+      narrative: "plan",
+      points: ["The main topic"],
+      beats: [
+        {
+          purpose: BeatPurpose.Hook,
+          goal: "Open with a vivid detail.",
+        },
+      ],
+    });
+    await agent.createPodcastPlan();
+    call.mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Move into the main topic.",
+      coveredPointIds: [],
+      coveredBeatIds: ["b1"],
+    });
+
+    await agent.chooseNextSpeaker(script);
+
+    expect(script.conversationBeats?.[0]).toEqual(
+      expect.objectContaining({ covered: true, coveredAtTurn: 1 })
+    );
+    expect(script.discussionPoints[0].covered).toBe(false);
   });
 });
 
@@ -134,7 +264,7 @@ describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
 
     await agent.chooseNextSpeaker(script);
 
-    const prompt = (chooseSpy.mock.calls[3][0] as any)[0].content as string;
+    const prompt = (chooseSpy.mock.calls[3][1] as any)[0].content as string;
     expect(prompt).toContain("p2: Point B");
     expect(prompt).not.toContain("p1: Point A");
   });
@@ -346,6 +476,7 @@ describe("DirectorAgent.isConversationComplete", () => {
     });
     chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
     await agent.chooseNextSpeaker(script);
+    appendClosingSpeech(script);
 
     chooseSpy.mockResolvedValueOnce({ isComplete: true });
 
@@ -372,6 +503,7 @@ describe("DirectorAgent.isConversationComplete", () => {
     });
     chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
     await agent.chooseNextSpeaker(script);
+    appendClosingSpeech(script);
 
     chooseSpy.mockResolvedValueOnce({ isComplete: false });
 
@@ -398,12 +530,51 @@ describe("DirectorAgent.isConversationComplete", () => {
     });
     chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
     await agent.chooseNextSpeaker(script);
+    appendClosingSpeech(script);
 
     chooseSpy.mockRejectedValueOnce(new Error("model error"));
 
     const result = await agent.isConversationComplete(script);
 
     expect(result).toBe(false);
+  });
+
+  it("cannot finish after a summary without a dedicated sign-off", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValueOnce({
+      narrative: "plan",
+      points: ["Point A"],
+    });
+    await agent.createPodcastPlan();
+
+    const chooseSpy = vi.spyOn(agent as any, "callModelForToolInput");
+    chooseSpy.mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Talk about A",
+      coveredPointIds: ["p1"],
+    });
+    chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
+    await agent.chooseNextSpeaker(script);
+
+    const speaker = script.speakers[0];
+    script.speeches.push({
+      id: "summary",
+      speaker,
+      message: "That is the key takeaway.",
+      instructions: "reflective",
+      voice: speaker.voice,
+      voiceStyle: speaker.voiceStyle,
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.SUMMARIZE,
+    });
+    chooseSpy.mockClear();
+
+    const result = await agent.isConversationComplete(script);
+
+    expect(result).toBe(false);
+    expect(chooseSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -441,7 +612,7 @@ describe("DirectorAgent balance note", () => {
     });
     await agent.chooseNextSpeaker(script);
 
-    const prompt = (chooseSpy.mock.calls[1][0] as any)[0].content as string;
+    const prompt = (chooseSpy.mock.calls[1][1] as any)[0].content as string;
     expect(prompt).not.toContain("dominated the conversation");
   });
 
@@ -470,7 +641,7 @@ describe("DirectorAgent balance note", () => {
     });
     await agent.chooseNextSpeaker(script);
 
-    const prompt = (chooseSpy.mock.calls[1][0] as any)[0].content as string;
+    const prompt = (chooseSpy.mock.calls[1][1] as any)[0].content as string;
     expect(prompt).toContain(`${s1.name} has dominated the conversation`);
   });
 
@@ -499,7 +670,7 @@ describe("DirectorAgent balance note", () => {
     });
     await agent.chooseNextSpeaker(script);
 
-    const prompt = (chooseSpy.mock.calls[1][0] as any)[0].content as string;
+    const prompt = (chooseSpy.mock.calls[1][1] as any)[0].content as string;
     expect(prompt).not.toContain("dominated the conversation");
   });
 });
@@ -520,44 +691,109 @@ describe("DirectorAgent.reviewSpeech", () => {
 
   it("returns the speech unchanged when the director judges it fine", async () => {
     const script = makeScript();
-    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
-    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValueOnce({
-      needsFix: false,
-    });
+    const turnReviewer = {
+      review: vi.fn().mockResolvedValue({
+        accepted: true,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+      }),
+    };
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      { turnReviewer }
+    );
 
     const speech = makeReviewSpeech();
     const result = await agent.reviewSpeech(speech, "Talk about X");
 
-    expect(result).toBe(speech);
     expect(result.message).toBe("Original message.");
+    expect(result.review?.accepted).toBe(true);
   });
 
   it("replaces the message with the director's revision when flagged", async () => {
     const script = makeScript();
-    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
-    vi.spyOn(agent as any, "callModelForToolInput").mockResolvedValueOnce({
-      needsFix: true,
-      revisedMessage: "A tighter, corrected version.",
-    });
+    const turnReviewer = {
+      review: vi
+        .fn()
+        .mockResolvedValueOnce({
+          accepted: false,
+          clear: true,
+          engaging: true,
+          grounded: true,
+          advancesBeat: false,
+          addsVariety: true,
+          revisedMessage: "A tighter, corrected version.",
+        })
+        .mockResolvedValueOnce({
+          accepted: true,
+          clear: true,
+          engaging: true,
+          grounded: true,
+          advancesBeat: true,
+          addsVariety: true,
+          roleConsistent: true,
+          knowledgeConsistent: true,
+        }),
+    };
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      { turnReviewer }
+    );
 
     const speech = makeReviewSpeech();
     const result = await agent.reviewSpeech(speech, "Talk about X, briefly");
 
     expect(result.message).toBe("A tighter, corrected version.");
     expect(result).not.toBe(speech);
+    expect(turnReviewer.review).toHaveBeenCalledTimes(2);
   });
 
-  it("returns the speech unchanged if the review call fails", async () => {
+  it("keeps the original when the proposed revision is visibly truncated", async () => {
     const script = makeScript();
-    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
-    vi.spyOn(agent as any, "callModelForToolInput").mockRejectedValueOnce(
-      new Error("model error")
+    const turnReviewer = {
+      review: vi.fn().mockResolvedValue({
+        accepted: false,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: false,
+        addsVariety: true,
+        revisedMessage: "A sprawling network weaving through the soil,",
+      }),
+    };
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      { turnReviewer }
     );
 
     const speech = makeReviewSpeech();
     const result = await agent.reviewSpeech(speech, "Talk about X");
 
-    expect(result).toBe(speech);
+    expect(result.message).toBe(speech.message);
+    expect(turnReviewer.review).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the speech unchanged if the review call fails", async () => {
+    const script = makeScript();
+    const turnReviewer = {
+      review: vi.fn().mockRejectedValue(new Error("model error")),
+    };
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      { turnReviewer }
+    );
+
+    const speech = makeReviewSpeech();
+    const result = await agent.reviewSpeech(speech, "Talk about X");
+
+    expect(result.message).toBe(speech.message);
   });
 });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { MaterialSummarizerAgent } from "./MaterialSummarizerAgent";
 import { PodcastMaterial, SourceType } from "../types";
+import { ModelTask } from "../providers/ModelRoutingPolicy";
 
 function makeMaterial(overrides: Partial<PodcastMaterial> = {}): PodcastMaterial {
   return {
@@ -18,7 +19,7 @@ function makeMaterial(overrides: Partial<PodcastMaterial> = {}): PodcastMaterial
 describe("MaterialSummarizerAgent.summarize", () => {
   it("returns the model's summary on success", async () => {
     const agent = new MaterialSummarizerAgent();
-    vi.spyOn(agent as any, "callModel").mockResolvedValue(
+    const callModel = vi.spyOn(agent as any, "callModel").mockResolvedValue(
       "Key fact one. Key fact two. A good angle to debate."
     );
 
@@ -30,6 +31,7 @@ describe("MaterialSummarizerAgent.summarize", () => {
     expect(result).toBe(
       "Key fact one. Key fact two. A good angle to debate."
     );
+    expect(callModel.mock.calls[0][0]).toBe(ModelTask.MaterialSummary);
   });
 
   it("falls back to truncated raw content when the model call fails", async () => {

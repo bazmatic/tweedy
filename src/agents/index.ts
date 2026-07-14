@@ -1,6 +1,20 @@
 export { BaseAgent } from './BaseAgent';
 export { DirectorAgent } from './DirectorAgent';
 export { MaterialSummarizerAgent } from './MaterialSummarizerAgent';
+export { MaterialPreparerAgent } from './MaterialPreparerAgent';
+export { ConversationRhythmPolicy } from './ConversationRhythmPolicy';
+export { OpeningSequencePolicy, OpeningStage } from './OpeningSequencePolicy';
+export { NaturalSpeechStylePolicy } from './NaturalSpeechStylePolicy';
+export { KnowledgeLedgerPolicy } from './KnowledgeLedgerPolicy';
+export { SpeakerRoleProfileResolver } from './SpeakerRoleProfileResolver';
+export { SpeakerRoleProfileFactory } from './SpeakerRoleProfileFactory';
+export { SpeakerRolePolicy, RoleRepairReason } from './SpeakerRolePolicy';
+export { ResponseModePolicy, ConversationalObligation } from './ResponseModePolicy';
+export { SpeechRevisionPolicy } from './SpeechRevisionPolicy';
+export { DialogueCadencePolicy, CadenceRepairReason } from './DialogueCadencePolicy';
+export { AudienceAccessibilityPolicy } from './AudienceAccessibilityPolicy';
+export { TerminologyLedgerPolicy } from './TerminologyLedgerPolicy';
+export { EpisodeConclusionPolicy } from './EpisodeConclusionPolicy';
+export { TurnReviewerAgent } from './TurnReviewerAgent';
 export { SpeakerAgent } from './SpeakerAgent';
 export { SpeakerAgentToolName } from './speaker-tools';
-

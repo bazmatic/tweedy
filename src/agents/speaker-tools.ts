@@ -27,7 +27,7 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
       "Deliver a SHORT, concise, natural-sounding response in the podcast. Get ONE idea, fact, or beat out and then stop — 1-2 sentences max, never a multi-part explanation. Brevity is critical: shorter is always better than longer, and you should stop the moment the single idea has landed rather than padding it out. Keep it very brief to maintain conversational flow. The message should be natural spoken language, while stage directions in instructions guide delivery. Use pauses and ums, like, ah, ..., etc.",
     styleDescription:
       "How to deliver the speech. Include timing, tone, and emphasis. Example: 'Pause slightly before speaking, use a thoughtful tone, emphasize \"perspective\"'",
-    maxTokens: 200,
+    maxTokens: 300,
   },
   {
     name: SpeakerAgentToolName.INTERJECT,
@@ -88,18 +88,18 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.SUMMARIZE,
     toolDescription:
-      "Deliver a compact recap that briefly touches each of several named discussion points, one short clause per point, instead of one idea per turn. Use only when directed to catch up on multiple remaining points at once.",
+      "Deliver a compact recap that briefly touches each of several named discussion points, one short clause per point, instead of one idea per turn. Use only when directed to catch up on multiple remaining points at once. Complete the recap cleanly rather than trailing off part-way through a point.",
     styleDescription:
       "How to deliver the summary. Include pacing and tone. Example: 'Brisk, matter-of-fact pace, quick transitions between points'",
-    maxTokens: 120,
+    maxTokens: 400,
   },
   {
     name: SpeakerAgentToolName.CLOSING_STATEMENT,
     toolDescription:
-      "Deliver a closing statement that wraps up the podcast. Briefly summarize key takeaways or themes, thank your co-host(s), and sign off naturally. Keep it warm and authentic to your personality — 2-3 sentences maximum. This is the final word of the episode.",
+      "Deliver a closing statement that wraps up the podcast. Reflect on the key takeaway or theme, thank your co-host(s), and sign off naturally. Keep it warm and authentic to your personality. Take enough space to land the ending properly, and always finish the final sentence. This is the final word of the episode.",
     styleDescription:
       "How to deliver the closing. Include tone and delivery style for signing off. Example: 'Warm, genuine, slightly reflective tone, natural pacing'",
-    maxTokens: 120,
+    maxTokens: 400,
   },
 ];
 
@@ -119,6 +119,19 @@ export const SOLO_TOOLS: SpeakerAgentToolName[] = [
 export const INTERJECTION_TOOLS: SpeakerAgentToolName[] = [
   SpeakerAgentToolName.INTERJECT,
   SpeakerAgentToolName.FILLER_COMMENT,
+  SpeakerAgentToolName.CHALLENGE,
+];
+
+/**
+ * Audience guides can add value by reframing, illustrating or telling a
+ * prepared story without pretending to be the subject-matter expert.
+ */
+export const INTERVIEWER_TOOLS: SpeakerAgentToolName[] = [
+  SpeakerAgentToolName.SPEAK,
+  SpeakerAgentToolName.INTERJECT,
+  SpeakerAgentToolName.FILLER_COMMENT,
+  SpeakerAgentToolName.SHORT_QUESTION,
+  SpeakerAgentToolName.ONE_LINER,
   SpeakerAgentToolName.CHALLENGE,
 ];
 

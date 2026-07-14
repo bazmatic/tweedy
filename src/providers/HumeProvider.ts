@@ -9,6 +9,10 @@ import { logger } from '../utils/logger';
 export class HumeProvider extends BaseVocalProvider {
   private apiKey: string;
   private baseUrl = 'https://api.hume.ai/v0';
+  /** Last Hume generation_id per speaker, so consecutive lines from the same
+   * character are conditioned on their own prior delivery (Hume's `context`
+   * field) rather than each landing as an independent, unrelated read. */
+  private lastGenerationBySpeaker = new Map<string, string>();
 
   constructor() {
     super();
@@ -22,11 +26,24 @@ export class HumeProvider extends BaseVocalProvider {
     return 'Hume';
   }
 
+  /**
+   * The voice's baseline instructions are the character's fixed delivery and
+   * must dominate; a per-turn style is only a situational modifier layered on
+   * top, not an equal-weight replacement, so pitch/style stays anchored to
+   * the character instead of swinging with whatever adjective this line got.
+   */
   private buildDescription(params: VocalProviderTtsParams): string | undefined {
-    const parts = [params.voice.settings.instructions, params.speech.instructions].filter(
-      (part): part is string => Boolean(part && part.trim().length > 0)
-    );
-    return parts.length > 0 ? parts.join('. ') : undefined;
+    const baseline = params.voice.settings.instructions?.trim();
+    const turnStyle = params.speech.instructions?.trim();
+
+    if (!baseline) {
+      return turnStyle || undefined;
+    }
+    if (!turnStyle) {
+      return baseline;
+    }
+
+    return `${baseline}. Keep that same voice; for this line only, let the delivery lean slightly ${turnStyle}`;
   }
 
   async tts(params: VocalProviderTtsParams): Promise<TtsResult> {
@@ -38,6 +55,8 @@ export class HumeProvider extends BaseVocalProvider {
       await fs.ensureDir(path.dirname(outputPath));
 
       const speed = params.voice.settings.providerOptions?.speed;
+      const speakerId = params.speech.speaker?.id;
+      const priorGenerationId = speakerId ? this.lastGenerationBySpeaker.get(speakerId) : undefined;
 
       const response = await axios.post(
         `${this.baseUrl}/tts`,
@@ -50,6 +69,7 @@ export class HumeProvider extends BaseVocalProvider {
               ...(speed !== undefined ? { speed } : {}),
             },
           ],
+          ...(priorGenerationId ? { context: { generation_id: priorGenerationId } } : {}),
         },
         {
           headers: {
@@ -59,9 +79,14 @@ export class HumeProvider extends BaseVocalProvider {
         }
       );
 
-      const base64Audio = response.data.generations?.[0]?.audio;
+      const generation = response.data.generations?.[0];
+      const base64Audio = generation?.audio;
       if (!base64Audio) {
         throw new Error('Hume TTS response did not contain audio data');
+      }
+
+      if (speakerId && generation.generation_id) {
+        this.lastGenerationBySpeaker.set(speakerId, generation.generation_id);
       }
 
       await fs.writeFile(outputPath, Buffer.from(base64Audio, 'base64'));

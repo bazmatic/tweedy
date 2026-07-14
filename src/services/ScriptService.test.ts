@@ -1,7 +1,18 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ScriptService } from "./ScriptService";
 import { SpeakerAgentToolName } from "../agents/speaker-tools";
-import { VocalProviderName, PodcastScript, SourceType } from "../types";
+import {
+  AudienceProfile,
+  AudienceValue,
+  BeatPurpose,
+  EditorialCardKind,
+  EditorialMove,
+  EnergyLevel,
+  KnowledgeSource,
+  VocalProviderName,
+  PodcastScript,
+  SourceType,
+} from "../types";
 import type { RAGService } from "../rag";
 import { logger } from "../utils/logger";
 
@@ -9,6 +20,7 @@ const chooseNextSpeakerMock = vi.fn();
 const createPodcastPlanMock = vi.fn().mockResolvedValue(undefined);
 const reviewSpeechMock = vi.fn((speech) => Promise.resolve(speech));
 const speakMock = vi.fn();
+const interjectMock = vi.fn();
 const speakerAgentConstructorMock = vi.fn();
 
 vi.mock("../agents", () => ({
@@ -21,7 +33,7 @@ vi.mock("../agents", () => ({
   }),
   SpeakerAgent: vi.fn().mockImplementation(function (speaker, ragService) {
     speakerAgentConstructorMock(speaker, ragService);
-    return { speak: speakMock, interject: vi.fn() };
+    return { speak: speakMock, interject: interjectMock };
   }),
 }));
 
@@ -103,12 +115,25 @@ describe("ScriptService stopReason persistence", () => {
       timestamp: new Date(),
       tool: SpeakerAgentToolName.SPEAK,
       stopReason: "max_tokens" as const,
+      turnBrief: {
+        speakerId: "s1",
+        goal: "Explain the turning point.",
+        move: EditorialMove.Explain,
+        cardIds: [],
+        audienceValue: AudienceValue.Understanding,
+        desiredEnergy: EnergyLevel.Curious,
+      },
     };
 
     await (service as any).persistSpeech(script, speech);
 
     expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ stopReason: "max_tokens" })
+      expect.objectContaining({
+        stopReason: "max_tokens",
+        turnBrief: expect.objectContaining({
+          goal: "Explain the turning point.",
+        }),
+      })
     );
   });
 
@@ -313,6 +338,89 @@ describe("ScriptService RAG wiring", () => {
   });
 });
 
+describe("ScriptService opening sequence", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("enforces welcome then acknowledgement without inserting a random interjection", async () => {
+    const host = {
+      id: "host",
+      slug: "ada",
+      name: "Ada",
+      personality: "warm",
+      voice: {
+        id: "voice-host",
+        name: "Voice",
+        description: "",
+        provider: VocalProviderName.ElevenLabs,
+        providerId: "p",
+        settings: {},
+      },
+      voiceStyle: "neutral",
+      isExpert: false,
+    };
+    const expert = {
+      ...host,
+      id: "expert",
+      slug: "miles",
+      name: "Miles",
+      voice: { ...host.voice, id: "voice-expert" },
+      isExpert: true,
+    };
+    const script = makeScript();
+    script.speakers = [expert, host];
+
+    speakMock
+      .mockResolvedValueOnce({
+        id: "",
+        speaker: host,
+        message: "A deliberately long welcome that would normally qualify for a random interjection under the length policy.",
+        instructions: "warm",
+        voice: host.voice,
+        voiceStyle: host.voiceStyle,
+        timestamp: new Date(),
+        tool: SpeakerAgentToolName.SPEAK,
+        stopReason: "stop",
+      })
+      .mockResolvedValueOnce({
+        id: "",
+        speaker: expert,
+        message: "Hello Ada, and hello everyone.",
+        instructions: "warm",
+        voice: expert.voice,
+        voiceStyle: expert.voiceStyle,
+        timestamp: new Date(),
+        tool: SpeakerAgentToolName.SPEAK,
+        stopReason: "stop",
+      });
+
+    let recordNumber = 0;
+    const speechRepository = {
+      create: vi.fn().mockImplementation(async () => ({
+        id: `record-${++recordNumber}`,
+      })),
+    };
+    const service = makeService({ speechRepository });
+
+    await (service as any).generateScriptContent(script, {
+      maxTurns: 2,
+      maxDuration: 60,
+    });
+
+    expect(script.speeches.map((speech) => speech.speaker.name)).toEqual([
+      "Ada",
+      "Miles",
+    ]);
+    expect(speakMock.mock.calls[0][5]).toContain("introduce Miles");
+    expect(speakMock.mock.calls[1][5]).toContain(
+      "Respond directly to Ada's introduction"
+    );
+    expect(interjectMock).not.toHaveBeenCalled();
+    expect(chooseNextSpeakerMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("ScriptService.logUncoveredPoints", () => {
   it("warns listing every point still not covered", () => {
     const service = makeService({});
@@ -367,6 +475,72 @@ describe("ScriptService discussionPoints persistence", () => {
     );
   });
 
+  it("persists editorial cards, conversation beats and introduced knowledge with the script", async () => {
+    const create = vi.fn().mockResolvedValue({
+      id: "record-1",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const service = makeService({ scriptRepository: { create } });
+    const script = makeScript();
+    script.editorialCards = [
+      {
+        id: "m1-card-1",
+        materialId: "m1",
+        kind: EditorialCardKind.Story,
+        content: "A revealing anecdote.",
+        evidence: [],
+        relatedCardIds: [],
+        tags: [],
+      },
+    ];
+    script.conversationBeats = [
+      {
+        id: "b1",
+        purpose: BeatPurpose.Hook,
+        goal: "Open with the anecdote.",
+        cardIds: ["m1-card-1"],
+        prerequisiteBeatIds: [],
+        desiredEnergy: EnergyLevel.Curious,
+        targetTurns: 1,
+        covered: false,
+      },
+    ];
+    script.knowledgeLedger = {
+      introducedCards: [
+        {
+          cardId: "m1-card-1",
+          introducedBySpeakerId: "s1",
+          introducedAtTurn: 1,
+          source: KnowledgeSource.SourceMaterial,
+        },
+      ],
+    };
+    script.audienceProfile = AudienceProfile.General;
+    script.terminologyLedger = {
+      explainedTerms: [
+        {
+          term: "mycelium",
+          plainLanguageMeaning: "the underground fungal network",
+          explainedBySpeakerId: "s1",
+          explainedAtTurn: 1,
+        },
+      ],
+    };
+
+    await (service as any).saveScript(script);
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        editorialCards: script.editorialCards,
+        conversationBeats: script.conversationBeats,
+        knowledgeLedger: script.knowledgeLedger,
+        audienceProfile: AudienceProfile.General,
+        terminologyLedger: script.terminologyLedger,
+      })
+    );
+  });
+
   it("loadScriptFromRecord reads discussionPoints back, defaulting to [] when absent", async () => {
     const speakerRepository = { getById: vi.fn() };
     const materialRepository = { getById: vi.fn() };
@@ -403,5 +577,8 @@ describe("ScriptService discussionPoints persistence", () => {
       updatedAt: new Date(),
     });
     expect(withoutPoints.discussionPoints).toEqual([]);
+    expect(withoutPoints.knowledgeLedger).toEqual({ introducedCards: [] });
+    expect(withoutPoints.audienceProfile).toBe(AudienceProfile.General);
+    expect(withoutPoints.terminologyLedger).toEqual({ explainedTerms: [] });
   });
 });

@@ -1,4 +1,13 @@
-import { LlmTool, Speaker } from "../types";
+import {
+  AudienceValue,
+  BeatPurpose,
+  ConversationalDevice,
+  EditorialMove,
+  EnergyLevel,
+  LlmTool,
+  Speaker,
+} from "../types";
+import { ConversationBeatInput } from "./editorial-tools";
 
 export const SELECT_NEXT_SPEAKER_TOOL_NAME = "select_next_speaker";
 export const CREATE_PODCAST_PLAN_TOOL_NAME = "create_podcast_plan";
@@ -7,6 +16,14 @@ export interface SelectNextSpeakerInput {
   speakerId: string;
   direction: string;
   coveredPointIds?: string[];
+  coveredBeatIds?: string[];
+  beatId?: string;
+  goal?: string;
+  move?: EditorialMove;
+  cardIds?: string[];
+  audienceValue?: AudienceValue;
+  desiredEnergy?: EnergyLevel;
+  device?: ConversationalDevice;
 }
 
 export function toSelectNextSpeakerTool(speakers: Speaker[]): LlmTool {
@@ -32,6 +49,46 @@ export function toSelectNextSpeakerTool(speakers: Speaker[]): LlmTool {
           items: { type: "string" },
           description:
             "IDs of currently-open discussion points that the most recent speech(es) explicitly and substantively discussed with specific detail from the point's text — not merely a topically-adjacent mention. For example, if a point is \"CO2 scrubber duct-tape hack\" and the speech only mentions an oxygen tank explosion, that point is NOT covered. Omit or leave empty if none were covered.",
+        },
+        coveredBeatIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Ids of open conversation beats that the recent speech genuinely completed. A reaction or passing mention does not complete a beat.",
+        },
+        beatId: {
+          type: "string",
+          description: "The current conversation beat id, when applicable.",
+        },
+        goal: {
+          type: "string",
+          description:
+            "What this turn should contribute to the listener's journey.",
+        },
+        move: {
+          type: "string",
+          enum: Object.values(EditorialMove),
+          description: "The subject-neutral editorial move for this turn.",
+        },
+        cardIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Prepared editorial card ids relevant to this turn.",
+        },
+        audienceValue: {
+          type: "string",
+          enum: Object.values(AudienceValue),
+          description: "The primary value this turn gives the audience.",
+        },
+        desiredEnergy: {
+          type: "string",
+          enum: Object.values(EnergyLevel),
+        },
+        device: {
+          type: "string",
+          enum: Object.values(ConversationalDevice),
+          description:
+            "An optional conversational device, only when it fits naturally.",
         },
       },
       required: ["speakerId", "direction"],
@@ -91,40 +148,10 @@ export function toCheckConversationCompleteTool(): LlmTool {
   };
 }
 
-export interface ReviewSpeechInput {
-  needsFix: boolean;
-  revisedMessage?: string;
-}
-
-export const REVIEW_SPEECH_TOOL_NAME = "review_speech";
-
-export function toReviewSpeechTool(): LlmTool {
-  return {
-    name: REVIEW_SPEECH_TOOL_NAME,
-    description:
-      "Judge whether a speaker's turn matches the direction given, in both length and substance, and correct it if not.",
-    input_schema: {
-      type: "object",
-      properties: {
-        needsFix: {
-          type: "boolean",
-          description:
-            "True if the speech rambled on too long for its direction, was too short and under-delivered on a direction that called for real substance, or otherwise missed the direction.",
-        },
-        revisedMessage: {
-          type: "string",
-          description:
-            "A corrected version of the message, in the same voice/personality and delivery register as the original, fixing the length or substance problem. Required when needsFix is true; omit otherwise.",
-        },
-      },
-      required: ["needsFix"],
-    },
-  };
-}
-
 export interface CreatePodcastPlanInput {
   narrative: string;
   points: string[];
+  beats?: ConversationBeatInput[];
 }
 
 export function toCreatePodcastPlanTool(): LlmTool {
@@ -146,8 +173,34 @@ export function toCreatePodcastPlanTool(): LlmTool {
           description:
             "A detailed prose description of how the conversation should flow: opening, segments, closing.",
         },
+        beats: {
+          type: "array",
+          description:
+            "A listener-centred sequence balancing understanding, entertainment, insight and conversational momentum.",
+          items: {
+            type: "object",
+            properties: {
+              purpose: {
+                type: "string",
+                enum: Object.values(BeatPurpose),
+              },
+              goal: { type: "string" },
+              cardIds: { type: "array", items: { type: "string" } },
+              prerequisiteBeatIds: {
+                type: "array",
+                items: { type: "string" },
+              },
+              desiredEnergy: {
+                type: "string",
+                enum: Object.values(EnergyLevel),
+              },
+              targetTurns: { type: "number" },
+            },
+            required: ["purpose", "goal"],
+          },
+        },
       },
-      required: ["points", "narrative"],
+      required: ["narrative", "points"],
     },
   };
 }

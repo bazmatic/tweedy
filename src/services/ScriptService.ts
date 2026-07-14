@@ -5,6 +5,7 @@ import {
   Speaker,
   PodcastMaterial,
   Speech,
+  AudienceProfile,
 } from "../types";
 import {
   ScriptRepository,
@@ -17,6 +18,9 @@ import { DirectorAgent, SpeakerAgent } from "../agents";
 import { logger } from "../utils/logger";
 import { shouldInterject } from "./interjection-policy";
 import { RAGService } from "../rag";
+import { OpeningSequencePolicy } from "../agents/OpeningSequencePolicy";
+import { KnowledgeLedgerPolicy } from "../agents/KnowledgeLedgerPolicy";
+import { TerminologyLedgerPolicy } from "../agents/TerminologyLedgerPolicy";
 
 export class ScriptService implements IScriptService {
   constructor(
@@ -25,7 +29,9 @@ export class ScriptService implements IScriptService {
     private readonly materialRepository: MaterialRepository,
     private readonly voiceRepository: VoiceRepository,
     private readonly speechRepository: SpeechRepository,
-    private readonly ragService: RAGService
+    private readonly ragService: RAGService,
+    private readonly knowledgeLedgerPolicy = new KnowledgeLedgerPolicy(),
+    private readonly terminologyLedgerPolicy = new TerminologyLedgerPolicy()
   ) {}
 
   async generateScript(params: GenerateScriptParams): Promise<PodcastScript> {
@@ -45,6 +51,9 @@ export class ScriptService implements IScriptService {
         speeches: [],
         materials,
         discussionPoints: [],
+        knowledgeLedger: this.knowledgeLedgerPolicy.createLedger(),
+        audienceProfile: params.audienceProfile ?? AudienceProfile.General,
+        terminologyLedger: this.terminologyLedgerPolicy.createLedger(),
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -154,6 +163,7 @@ export class ScriptService implements IScriptService {
         },
         voiceStyle: speakerRecord.voiceStyle,
         isExpert: speakerRecord.isExpert,
+        roleProfile: speakerRecord.roleProfile,
       });
     }
 
@@ -190,9 +200,10 @@ export class ScriptService implements IScriptService {
     params: GenerateScriptParams
   ): Promise<void> {
     const directorAgent = new DirectorAgent(script, {
-      maxTurns: params.maxTurns,
+      maxTurns: Math.max(1, params.maxTurns - script.speakers.length),
       maxDuration: params.maxDuration,
     });
+    const openingSequence = new OpeningSequencePolicy();
     await directorAgent.createPodcastPlan();
     try {
       await this.ragService.addMaterials(script.materials);
@@ -204,7 +215,9 @@ export class ScriptService implements IScriptService {
     }
 
     for (let turn = 0; turn < params.maxTurns; turn++) {
+      const openingTurn = openingSequence.nextTurn(script);
       if (
+        !openingTurn &&
         script.speeches.length > 0 &&
         (await directorAgent.isConversationComplete(script))
       ) {
@@ -214,8 +227,8 @@ export class ScriptService implements IScriptService {
         break;
       }
 
-      const { speaker, direction, timeStatus, forceNearlyOutOfTime, requestSummary, isFinalTurn } =
-        await directorAgent.chooseNextSpeaker(script);
+      const { speaker, direction, timeStatus, forceNearlyOutOfTime, requestSummary, isFinalTurn, turnBrief } =
+        openingTurn ?? await directorAgent.chooseNextSpeaker(script);
       const speakerAgent = new SpeakerAgent(speaker, this.ragService);
 
       const rawSpeech = await speakerAgent.speak(
@@ -228,17 +241,36 @@ export class ScriptService implements IScriptService {
         timeStatus,
         forceNearlyOutOfTime,
         requestSummary,
-        isFinalTurn
+        isFinalTurn,
+        turnBrief,
+        this.knowledgeLedgerPolicy.getAccessibleCards(
+          speaker,
+          script.editorialCards ?? [],
+          script.knowledgeLedger ?? this.knowledgeLedgerPolicy.createLedger(),
+          turnBrief?.cardIds ?? []
+        ),
+        script.audienceProfile,
+        script.terminologyLedger
       );
-      const speech = await directorAgent.reviewSpeech(rawSpeech, direction);
+      const speech = await directorAgent.reviewSpeech(
+        rawSpeech,
+        direction,
+        turnBrief,
+        script.editorialCards ?? [],
+        script.speeches
+      );
+      this.knowledgeLedgerPolicy.recordAcceptedTurn(script, speech);
+      this.terminologyLedgerPolicy.recordAcceptedTurn(script, speech);
       await this.persistSpeech(script, speech);
 
       // If that turn ran long — or was cut off by the token limit — let a
       // different speaker chime in with a quick reaction before the director
       // picks the next real turn — real overlap instead of relying on the
-      // speaker to self-select a short tool. Skip on the final turn so the
-      // closing statement is the last thing said, not a context-blind reaction.
+      // speaker to self-select a short tool. Skip during the enforced opening
+      // sequence, and on the final turn so the closing statement is the last
+      // thing said rather than a context-blind reaction.
       if (
+        !openingTurn &&
         !isFinalTurn &&
         shouldInterject(speech, script.speakers.length, Math.random())
       ) {
@@ -295,6 +327,8 @@ export class ScriptService implements IScriptService {
       timestamp: speech.timestamp,
       tool: speech.tool,
       stopReason: speech.stopReason,
+      turnBrief: speech.turnBrief,
+      review: speech.review,
     });
 
     speech.id = speechRecord.id;
@@ -332,6 +366,8 @@ export class ScriptService implements IScriptService {
             timestamp: speechRecord.timestamp,
             tool: speechRecord.tool,
             stopReason: speechRecord.stopReason,
+            turnBrief: speechRecord.turnBrief,
+            review: speechRecord.review,
           });
         }
       }
@@ -345,6 +381,13 @@ export class ScriptService implements IScriptService {
       speeches,
       materials,
       discussionPoints: record.discussionPoints ?? [],
+      editorialCards: record.editorialCards ?? [],
+      conversationBeats: record.conversationBeats ?? [],
+      knowledgeLedger:
+        record.knowledgeLedger ?? this.knowledgeLedgerPolicy.createLedger(),
+      audienceProfile: record.audienceProfile ?? AudienceProfile.General,
+      terminologyLedger:
+        record.terminologyLedger ?? this.terminologyLedgerPolicy.createLedger(),
       createdAt: new Date(record.createdAt),
       updatedAt: new Date(record.updatedAt),
     };
@@ -358,6 +401,13 @@ export class ScriptService implements IScriptService {
       speechIds: script.speeches.map((s) => s.id),
       materialIds: script.materials.map((m) => m.id),
       discussionPoints: script.discussionPoints ?? [],
+      editorialCards: script.editorialCards ?? [],
+      conversationBeats: script.conversationBeats ?? [],
+      knowledgeLedger:
+        script.knowledgeLedger ?? this.knowledgeLedgerPolicy.createLedger(),
+      audienceProfile: script.audienceProfile ?? AudienceProfile.General,
+      terminologyLedger:
+        script.terminologyLedger ?? this.terminologyLedgerPolicy.createLedger(),
     };
 
     const created = await this.scriptRepository.create(record);
