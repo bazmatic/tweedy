@@ -1,60 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { SpeakerAgentToolName } from "../agents/speaker-tools";
 import {
   EditableScriptDocument,
-  PodcastScript,
   ScriptEditTurnAction,
-  VocalProviderName,
 } from "../types";
 import {
   ScriptEditPlanner,
   ScriptEditValidationError,
 } from "./ScriptEditPlanner";
+import { makeScriptFixture } from "./__tests__/fixtures";
 
-function makeScript(): PodcastScript {
-  const speaker = {
-    id: "speaker-1",
-    slug: "ada",
-    name: "Ada",
-    personality: "warm",
-    voice: {
-      id: "voice-1",
-      name: "Voice",
-      description: "",
-      provider: VocalProviderName.ElevenLabs,
-      providerId: "provider-1",
-      settings: {},
-    },
-    voiceStyle: "natural",
-    isExpert: false,
-  };
-  const speeches = ["One", "Two", "Three"].map((message, index) => ({
-    id: `speech-${index + 1}`,
-    speaker,
-    message,
-    instructions: "natural",
-    voice: speaker.voice,
-    voiceStyle: speaker.voiceStyle,
-    timestamp: new Date(),
-    tool: SpeakerAgentToolName.SPEAK,
-  }));
-  const secondSpeaker = {
-    ...speaker,
-    id: "speaker-2",
-    slug: "miles",
-    name: "Miles",
-  };
-  return {
-    id: "script-1",
-    title: "Test",
-    description: "",
-    speakers: [speaker, secondSpeaker],
-    speeches,
-    materials: [],
-    discussionPoints: [],
-    createdAt: new Date("2026-07-14T00:00:00.000Z"),
-    updatedAt: new Date("2026-07-14T01:00:00.000Z"),
-  };
+function makeScript() {
+  return makeScriptFixture({
+    messages: ["One", "Two", "Three"],
+    includeSecondSpeaker: true,
+  });
 }
 
 function makeDocument(): EditableScriptDocument {

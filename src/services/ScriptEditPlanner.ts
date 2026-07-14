@@ -131,10 +131,6 @@ export class ScriptEditPlanner {
     };
   }
 
-  hasChanges(summary: ScriptEditSummary): boolean {
-    return hasScriptEditChanges(summary);
-  }
-
   private validateDocumentIdentity(
     script: PodcastScript,
     document: EditableScriptDocument

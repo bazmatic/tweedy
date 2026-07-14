@@ -360,7 +360,8 @@ export interface EditableScriptDocument {
   turns: EditableScriptTurn[];
 }
 
-export interface PlannedScriptTurn extends EditableScriptTurn {
+export interface PlannedScriptTurn extends Omit<EditableScriptTurn, "mode"> {
+  mode: SpeakerAgentToolName;
   action: ScriptEditTurnAction;
 }
 

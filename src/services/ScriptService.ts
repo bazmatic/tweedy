@@ -33,7 +33,10 @@ import {
   formatScriptForEditing,
   parseEditableScript,
 } from "./script-edit-format";
-import { ScriptEditPlanner } from "./ScriptEditPlanner";
+import {
+  hasScriptEditChanges,
+  ScriptEditPlanner,
+} from "./ScriptEditPlanner";
 
 export class ScriptService implements IScriptService {
   constructor(
@@ -164,7 +167,7 @@ export class ScriptService implements IScriptService {
         `Script ${plan.scriptId} changed after the edit was previewed. Preview the import again before applying it.`
       );
     }
-    if (!this.scriptEditPlanner.hasChanges(plan.summary)) {
+    if (!hasScriptEditChanges(plan.summary)) {
       return plan.summary;
     }
 
@@ -231,7 +234,7 @@ export class ScriptService implements IScriptService {
           voiceId: speaker.voice.id,
           voiceStyle: existing?.voiceStyle ?? speaker.voiceStyle,
           timestamp: new Date(),
-          tool: turn.mode ?? SpeakerAgentToolName.SPEAK,
+          tool: turn.mode,
         });
         createdSpeechIds.push(created.id);
         orderedSpeechIds.push(created.id);

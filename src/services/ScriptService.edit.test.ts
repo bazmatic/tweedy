@@ -1,61 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { SpeakerAgentToolName } from "../agents/speaker-tools";
-import {
-  PodcastScript,
-  ScriptEditTurnAction,
-  VocalProviderName,
-} from "../types";
+import { ScriptEditTurnAction } from "../types";
 import { ScriptService } from "./ScriptService";
+import { makeScriptFixture } from "./__tests__/fixtures";
 
-function makeScript(): PodcastScript {
-  const speaker = {
-    id: "speaker-1",
-    slug: "ada",
-    name: "Ada",
-    personality: "warm",
-    voice: {
-      id: "voice-1",
-      name: "Voice",
-      description: "",
-      provider: VocalProviderName.ElevenLabs,
-      providerId: "provider-1",
-      settings: {},
-    },
-    voiceStyle: "natural",
-    isExpert: false,
-  };
-  return {
-    id: "script-1",
-    title: "Test",
-    description: "",
-    speakers: [speaker],
-    speeches: [
-      {
-        id: "speech-1",
-        speaker,
-        message: "Original one.",
-        instructions: "warmly",
-        voice: speaker.voice,
-        voiceStyle: speaker.voiceStyle,
-        timestamp: new Date(),
-        tool: SpeakerAgentToolName.SPEAK,
-      },
-      {
-        id: "speech-2",
-        speaker,
-        message: "Original two.",
-        instructions: "naturally",
-        voice: speaker.voice,
-        voiceStyle: speaker.voiceStyle,
-        timestamp: new Date(),
-        tool: SpeakerAgentToolName.SHORT_QUESTION,
-      },
-    ],
-    materials: [],
-    discussionPoints: [],
-    createdAt: new Date("2026-07-14T00:00:00.000Z"),
-    updatedAt: new Date("2026-07-14T01:00:00.000Z"),
-  };
+function makeScript() {
+  const script = makeScriptFixture({
+    messages: ["Original one.", "Original two."],
+  });
+  script.speeches[0].instructions = "warmly";
+  script.speeches[1].instructions = "naturally";
+  script.speeches[1].tool = SpeakerAgentToolName.SHORT_QUESTION;
+  return script;
 }
 
 describe("ScriptService editable imports", () => {

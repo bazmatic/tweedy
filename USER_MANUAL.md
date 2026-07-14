@@ -590,9 +590,11 @@ tweedy script import script-id episode.edit.txt
 ```
 
 Each turn block contains an `@id`, `@speaker`, optional `@mode`, and its spoken
-message. Edit the message freely, reorder or remove complete blocks, or add a
-block using `@id: new`. Existing turns cannot be reassigned to another speaker;
-new turns may use any speaker already attached to the script.
+message followed by `@end`. Edit the message freely, reorder or remove complete
+blocks, or add a block using `@id: new`. Keep the `@end` marker; use `\@end` if
+the spoken message needs a literal line containing `@end`. Existing turns
+cannot be reassigned to another speaker; new turns may use any speaker already
+attached to the script.
 
 Import shows the numbers of added, removed, edited and unchanged turns before
 writing. It asks for confirmation unless `--yes` is supplied. The file includes

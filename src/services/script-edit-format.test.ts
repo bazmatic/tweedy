@@ -1,56 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { SpeakerAgentToolName } from "../agents/speaker-tools";
-import { PodcastScript, VocalProviderName } from "../types";
 import {
   formatScriptForEditing,
   parseEditableScript,
   ScriptEditFormatError,
 } from "./script-edit-format";
-
-function makeScript(): PodcastScript {
-  const speaker = {
-    id: "speaker-1",
-    slug: "ada",
-    name: "Ada",
-    personality: "warm",
-    voice: {
-      id: "voice-1",
-      name: "Voice",
-      description: "",
-      provider: VocalProviderName.ElevenLabs,
-      providerId: "provider-1",
-      settings: {},
-    },
-    voiceStyle: "natural",
-    isExpert: false,
-  };
-  return {
-    id: "script-1",
-    title: "Test",
-    description: "",
-    speakers: [speaker],
-    speeches: [
-      {
-        id: "speech-1",
-        speaker,
-        message: "First line.\nStill the first turn.",
-        instructions: "natural",
-        voice: speaker.voice,
-        voiceStyle: speaker.voiceStyle,
-        timestamp: new Date("2026-07-14T00:00:00.000Z"),
-        tool: SpeakerAgentToolName.SPEAK,
-      },
-    ],
-    materials: [],
-    discussionPoints: [],
-    createdAt: new Date("2026-07-14T00:00:00.000Z"),
-    updatedAt: new Date("2026-07-14T01:00:00.000Z"),
-  };
-}
+import { makeScriptFixture } from "./__tests__/fixtures";
 
 describe("editable script format", () => {
   it("round-trips script identity, revision and turns", () => {
-    const document = parseEditableScript(formatScriptForEditing(makeScript()));
+    const document = parseEditableScript(
+      formatScriptForEditing(makeScriptFixture())
+    );
 
     expect(document).toEqual({
       formatVersion: 1,
@@ -72,7 +33,7 @@ describe("editable script format", () => {
     expect(parseEditableScript(header).turns).toEqual([]);
 
     const document = parseEditableScript(
-      `${header}\n@id: new\n@speaker: ada\nOne.\n\n@id: new\n@speaker: ada\nTwo.\n`
+      `${header}\n@id: new\n@speaker: ada\nOne.\n@end\n\n@id: new\n@speaker: ada\nTwo.\n@end\n`
     );
     expect(document.turns).toHaveLength(2);
     expect(document.turns.every((turn) => !turn.sourceId)).toBe(true);
@@ -82,13 +43,23 @@ describe("editable script format", () => {
     const header = `@format: 1\n@script: script-1\n@revision: revision\n`;
     expect(() =>
       parseEditableScript(
-        `${header}@id: speech-1\n@speaker: ada\nOne.\n@id: speech-1\n@speaker: ada\nTwo.\n`
+        `${header}@id: speech-1\n@speaker: ada\nOne.\n@end\n@id: speech-1\n@speaker: ada\nTwo.\n@end\n`
       )
     ).toThrow(ScriptEditFormatError);
     expect(() =>
       parseEditableScript(
-        `${header}@id: speech-1\n@speaker: ada\n@mode: monologue\nOne.\n`
+        `${header}@id: speech-1\n@speaker: ada\n@mode: monologue\nOne.\n@end\n`
       )
     ).toThrow('Unknown turn mode "monologue"');
+  });
+
+  it("preserves metadata-looking lines inside messages", () => {
+    const script = makeScriptFixture({
+      messages: ["The protocol contains:\n@id: example\n@speaker: nobody\n@end"],
+    });
+
+    const document = parseEditableScript(formatScriptForEditing(script));
+
+    expect(document.turns[0].message).toBe(script.speeches[0].message);
   });
 });

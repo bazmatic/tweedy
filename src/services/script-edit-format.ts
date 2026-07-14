@@ -17,6 +17,7 @@ enum EditableField {
 }
 
 const NEW_TURN_ID = "new";
+const TURN_END = "@end";
 
 export class ScriptEditFormatError extends Error {
   constructor(message: string) {
@@ -36,6 +37,7 @@ export function formatScriptForEditing(script: PodcastScript): string {
     "# Delete or reorder whole turn blocks as needed.",
     `# Add a turn with \"${EditableField.Id} ${NEW_TURN_ID}\" and a script speaker slug.`,
     "# @mode is optional: existing turns retain their mode; new turns default to speak.",
+    `# Keep each ${TURN_END} marker. Write \\${TURN_END} for a literal ${TURN_END} message line.`,
     `# Valid @mode values: ${Object.values(SpeakerAgentToolName).join(", ")}.`,
     "",
   ];
@@ -46,7 +48,8 @@ export function formatScriptForEditing(script: PodcastScript): string {
     lines.push(
       `${EditableField.Mode} ${speech.tool ?? SpeakerAgentToolName.SPEAK}`
     );
-    lines.push(speech.message.trim());
+    lines.push(escapeMessage(speech.message.trim()));
+    lines.push(TURN_END);
     lines.push("");
   }
 
@@ -111,24 +114,24 @@ function parseHeader(
 }
 
 function parseTurns(lines: string[], startingLine: number): EditableScriptTurn[] {
-  // Turns are block-based rather than blank-line-based so editors may use
-  // paragraphs inside a single speech without changing the document structure.
-  const blockStarts = lines
-    .map((line, index) => ({ line, index }))
-    .filter(({ line }) => line.trimStart().startsWith(EditableField.Id))
-    .map(({ index }) => index);
+  // Explicit end markers keep metadata-looking message lines unambiguous while
+  // still allowing blank lines and paragraphs inside a speech.
   const turns: EditableScriptTurn[] = [];
   const existingIds = new Set<string>();
+  let cursor = 0;
 
-  for (const [blockIndex, start] of blockStarts.entries()) {
-    const end = blockStarts[blockIndex + 1] ?? lines.length;
-    const block = lines.slice(start, end);
-    const lineNumber = startingLine + start;
-    const idValue = readFieldValue(
-      block[0].trim(),
-      EditableField.Id,
-      lineNumber
-    );
+  while (cursor < lines.length) {
+    cursor = nextContentLine(lines, cursor);
+    if (cursor >= lines.length) break;
+
+    const lineNumber = startingLine + cursor;
+    const idLine = lines[cursor].trim();
+    if (!idLine.startsWith(EditableField.Id)) {
+      throw new ScriptEditFormatError(
+        `Expected ${EditableField.Id} on line ${lineNumber}.`
+      );
+    }
+    const idValue = readFieldValue(idLine, EditableField.Id, lineNumber);
     const sourceId = idValue === NEW_TURN_ID ? undefined : idValue;
     if (sourceId && existingIds.has(sourceId)) {
       throw new ScriptEditFormatError(
@@ -137,8 +140,8 @@ function parseTurns(lines: string[], startingLine: number): EditableScriptTurn[]
     }
     if (sourceId) existingIds.add(sourceId);
 
-    const speakerIndex = nextContentLine(block, 1);
-    const speakerLine = block[speakerIndex]?.trim();
+    const speakerIndex = nextContentLine(lines, cursor + 1);
+    const speakerLine = lines[speakerIndex]?.trim();
     if (!speakerLine?.startsWith(EditableField.Speaker)) {
       throw new ScriptEditFormatError(
         `Turn on line ${lineNumber} must include @speaker immediately after @id.`
@@ -147,39 +150,76 @@ function parseTurns(lines: string[], startingLine: number): EditableScriptTurn[]
     const speakerSlug = readFieldValue(
       speakerLine,
       EditableField.Speaker,
-      lineNumber + speakerIndex
+      startingLine + speakerIndex
     );
 
-    let messageStart = nextContentLine(block, speakerIndex + 1);
+    let messageStart = nextContentLine(lines, speakerIndex + 1);
     let mode: SpeakerAgentToolName | undefined;
-    const possibleModeLine = block[messageStart]?.trim();
+    const possibleModeLine = lines[messageStart]?.trim();
     if (possibleModeLine?.startsWith(EditableField.Mode)) {
       const modeValue = readFieldValue(
         possibleModeLine,
         EditableField.Mode,
-        lineNumber + messageStart
+        startingLine + messageStart
       );
       mode = Object.values(SpeakerAgentToolName).find(
         (candidate) => candidate === modeValue
       );
       if (!mode) {
         throw new ScriptEditFormatError(
-          `Unknown turn mode "${modeValue}" on line ${lineNumber + messageStart}.`
+          `Unknown turn mode "${modeValue}" on line ${startingLine + messageStart}.`
         );
       }
-      messageStart = nextContentLine(block, messageStart + 1);
+      messageStart = nextContentLine(lines, messageStart + 1);
     }
 
-    const message = block.slice(messageStart).join("\n").trim();
+    const end = lines.findIndex(
+      (line, index) => index >= messageStart && line.trim() === TURN_END
+    );
+    if (end < 0) {
+      throw new ScriptEditFormatError(
+        `Turn on line ${lineNumber} is missing its ${TURN_END} marker.`
+      );
+    }
+    const message = unescapeMessage(
+      lines.slice(messageStart, end).join("\n")
+    ).trim();
     if (!message) {
       throw new ScriptEditFormatError(
         `Turn on line ${lineNumber} has no message text.`
       );
     }
     turns.push({ sourceId, speakerSlug, message, mode });
+    cursor = end + 1;
   }
 
   return turns;
+}
+
+function escapeMessage(message: string): string {
+  return message
+    .split("\n")
+    .map((line) => escapeReservedLine(line))
+    .join("\n");
+}
+
+function unescapeMessage(message: string): string {
+  return message
+    .split("\n")
+    .map((line) => unescapeReservedLine(line))
+    .join("\n");
+}
+
+function escapeReservedLine(line: string): string {
+  const firstContentIndex = line.search(/\S/);
+  if (firstContentIndex < 0 || !/^\\*@end$/.test(line.trim())) return line;
+  return `${line.slice(0, firstContentIndex)}\\${line.slice(firstContentIndex)}`;
+}
+
+function unescapeReservedLine(line: string): string {
+  const firstContentIndex = line.search(/\S/);
+  if (firstContentIndex < 0 || !/^\\+@end$/.test(line.trim())) return line;
+  return `${line.slice(0, firstContentIndex)}${line.slice(firstContentIndex + 1)}`;
 }
 
 function nextContentLine(lines: string[], start: number): number {
