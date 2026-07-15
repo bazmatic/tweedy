@@ -16,6 +16,7 @@ export { DialogueCadencePolicy, CadenceRepairReason } from './DialogueCadencePol
 export { AudienceAccessibilityPolicy } from './AudienceAccessibilityPolicy';
 export { TerminologyLedgerPolicy } from './TerminologyLedgerPolicy';
 export { EpisodeConclusionPolicy } from './EpisodeConclusionPolicy';
+export { EpisodeRecapPolicy } from './EpisodeRecapPolicy';
 export { TurnReviewerAgent } from './TurnReviewerAgent';
 export { SpeakerAgent } from './SpeakerAgent';
 export { SpeakerAgentToolName } from './speaker-tools';

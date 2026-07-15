@@ -90,7 +90,8 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     editorialCards: EditorialCard[] = [],
     audienceProfile = AudienceProfile.General,
     terminologyLedger = EMPTY_TERMINOLOGY_LEDGER,
-    centralAnalogy?: string
+    centralAnalogy?: string,
+    episodeRecap?: string
   ): Promise<Speech> {
     let attempts = 0;
 
@@ -118,7 +119,8 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
             editorialCards,
             audienceProfile,
             terminologyLedger,
-            centralAnalogy
+            centralAnalogy,
+            episodeRecap
           );
 
         const requiresCompleteDelivery =
@@ -221,7 +223,8 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
     editorialCards: EditorialCard[] = [],
     audienceProfile = AudienceProfile.General,
     terminologyLedger = EMPTY_TERMINOLOGY_LEDGER,
-    centralAnalogy?: string
+    centralAnalogy?: string,
+    episodeRecap?: string
   ): Promise<{
     toolName: SpeakerAgentToolName;
     message: string;
@@ -244,6 +247,7 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
     const analogySection = centralAnalogy
       ? `\n\nThe episode's running analogy: ${centralAnalogy}\nKeep this analogy alive — return to it, extend it to new aspects of the topic, and use its vocabulary naturally rather than inventing competing metaphors.${isFinalTurn ? " In this closing, call back to the analogy one final time." : ""}`
       : "";
+    const recapSection = episodeRecap ? `\n\n${episodeRecap}` : "";
 
     const coHosts = speakers.filter((s) => s.id !== this.speaker.id);
     const coHostNames = this.formatNameList(coHosts.map((s) => s.name));
@@ -288,7 +292,7 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
 - Audience Profile: ${audienceProfile}${this.mannerismsLine()}
 
 Podcast Context:
-- Title: ${title}
+- Title: ${title}${recapSection}
 
 Conversation History (speaker: message [tool used]):
 ${conversationHistory}${materialsSection}

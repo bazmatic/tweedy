@@ -41,6 +41,9 @@ vi.mock("../agents", () => ({
   SpeechRepetitionPolicy: vi.fn().mockImplementation(function () {
     return { isRepetition: vi.fn().mockReturnValue(false) };
   }),
+  EpisodeRecapPolicy: vi.fn().mockImplementation(function () {
+    return { buildRecap: vi.fn().mockReturnValue("") };
+  }),
 }));
 
 function makeScript(): PodcastScript {

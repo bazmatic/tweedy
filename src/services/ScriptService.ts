@@ -24,6 +24,7 @@ import {
   SpeakerAgent,
   SpeakerAgentToolName,
   SpeechRepetitionPolicy,
+  EpisodeRecapPolicy,
 } from "../agents";
 import { logger } from "../utils/logger";
 import { shouldInterject } from "./interjection-policy";
@@ -51,7 +52,8 @@ export class ScriptService implements IScriptService {
     private readonly knowledgeLedgerPolicy = new KnowledgeLedgerPolicy(),
     private readonly terminologyLedgerPolicy = new TerminologyLedgerPolicy(),
     private readonly speechRepetitionPolicy = new SpeechRepetitionPolicy(),
-    private readonly scriptEditPlanner = new ScriptEditPlanner()
+    private readonly scriptEditPlanner = new ScriptEditPlanner(),
+    private readonly episodeRecapPolicy = new EpisodeRecapPolicy()
   ) {}
 
   async generateScript(params: GenerateScriptParams): Promise<PodcastScript> {
@@ -406,7 +408,8 @@ export class ScriptService implements IScriptService {
         ),
         script.audienceProfile,
         script.terminologyLedger,
-        script.centralAnalogy
+        script.centralAnalogy,
+        this.episodeRecapPolicy.buildRecap(script)
       );
       this.logTurnSpeech(turn, speaker, rawSpeech);
       const speech = await directorAgent.reviewSpeech(
