@@ -345,6 +345,49 @@ describe("DirectorAgent editorial turn briefs", () => {
   });
 });
 
+describe("DirectorAgent signposting", () => {
+  it("suggests voicing the transition after a beat completes", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    script.conversationBeats = [
+      {
+        id: "b1",
+        purpose: BeatPurpose.Explore,
+        goal: "g1",
+        cardIds: [],
+        prerequisiteBeatIds: [],
+        desiredEnergy: EnergyLevel.Curious,
+        targetTurns: 2,
+        covered: true,
+        coveredAtTurn: script.speeches.length,
+      },
+      {
+        id: "b2",
+        purpose: BeatPurpose.Explore,
+        goal: "g2",
+        cardIds: [],
+        prerequisiteBeatIds: [],
+        desiredEnergy: EnergyLevel.Curious,
+        targetTurns: 2,
+        covered: false,
+      },
+    ];
+
+    const chooseSpy = vi.spyOn(agent as any, "callModelForStructuredOutput");
+    chooseSpy.mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Continue.",
+      coveredPointIds: [],
+    });
+
+    await agent.chooseNextSpeaker(script);
+
+    const promptContent = (chooseSpy.mock.calls[0][1] as any)[0].content as string;
+    expect(promptContent).toMatch(/voice the transition/i);
+  });
+});
+
 describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
   it("marks points covered from coveredPointIds and reflects it on the next call's prompt", async () => {
     const script = makeScript();

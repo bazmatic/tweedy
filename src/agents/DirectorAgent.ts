@@ -254,6 +254,7 @@ Also nominate one central analogy — a concrete, physical, everyday comparison 
       const openPointsSection = this.getOpenPointsSection();
       const balanceNote = this.getBalanceNote(script);
       const rhythmNote = this.getRhythmNote(script);
+      const signpostNote = this.getSignpostNote(script);
       const editorialSection = this.getEditorialSection(script);
       const guidanceNote = this.guidance
         ? ` Keep steering the conversation in line with the producer's guidance for this episode: ${this.guidance}`
@@ -293,7 +294,7 @@ ${history || '(nothing said yet — this is the opening of the episode)'}
 
 Decide which speaker should talk next. Only give them direction if it's actually needed — a brief goal or topic, not a script. If the conversation is flowing well and the next speaker can naturally carry it forward, leave direction empty rather than inventing something for them to say. When you do give direction, tell them what to address, not what to say; leave the wording, phrasing and specific angle to the speaker so they sound like themselves rather than reciting your lines. Also choose a subject-neutral editorial move, the primary audience value, desired energy, relevant beat and prepared card ids. Every turn should help the listener understand, entertain them, reveal something meaningful, create connection, or move the conversation forwards; it need not do all of these. Don't force analysis onto a story or humour onto an explanation. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. A challenge creates a right of reply: direct the speaker who was challenged to respond before the challenger speaks again. A good challenge can open a short segment: after the challenged speaker's first answer, it is fine to let the exchange continue for another turn or two until the objection is genuinely resolved, rather than moving straight to a new point. Respect the chronological order shown above; a remark made before a challenge cannot be described as a response to that challenge. The episode's welcome and speaker introductions are already handled before you are ever consulted — never direct anyone to (re)welcome listeners or (re)introduce themselves or a co-host, no matter how far into the episode this is. Mark genuinely completed beat ids in coveredBeatIds. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack). Use Australian/British spelling.${this.getPacingNote(
             script
-          )}${wrapUpNote}${velocityNote}${balanceNote}${rhythmNote}${guidanceNote}${this.speakerRolePolicy.buildDirectorGuidance(script)}${this.audienceAccessibilityPolicy.buildDirectorGuidance(script.audienceProfile ?? AudienceProfile.General)} Occasionally — at most once every several turns, mid-explanation — assign the trail_off device so a speaker hands an unfinished sentence to their co-host to complete; never assign it on a closing or summary turn.`
+          )}${wrapUpNote}${velocityNote}${balanceNote}${rhythmNote}${signpostNote}${guidanceNote}${this.speakerRolePolicy.buildDirectorGuidance(script)}${this.audienceAccessibilityPolicy.buildDirectorGuidance(script.audienceProfile ?? AudienceProfile.General)} Occasionally — at most once every several turns, mid-explanation — assign the trail_off device so a speaker hands an unfinished sentence to their co-host to complete; never assign it on a closing or summary turn.`
         }
       ];
 
@@ -926,6 +927,21 @@ Return only the ids of points that were genuinely, substantively covered.`,
       )
       .join('\n');
     return `\n\nOpen conversation beats:\n${beatText || '(none)'}\n\nPrepared editorial cards:\n${cardText || '(none)'}`;
+  }
+
+  /**
+   * When the previous turn closed out a beat and more remain, invite the
+   * director to have the next speaker voice the segment transition out
+   * loud, the way real hosts signpost ("Here's where it gets interesting").
+   */
+  private getSignpostNote(script: PodcastScript): string {
+    const beats = script.conversationBeats ?? [];
+    const justCovered = beats.some(
+      (beat) => beat.covered && beat.coveredAtTurn === this.turnsUsed - 1
+    );
+    const remaining = beats.some((beat) => !beat.covered);
+    if (!justCovered || !remaining) return "";
+    return " The conversation just completed a beat — consider directing this speaker to voice the transition out loud in their own words (e.g. connecting what was just established to what comes next, or flagging that the next part is where it gets interesting) rather than jumping topics silently.";
   }
 
   private getRhythmNote(script: PodcastScript): string {
