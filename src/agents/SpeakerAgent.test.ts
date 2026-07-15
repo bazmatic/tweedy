@@ -120,6 +120,7 @@ describe("SpeakerAgent editorial context", () => {
       false,
       false,
       false,
+      false,
       {
         speakerId: "s1",
         goal: "Humanise the subject.",
@@ -411,6 +412,7 @@ describe("SpeakerAgent requestSummary", () => {
       "catch up on remaining points",
       "",
       false,
+      false,
       true
     );
 
@@ -440,6 +442,7 @@ describe("SpeakerAgent requestSummary", () => {
       "wrap up",
       "almost out of time",
       true,
+      false,
       true
     );
 
