@@ -4,6 +4,11 @@ import { SpeakerAgentToolName } from "../agents/speaker-tools";
 export const INTERJECTION_LENGTH_THRESHOLD = 80;
 export const INTERJECTION_CHANCE = 0.8;
 
+export const LONG_FORM_TOOLS = [
+  SpeakerAgentToolName.SPEAK,
+  SpeakerAgentToolName.EXPLAIN,
+];
+
 type InterjectionCandidate = Pick<Speech, "tool" | "message" | "stopReason">;
 
 /**
@@ -21,7 +26,8 @@ export function shouldInterject(
   if (speech.stopReason === "max_tokens") return true;
 
   const ranLong =
-    speech.tool === SpeakerAgentToolName.SPEAK &&
+    speech.tool !== undefined &&
+    LONG_FORM_TOOLS.includes(speech.tool) &&
     speech.message.length > INTERJECTION_LENGTH_THRESHOLD;
 
   return ranLong && roll < INTERJECTION_CHANCE;

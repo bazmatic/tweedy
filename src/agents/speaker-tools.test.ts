@@ -4,6 +4,7 @@ import {
   SHORT_REACTION_TOOLS,
   SpeakerAgentToolName,
   SPEAKER_TOOL_DEFINITIONS,
+  getToolDefinition,
   getToolMaxTokens,
   toLlmTools,
 } from "./speaker-tools";
@@ -64,5 +65,16 @@ describe("COLD_OPEN tool", () => {
     expect(definition).toBeDefined();
     expect(definition?.maxTokens).toBe(100);
     expect(getToolMaxTokens(SpeakerAgentToolName.COLD_OPEN)).toBe(100);
+  });
+});
+
+describe("EXPLAIN tool", () => {
+  it("defines explain with a 500 token budget", () => {
+    expect(getToolMaxTokens(SpeakerAgentToolName.EXPLAIN)).toBe(500);
+  });
+
+  it("describes explain as multi-sentence expository", () => {
+    const def = getToolDefinition(SpeakerAgentToolName.EXPLAIN);
+    expect(def?.toolDescription).toMatch(/3-6 sentences/);
   });
 });

@@ -2,6 +2,7 @@ import { LlmTool } from "../types";
 
 export enum SpeakerAgentToolName {
   SPEAK = "speak",
+  EXPLAIN = "explain",
   INTERJECT = "interject",
   ONE_LINER = "one_liner",
   FILLER_COMMENT = "filler_comment",
@@ -29,6 +30,14 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
     styleDescription:
       "How to deliver the speech. Include timing, tone, and emphasis. Example: 'Pause slightly before speaking, use a thoughtful tone, emphasize \"perspective\"'",
     maxTokens: 300,
+  },
+  {
+    name: SpeakerAgentToolName.EXPLAIN,
+    toolDescription:
+      "Deliver a substantive expository passage — 3-6 sentences developing ONE concept properly, with a concrete example or the episode's running analogy. This is the long-form register for carrying real content: build the idea step by step in natural spoken language, then stop before starting a second concept. Expect a co-host to briefly react partway through and after — leave natural clause boundaries where a 'Right' or 'Yeah' could land. Use ums, likes, em dashes (—) for pauses; never a bare hyphen for a pause.",
+    styleDescription:
+      "How to deliver the explanation. Include pacing across the passage and where to slow down for the key idea. Example: 'Measured, building energy toward the analogy, pause before the payoff'",
+    maxTokens: 500,
   },
   {
     name: SpeakerAgentToolName.INTERJECT,

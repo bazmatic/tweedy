@@ -39,6 +39,7 @@ const MOVES_THAT_MUST_NOT_BECOME_SUMMARIES = Object.freeze([
 
 const EXPERT_DEFAULT_TOOLS = Object.freeze([
   SpeakerAgentToolName.SPEAK,
+  SpeakerAgentToolName.EXPLAIN,
   SpeakerAgentToolName.QUOTE,
   SpeakerAgentToolName.CHALLENGE,
   SpeakerAgentToolName.ONE_LINER,
@@ -46,6 +47,7 @@ const EXPERT_DEFAULT_TOOLS = Object.freeze([
 
 const EXPERT_ANSWER_TOOLS = Object.freeze([
   SpeakerAgentToolName.SPEAK,
+  SpeakerAgentToolName.EXPLAIN,
   SpeakerAgentToolName.QUOTE,
 ]);
 
@@ -130,7 +132,16 @@ export class ResponseModePolicy {
 
     if (context.turnBrief) {
       const tools = MOVE_TO_TOOLS[context.turnBrief.move];
-      if (tools) return [...tools];
+      if (tools) {
+        const selected = [...tools];
+        if (
+          profile.epistemicRole === EpistemicRole.Expert &&
+          selected.includes(SpeakerAgentToolName.SPEAK)
+        ) {
+          selected.unshift(SpeakerAgentToolName.EXPLAIN);
+        }
+        return selected;
+      }
     }
 
     return profile.epistemicRole === EpistemicRole.Expert

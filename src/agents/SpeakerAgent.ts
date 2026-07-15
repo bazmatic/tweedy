@@ -236,11 +236,25 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
             : ""
         } Name the episode exactly "${title}" if you name it at all. Do not invent a different programme name, release schedule or future episode details. Take enough time to complete the thought and finish the final sentence cleanly; do not trail off.`
       : "";
+
+    const toolSet = this.responseModePolicy.selectTools({
+      speaker: this.speaker,
+      speeches,
+      isSolo,
+      isFinalTurn,
+      forceNearlyOutOfTime,
+      requestSummary,
+      forceColdOpen,
+      turnBrief,
+    });
+
     const lengthGuidance = isFinalTurn
       ? "This closing is exempt from the normal 50-word turn limit. Let it breathe for a few natural sentences so the reflection, thanks, and sign-off all land without rushing."
       : requestSummary && !forceNearlyOutOfTime
         ? "This recap is exempt from the normal 50-word turn limit since it covers several points. Still speak it in full, natural conversational sentences — not clipped notes or a list read aloud — just give it the extra room it needs to land each point properly."
-        : "**CRITICAL: Keep this to 1-2 sentences max (under 50 words).** Get ONE idea or conversational beat out and then stop.";
+        : toolSet.includes(SpeakerAgentToolName.EXPLAIN)
+          ? "If this moment calls for substantive explanation, use the explain tool and give the idea 3-6 sentences to breathe — one concept, developed properly. Otherwise keep it to 1-2 sentences with a short-form tool. Aim for a mix across the episode: long expository passages from the expert, punctuated by short reactions."
+          : "**CRITICAL: Keep this to 1-2 sentences max (under 50 words).** Get ONE idea or conversational beat out and then stop.";
 
     const messages: LlmMessage[] = [
       {
@@ -275,25 +289,11 @@ Respond naturally as ${
       },
     ];
 
-    const toolSet = this.responseModePolicy.selectTools({
-      speaker: this.speaker,
-      speeches,
-      isSolo,
-      isFinalTurn,
-      forceNearlyOutOfTime,
-      requestSummary,
-      forceColdOpen,
-      turnBrief,
-    });
-
     const tools = toLlmTools(toolSet);
 
-    const maxTokens =
-      isFinalTurn
-        ? getToolMaxTokens(SpeakerAgentToolName.CLOSING_STATEMENT)
-        : requestSummary && !forceNearlyOutOfTime
-          ? getToolMaxTokens(SpeakerAgentToolName.SUMMARIZE)
-          : getToolMaxTokens(SpeakerAgentToolName.SPEAK);
+    const maxTokens = Math.max(
+      ...toolSet.map((tool) => getToolMaxTokens(tool))
+    );
 
     const result = await this.callModelWithTools(
       ModelTask.SpeechGeneration,

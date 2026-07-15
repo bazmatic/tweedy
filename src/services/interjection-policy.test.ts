@@ -58,4 +58,18 @@ describe("shouldInterject", () => {
 
     expect(shouldInterject(nonSpeakTurn, 2, 0)).toBe(false);
   });
+
+  it("treats a long EXPLAIN turn as an interjection trigger", () => {
+    expect(
+      shouldInterject(
+        {
+          tool: SpeakerAgentToolName.EXPLAIN,
+          message: "x".repeat(200),
+          stopReason: "stop",
+        },
+        2,
+        0.5
+      )
+    ).toBe(true);
+  });
 });

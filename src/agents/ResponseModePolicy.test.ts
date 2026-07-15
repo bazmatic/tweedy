@@ -5,6 +5,7 @@ import {
   EnergyLevel,
   Speaker,
   Speech,
+  TurnBrief,
   VocalProviderName,
 } from "../types";
 import { ResponseModePolicy } from "./ResponseModePolicy";
@@ -39,6 +40,19 @@ function makeQuestion(speaker: Speaker): Speech {
     voiceStyle: speaker.voiceStyle,
     timestamp: new Date(),
     tool: SpeakerAgentToolName.SHORT_QUESTION,
+  };
+}
+
+function buildTurnBrief(overrides?: Partial<TurnBrief>): TurnBrief {
+  const speaker = makeSpeaker("expert", true);
+  return {
+    speakerId: speaker.id,
+    goal: "Test goal",
+    move: EditorialMove.Explain,
+    cardIds: [],
+    audienceValue: AudienceValue.Understanding,
+    desiredEnergy: EnergyLevel.Curious,
+    ...overrides,
   };
 }
 
@@ -113,5 +127,31 @@ describe("ResponseModePolicy", () => {
     });
 
     expect(tools).toEqual([SpeakerAgentToolName.COLD_OPEN]);
+  });
+
+  it("offers EXPLAIN to an expert executing an explain move", () => {
+    const tools = policy.selectTools({
+      speaker: expert,
+      speeches: [],
+      isSolo: false,
+      isFinalTurn: false,
+      forceNearlyOutOfTime: false,
+      requestSummary: false,
+      turnBrief: buildTurnBrief({ move: EditorialMove.Explain }),
+    });
+    expect(tools).toContain(SpeakerAgentToolName.EXPLAIN);
+  });
+
+  it("does not offer EXPLAIN to a non-expert", () => {
+    const tools = policy.selectTools({
+      speaker: guide,
+      speeches: [],
+      isSolo: false,
+      isFinalTurn: false,
+      forceNearlyOutOfTime: false,
+      requestSummary: false,
+      turnBrief: buildTurnBrief({ move: EditorialMove.Explain }),
+    });
+    expect(tools).not.toContain(SpeakerAgentToolName.EXPLAIN);
   });
 });
