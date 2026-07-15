@@ -49,6 +49,9 @@ export function createSpeakerCommands(): Command {
           console.log(`    Expert: ${speaker.isExpert ? "Yes" : "No"}`);
           console.log(`    Epistemic role: ${speaker.roleProfile?.epistemicRole}`);
           console.log(`    Voice Style: ${speaker.voiceStyle}`);
+          if (speaker.physicalAppearance) {
+            console.log(`    Appearance: ${speaker.physicalAppearance}`);
+          }
           console.log("");
         });
       } catch (error) {
@@ -63,6 +66,10 @@ export function createSpeakerCommands(): Command {
     .option("-p, --personality <personality>", "Speaker personality")
     .option("-v, --voice-id <voiceId>", "Voice ID to use")
     .option("-s, --voice-style <style>", "Voice style/instructions")
+    .option(
+      "-a, --appearance <description>",
+      "Physical appearance description, for consistent image generation downstream (e.g. 'Woman in her 40s, curly red hair, glasses, olive cardigan')"
+    )
     .option("-e, --expert", "Mark as expert speaker")
     .option(
       "-r, --role <role>",
@@ -85,6 +92,7 @@ export function createSpeakerCommands(): Command {
           personality: options.personality,
           voiceId: options.voiceId,
           voiceStyle: options.voiceStyle || "Natural conversational tone",
+          physicalAppearance: options.appearance,
           isExpert: epistemicRole === EpistemicRole.Expert,
           roleProfile: roleProfileFactory.create(epistemicRole),
         });
@@ -102,6 +110,10 @@ export function createSpeakerCommands(): Command {
     .option("-p, --personality <personality>", "New personality")
     .option("-v, --voice-id <voiceId>", "New voice ID")
     .option("-s, --voice-style <style>", "New voice style")
+    .option(
+      "-a, --appearance <description>",
+      "New physical appearance description"
+    )
     .option("-e, --expert", "Mark as expert")
     .option("--no-expert", "Remove expert status")
     .option(
@@ -116,6 +128,7 @@ export function createSpeakerCommands(): Command {
         if (options.personality) updateData.personality = options.personality;
         if (options.voiceId) updateData.voiceId = options.voiceId;
         if (options.voiceStyle) updateData.voiceStyle = options.voiceStyle;
+        if (options.appearance) updateData.physicalAppearance = options.appearance;
         if (options.role) {
           const epistemicRole = parseEpistemicRole(options.role);
           updateData.roleProfile = roleProfileFactory.create(epistemicRole);
