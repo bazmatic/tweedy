@@ -205,4 +205,40 @@ describe("callModelForStructuredOutput", () => {
       revisedMessages: ["first paragraph\nsecond paragraph"],
     });
   });
+
+  it("recovers from an invalid LaTeX-style escape sequence in tool-call arguments", async () => {
+    const schema = z.object({
+      synopsis: z.string(),
+    });
+    // A literal `\(` copied verbatim from source material — not a legal
+    // JSON escape (JSON.stringify would never produce it, but the model did).
+    const rawArgs = `{"synopsis": "we convert the trains \\(T\\) to strings"}`;
+    const parseError = new Error(
+      [
+        `Function "extract" arguments:`,
+        ``,
+        rawArgs,
+        ``,
+        `are not valid JSON.`,
+        `Error: Bad escaped character in JSON at position 40`,
+      ].join("\n")
+    );
+    const invoke = vi.fn().mockRejectedValue(parseError);
+    const withStructuredOutput = vi.fn().mockReturnValue({ invoke });
+    vi.spyOn(AiModelFactory, "getModel").mockReturnValue({
+      withStructuredOutput,
+    } as any);
+
+    const result = await new TestAgent().callModelForStructuredOutput(
+      ModelTask.MaterialSummary,
+      [{ role: "user", content: "Summarize this material" }],
+      schema,
+      50
+    );
+
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      synopsis: "we convert the trains \\(T\\) to strings",
+    });
+  });
 });

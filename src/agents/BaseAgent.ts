@@ -102,14 +102,35 @@ const PARSER_EXCEPTION_PATTERN =
  * we're inside a JSON string literal, and escape any raw control character
  * found there instead of discarding the whole (often otherwise-valid) response.
  */
+const VALID_JSON_ESCAPE_CHARS = new Set([
+  '"',
+  "\\",
+  "/",
+  "b",
+  "f",
+  "n",
+  "r",
+  "t",
+  "u",
+]);
+
 function sanitizeJsonControlCharacters(raw: string): string {
   let result = "";
   let inString = false;
   for (let i = 0; i < raw.length; i++) {
     const ch = raw[i];
     if (inString && ch === "\\") {
-      result += ch + (raw[i + 1] ?? "");
-      i++;
+      const next = raw[i + 1];
+      if (next !== undefined && VALID_JSON_ESCAPE_CHARS.has(next)) {
+        result += ch + next;
+        i++;
+        continue;
+      }
+      // An invalid escape sequence — e.g. LaTeX-style "\(" copied verbatim
+      // from source material — isn't a legal JSON escape. Escape the
+      // backslash itself so the following character is read literally
+      // instead of aborting the whole parse.
+      result += "\\\\";
       continue;
     }
     if (ch === '"') {
