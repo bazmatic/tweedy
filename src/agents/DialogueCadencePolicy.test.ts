@@ -8,7 +8,10 @@ import {
   Speech,
   VocalProviderName,
 } from "../types";
-import { DialogueCadencePolicy } from "./DialogueCadencePolicy";
+import {
+  DialogueCadencePolicy,
+  CadenceRepairReason,
+} from "./DialogueCadencePolicy";
 import { SpeakerAgentToolName } from "./speaker-tools";
 
 function makeSpeaker(id: string, isExpert: boolean): Speaker {
@@ -40,6 +43,56 @@ function makeSpeech(speaker: Speaker): Speech {
     voiceStyle: speaker.voiceStyle,
     timestamp: new Date(),
     tool: SpeakerAgentToolName.SPEAK,
+  };
+}
+
+function buildSpeech(
+  speaker: Speaker,
+  message: string,
+  tool: SpeakerAgentToolName
+): Speech {
+  return {
+    id: `speech-${Math.random()}`,
+    speaker,
+    message,
+    instructions: "natural",
+    voice: speaker.voice,
+    voiceStyle: speaker.voiceStyle,
+    timestamp: new Date(),
+    tool,
+  };
+}
+
+function buildScript(speeches: Speech[]): PodcastScript {
+  const speakers = Array.from(
+    new Map(speeches.map((s) => [s.speaker.id, s.speaker])).values()
+  );
+  return {
+    id: "script-1",
+    title: "Test",
+    description: "",
+    speakers,
+    speeches,
+    materials: [],
+    discussionPoints: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+}
+
+function buildAssignment(speaker: Speaker) {
+  return {
+    speaker,
+    direction: "Continue speaking.",
+    turnBrief: {
+      speakerId: speaker.id,
+      goal: "Advance the discussion.",
+      move: EditorialMove.Explain,
+      cardIds: [],
+      audienceValue: AudienceValue.Understanding,
+      desiredEnergy: EnergyLevel.Curious,
+    },
+    repaired: false,
   };
 }
 
@@ -109,5 +162,61 @@ describe("DialogueCadencePolicy", () => {
     expect(
       new DialogueCadencePolicy().repairAssignment(script, assignment)
     ).toEqual(assignment);
+  });
+
+  describe("resume after backchannel", () => {
+    it("returns the floor to the interrupted speaker after a filler comment", () => {
+      const expert = makeSpeaker("Miles", true);
+      const guide = makeSpeaker("Ada", false);
+      const policy = new DialogueCadencePolicy();
+      const script = buildScript([
+        buildSpeech(
+          expert,
+          "So the account model is completely different because—",
+          SpeakerAgentToolName.EXPLAIN
+        ),
+        buildSpeech(guide, "Oh, wow.", SpeakerAgentToolName.FILLER_COMMENT),
+      ]);
+      const result = policy.repairAssignment(script, buildAssignment(guide));
+      expect(result.speaker.id).toBe(expert.id);
+      expect(result.cadenceRepairReason).toBe(
+        CadenceRepairReason.ResumeAfterBackchannel
+      );
+      expect(result.direction).toMatch(/continue/i);
+    });
+
+    it("does not repair when the director already picked the interrupted speaker", () => {
+      const expert = makeSpeaker("Miles", true);
+      const guide = makeSpeaker("Ada", false);
+      const policy = new DialogueCadencePolicy();
+      const script = buildScript([
+        buildSpeech(
+          expert,
+          "So the account model is completely different.",
+          SpeakerAgentToolName.SPEAK
+        ),
+        buildSpeech(guide, "Right.", SpeakerAgentToolName.INTERJECT),
+      ]);
+      const result = policy.repairAssignment(script, buildAssignment(expert));
+      expect(result.cadenceRepairReason).toBeUndefined();
+    });
+
+    it("does not fire when the backchannel followed a short question", () => {
+      const expert = makeSpeaker("Miles", true);
+      const guide = makeSpeaker("Ada", false);
+      const policy = new DialogueCadencePolicy();
+      const script = buildScript([
+        buildSpeech(
+          expert,
+          "But what does that mean for gas?",
+          SpeakerAgentToolName.SHORT_QUESTION
+        ),
+        buildSpeech(guide, "Hm, interesting.", SpeakerAgentToolName.FILLER_COMMENT),
+      ]);
+      const result = policy.repairAssignment(script, buildAssignment(guide));
+      expect(result.cadenceRepairReason).not.toBe(
+        CadenceRepairReason.ResumeAfterBackchannel
+      );
+    });
   });
 });

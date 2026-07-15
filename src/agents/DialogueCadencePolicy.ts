@@ -13,6 +13,7 @@ export enum CadenceRepairReason {
   ConsecutiveExpertExplanation = "consecutive_expert_explanation",
   ChallengeRequiresResponse = "challenge_requires_response",
   QuestionRequiresResponse = "question_requires_response",
+  ResumeAfterBackchannel = "resume_after_backchannel",
 }
 
 export interface CadenceAssignment extends RoleAssignment {
@@ -22,6 +23,17 @@ export interface CadenceAssignment extends RoleAssignment {
 const SUBSTANTIVE_TOOLS = Object.freeze([
   SpeakerAgentToolName.SPEAK,
   SpeakerAgentToolName.SUMMARIZE,
+  SpeakerAgentToolName.EXPLAIN,
+]);
+
+const BACKCHANNEL_TOOLS = Object.freeze([
+  SpeakerAgentToolName.INTERJECT,
+  SpeakerAgentToolName.FILLER_COMMENT,
+]);
+
+const RESUMABLE_TOOLS = Object.freeze([
+  SpeakerAgentToolName.SPEAK,
+  SpeakerAgentToolName.EXPLAIN,
 ]);
 
 /** Prevents role enforcement from turning a two-speaker conversation into an expert monologue. */
@@ -34,6 +46,35 @@ export class DialogueCadencePolicy {
     script: PodcastScript,
     assignment: RoleAssignment
   ): CadenceAssignment {
+    const lastSpeech = script.speeches.at(-1);
+    const interruptedSpeech = script.speeches.at(-2);
+    const isBackchannel =
+      lastSpeech?.tool !== undefined &&
+      BACKCHANNEL_TOOLS.includes(lastSpeech.tool);
+    const isResumable =
+      interruptedSpeech?.tool !== undefined &&
+      RESUMABLE_TOOLS.includes(interruptedSpeech.tool) &&
+      interruptedSpeech.speaker.id !== lastSpeech?.speaker.id;
+    if (
+      isBackchannel &&
+      isResumable &&
+      interruptedSpeech &&
+      assignment.speaker.id !== interruptedSpeech.speaker.id
+    ) {
+      return {
+        ...assignment,
+        speaker: interruptedSpeech.speaker,
+        direction: `${lastSpeech.speaker.name} just reacted briefly — you still have the floor. Continue the thought you were developing ("${interruptedSpeech.message.slice(-80)}") from where you left off, without restarting or re-summarising it. Then continue this goal: ${assignment.turnBrief.goal}`,
+        turnBrief: {
+          ...assignment.turnBrief,
+          speakerId: interruptedSpeech.speaker.id,
+          knowledgeSource: KnowledgeSource.Conversation,
+        },
+        repaired: true,
+        cadenceRepairReason: CadenceRepairReason.ResumeAfterBackchannel,
+      };
+    }
+
     const previousSpeech = script.speeches.at(-1);
     const challengedSpeech = script.speeches.at(-2);
     if (
