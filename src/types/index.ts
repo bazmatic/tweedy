@@ -219,6 +219,8 @@ export interface EditorialCard {
   tags: string[];
   /** Technical/jargon terms this card would introduce, if spoken aloud. */
   keyTerms: string[];
+  /** 1-10; how surprising/vivid/engaging this would sound spoken aloud, not factual importance. */
+  storyValue: number;
 }
 
 export interface PreparedMaterial {

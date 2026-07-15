@@ -46,6 +46,7 @@ function makeCard(id: string): EditorialCard {
     relatedCardIds: [],
     tags: [],
     keyTerms: [],
+    storyValue: 5,
   };
 }
 

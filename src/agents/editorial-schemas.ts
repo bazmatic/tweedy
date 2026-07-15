@@ -21,6 +21,14 @@ export const preparedCardSchema = z.object({
     .describe(
       "Technical or jargon terms a listener would need explained if this card were spoken aloud. Empty if the card introduces no new terminology."
     ),
+  storyValue: z
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .describe(
+      "How surprising, vivid, or emotionally engaging this card would sound spoken aloud to a general listener (1-10). Not a measure of factual importance — a true-but-flat fact scores low even if essential."
+    ),
 });
 
 export type PreparedCardInput = z.infer<typeof preparedCardSchema>;

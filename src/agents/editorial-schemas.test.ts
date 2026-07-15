@@ -14,6 +14,7 @@ describe("editorial structured-output schemas", () => {
           kind: EditorialCardKind.EssentialPoint,
           content: "Fungi produce measurable electrical spikes.",
           excerpts: ["Electrical spikes were recorded."],
+          storyValue: 6,
         },
       ],
     };

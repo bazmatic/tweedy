@@ -24,6 +24,7 @@ describe("MaterialPreparerAgent", () => {
           content: "She kept an early rejection letter for ten years.",
           excerpts: ["kept the rejection letter above her desk for a decade"],
           tags: ["persistence"],
+          storyValue: 8,
         },
       ],
     });
@@ -39,6 +40,7 @@ describe("MaterialPreparerAgent", () => {
         materialId: "m1",
         kind: EditorialCardKind.Story,
         content: "She kept an early rejection letter for ten years.",
+        storyValue: 8,
       })
     );
     expect(prepared.cards[0].evidence[0]).toEqual({
@@ -62,5 +64,6 @@ describe("MaterialPreparerAgent", () => {
     expect(prepared.cards).toHaveLength(1);
     expect(prepared.cards[0].kind).toBe(EditorialCardKind.EssentialPoint);
     expect(prepared.cards[0].evidence[0].excerpt).toContain("rejection letter");
+    expect(prepared.cards[0].storyValue).toBe(5);
   });
 });

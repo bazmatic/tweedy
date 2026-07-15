@@ -105,6 +105,7 @@ describe("SpeakerRolePolicy", () => {
         relatedCardIds: [],
         tags: [],
         keyTerms: [],
+        storyValue: 5,
       },
     ];
 
@@ -153,6 +154,7 @@ describe("SpeakerRolePolicy", () => {
         relatedCardIds: [],
         tags: [],
         keyTerms: ["complexity score"],
+        storyValue: 5,
       },
     ];
     const brief = makeBrief(guide.id, EditorialMove.Question);
@@ -186,6 +188,7 @@ describe("SpeakerRolePolicy", () => {
         relatedCardIds: [],
         tags: [],
         keyTerms: ["complexity score"],
+        storyValue: 5,
       },
     ];
     script.terminologyLedger = {

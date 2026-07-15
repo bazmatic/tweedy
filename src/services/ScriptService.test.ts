@@ -576,6 +576,7 @@ describe("ScriptService discussionPoints persistence", () => {
         relatedCardIds: [],
         tags: [],
         keyTerms: [],
+        storyValue: 5,
       },
     ];
     script.conversationBeats = [

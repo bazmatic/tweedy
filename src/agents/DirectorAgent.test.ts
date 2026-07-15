@@ -168,6 +168,58 @@ describe("DirectorAgent.createPodcastPlan", () => {
       }),
     ]);
   });
+
+  it("sorts script.editorialCards by storyValue descending", async () => {
+    const material = makeMaterial();
+    const script = makeScript({ materials: [material] });
+    const materialPreparer = {
+      prepare: vi.fn().mockResolvedValue({
+        materialId: material.id,
+        synopsis: "Summary.",
+        cards: [
+          {
+            id: "flat-card",
+            materialId: material.id,
+            kind: EditorialCardKind.EssentialPoint,
+            content: "A flat but essential fact.",
+            evidence: [],
+            relatedCardIds: [],
+            tags: [],
+            keyTerms: [],
+            storyValue: 3,
+          },
+          {
+            id: "hook-card",
+            materialId: material.id,
+            kind: EditorialCardKind.Surprise,
+            content: "A genuinely surprising hook.",
+            evidence: [],
+            relatedCardIds: [],
+            tags: [],
+            keyTerms: [],
+            storyValue: 9,
+          },
+        ],
+      }),
+    };
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      undefined,
+      { materialPreparer }
+    );
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
+      narrative: "plan",
+      points: ["Point A"],
+    });
+
+    await agent.createPodcastPlan();
+
+    expect(script.editorialCards?.map((card) => card.id)).toEqual([
+      "hook-card",
+      "flat-card",
+    ]);
+  });
 });
 
 describe("DirectorAgent editorial turn briefs", () => {
@@ -199,6 +251,52 @@ describe("DirectorAgent editorial turn briefs", () => {
         desiredEnergy: EnergyLevel.Warm,
       })
     );
+  });
+
+  it("presents editorial cards highest-storyValue-first and caps the listing at 20", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    const call = vi.spyOn(agent as any, "callModelForStructuredOutput");
+    call.mockResolvedValueOnce({ narrative: "plan", points: [] });
+    await agent.createPodcastPlan();
+
+    function makeEditorialCard(id: string, storyValue: number) {
+      return {
+        id,
+        materialId: "m1",
+        kind: EditorialCardKind.EssentialPoint,
+        content: `Content for ${id}`,
+        evidence: [],
+        relatedCardIds: [],
+        tags: [],
+        keyTerms: [],
+        storyValue,
+      };
+    }
+    // 21 cards in ascending storyValue order by id (card-0 lowest, card-20 highest).
+    script.editorialCards = Array.from({ length: 21 }, (_, index) =>
+      makeEditorialCard(`card-${index}`, index)
+    );
+
+    call.mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Continue.",
+      coveredPointIds: [],
+    });
+
+    await agent.chooseNextSpeaker(script);
+
+    const promptContent = (call.mock.calls[1][1] as any)[0].content as string;
+    const cardIdOrder = [...promptContent.matchAll(/- (card-\d+) \[/g)].map(
+      (match) => match[1]
+    );
+
+    // The lowest-storyValue card (card-0) must be excluded by the 20-card cap.
+    expect(cardIdOrder).not.toContain("card-0");
+    expect(cardIdOrder).toHaveLength(20);
+    // Highest storyValue (card-20) must appear first.
+    expect(cardIdOrder[0]).toBe("card-20");
+    expect(cardIdOrder[cardIdOrder.length - 1]).toBe("card-1");
   });
 
   it("tracks completed conversation beats independently of discussion points", async () => {

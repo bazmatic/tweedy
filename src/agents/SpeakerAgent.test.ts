@@ -139,6 +139,7 @@ describe("SpeakerAgent editorial context", () => {
           relatedCardIds: [],
           tags: [],
           keyTerms: [],
+          storyValue: 5,
         },
       ],
       AudienceProfile.General,

@@ -122,13 +122,14 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
           })
         )
       );
-      this.script.editorialCards = preparedMaterials.flatMap(
-        (prepared) => prepared.cards
-      );
+      this.script.editorialCards = preparedMaterials
+        .flatMap((prepared) => prepared.cards)
+        .sort((a, b) => b.storyValue - a.storyValue);
       const materialText = this.script.materials
         .map((material, index) => {
           const prepared = preparedMaterials[index];
-          const cards = prepared.cards
+          const cards = [...prepared.cards]
+            .sort((a, b) => b.storyValue - a.storyValue)
             .map((card) => `- ${card.id} [${card.kind}]: ${card.content}`)
             .join('\n');
           return `${material.title}: ${prepared.synopsis}\n${cards}`;
@@ -897,7 +898,9 @@ Return only the ids of points that were genuinely, substantively covered.`,
     const beats = (script.conversationBeats ?? []).filter(
       (beat) => !beat.covered
     );
-    const cards = script.editorialCards ?? [];
+    const cards = [...(script.editorialCards ?? [])].sort(
+      (a, b) => b.storyValue - a.storyValue
+    );
     if (beats.length === 0 && cards.length === 0) return '';
 
     const beatText = beats
