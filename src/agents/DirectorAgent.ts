@@ -64,10 +64,12 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private dialogueCadencePolicy: DialogueCadencePolicy;
   private audienceAccessibilityPolicy: AudienceAccessibilityPolicy;
   private episodeConclusionPolicy: EpisodeConclusionPolicy;
+  private guidance?: string;
 
   constructor(
     script: PodcastScript,
     budget: { maxTurns: number; maxDuration: number },
+    guidance?: string,
     dependencies: {
       materialPreparer?: IMaterialPreparer;
       turnReviewer?: ITurnReviewer;
@@ -84,6 +86,7 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
     this.script = script;
     this.maxTurns = budget.maxTurns;
     this.maxDuration = budget.maxDuration;
+    this.guidance = guidance;
     this.materialPreparer =
       dependencies.materialPreparer ?? new MaterialPreparerAgent();
     this.turnReviewer = dependencies.turnReviewer ?? new TurnReviewerAgent();
@@ -135,6 +138,10 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
         Math.round(durationMinutes / MINUTES_PER_DISCUSSION_POINT)
       );
 
+      const guidanceSection = this.guidance
+        ? `\n\nGuidance from the producer for this episode: ${this.guidance}`
+        : '';
+
       const messages = [
         {
           role: 'user' as const,
@@ -152,7 +159,7 @@ Create a detailed plan for how the conversation should flow, including:
 1. Opening segment — a warm, friendly welcome where the interviewer greets listeners, introduces the episode by name ("${this.script.title}"), and introduces the speakers, before any points are mentioned. After naming the speakers, the speaker must stop and let them respond.
 2. Main discussion points
 3. Key topics to cover
-4. Closing segment
+4. Closing segment${guidanceSection}
 
 Design a listener journey rather than a list of facts. Balance understanding,
 entertainment, insight and conversational momentum. Use stories, examples,
@@ -232,6 +239,9 @@ Also provide a sequence of conversation beats. Each beat must have a listener-ce
       const balanceNote = this.getBalanceNote(script);
       const rhythmNote = this.getRhythmNote(script);
       const editorialSection = this.getEditorialSection(script);
+      const guidanceNote = this.guidance
+        ? ` Keep steering the conversation in line with the producer's guidance for this episode: ${this.guidance}`
+        : '';
 
       // Announce time pressure once. Later turns should shorten and close
       // without repeatedly telling listeners that time is running out.
@@ -265,7 +275,7 @@ ${history || '(nothing said yet — this is the opening of the episode)'}
 
 Decide which speaker should talk next. Only give them direction if it's actually needed — a brief goal or topic, not a script. If the conversation is flowing well and the next speaker can naturally carry it forward, leave direction empty rather than inventing something for them to say. When you do give direction, tell them what to address, not what to say; leave the wording, phrasing and specific angle to the speaker so they sound like themselves rather than reciting your lines. Also choose a subject-neutral editorial move, the primary audience value, desired energy, relevant beat and prepared card ids. Every turn should help the listener understand, entertain them, reveal something meaningful, create connection, or move the conversation forwards; it need not do all of these. Don't force analysis onto a story or humour onto an explanation. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. A challenge creates a right of reply: direct the speaker who was challenged to respond before the challenger speaks again. Respect the chronological order shown above; a remark made before a challenge cannot be described as a response to that challenge. The episode's welcome and speaker introductions are already handled before you are ever consulted — never direct anyone to (re)welcome listeners or (re)introduce themselves or a co-host, no matter how far into the episode this is. Mark genuinely completed beat ids in coveredBeatIds. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack). Use Australian/British spelling.${this.getPacingNote(
             script
-          )}${wrapUpNote}${velocityNote}${balanceNote}${rhythmNote}${this.speakerRolePolicy.buildDirectorGuidance(script)}${this.audienceAccessibilityPolicy.buildDirectorGuidance(script.audienceProfile ?? AudienceProfile.General)}`
+          )}${wrapUpNote}${velocityNote}${balanceNote}${rhythmNote}${guidanceNote}${this.speakerRolePolicy.buildDirectorGuidance(script)}${this.audienceAccessibilityPolicy.buildDirectorGuidance(script.audienceProfile ?? AudienceProfile.General)}`
         }
       ];
 

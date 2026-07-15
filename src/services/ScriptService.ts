@@ -67,6 +67,7 @@ export class ScriptService implements IScriptService {
         id: "",
         title: params.title,
         description: params.description,
+        guidance: params.guidance,
         speakers,
         speeches: [],
         materials,
@@ -347,10 +348,14 @@ export class ScriptService implements IScriptService {
     script: PodcastScript,
     params: GenerateScriptParams
   ): Promise<void> {
-    const directorAgent = new DirectorAgent(script, {
-      maxTurns: Math.max(1, params.maxTurns - script.speakers.length),
-      maxDuration: params.maxDuration,
-    });
+    const directorAgent = new DirectorAgent(
+      script,
+      {
+        maxTurns: Math.max(1, params.maxTurns - script.speakers.length),
+        maxDuration: params.maxDuration,
+      },
+      params.guidance
+    );
     const openingSequence = new OpeningSequencePolicy();
     await directorAgent.createPodcastPlan();
     try {
@@ -593,6 +598,7 @@ export class ScriptService implements IScriptService {
       id: record.id,
       title: record.title,
       description: record.description,
+      guidance: record.guidance,
       speakers,
       speeches,
       materials,
@@ -613,6 +619,7 @@ export class ScriptService implements IScriptService {
     const record = {
       title: script.title,
       description: script.description,
+      guidance: script.guidance,
       speakerIds: script.speakers.map((s) => s.id),
       speechIds: script.speeches.map((s) => s.id),
       materialIds: script.materials.map((m) => m.id),

@@ -101,6 +101,7 @@ describe("DirectorAgent.createPodcastPlan", () => {
     const agent = new DirectorAgent(
       script,
       { maxTurns: 10, maxDuration: 600 },
+      undefined,
       { materialPreparer }
     );
 
@@ -704,6 +705,7 @@ describe("DirectorAgent.reviewSpeech", () => {
     const agent = new DirectorAgent(
       script,
       { maxTurns: 10, maxDuration: 600 },
+      undefined,
       { turnReviewer }
     );
 
@@ -742,6 +744,7 @@ describe("DirectorAgent.reviewSpeech", () => {
     const agent = new DirectorAgent(
       script,
       { maxTurns: 10, maxDuration: 600 },
+      undefined,
       { turnReviewer }
     );
 
@@ -769,6 +772,7 @@ describe("DirectorAgent.reviewSpeech", () => {
     const agent = new DirectorAgent(
       script,
       { maxTurns: 10, maxDuration: 600 },
+      undefined,
       { turnReviewer }
     );
 
@@ -787,6 +791,7 @@ describe("DirectorAgent.reviewSpeech", () => {
     const agent = new DirectorAgent(
       script,
       { maxTurns: 10, maxDuration: 600 },
+      undefined,
       { turnReviewer }
     );
 
@@ -852,5 +857,58 @@ describe("DirectorAgent velocity / pacing", () => {
     const result = await agent.chooseNextSpeaker(script);
 
     expect(result.requestSummary).toBe(false);
+  });
+});
+
+describe("DirectorAgent guidance", () => {
+  it("includes producer guidance in the plan prompt when provided", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      "Keep it skeptical of the marketing claims."
+    );
+    const callModelForStructuredOutputSpy = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({ narrative: "Plan.", points: ["Point A"] });
+
+    await agent.createPodcastPlan();
+
+    const promptContent = (callModelForStructuredOutputSpy.mock.calls[0][1] as any)[0]
+      .content as string;
+    expect(promptContent).toContain("Keep it skeptical of the marketing claims.");
+  });
+
+  it("omits any guidance mention from the plan prompt when not provided", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    const callModelForStructuredOutputSpy = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({ narrative: "Plan.", points: ["Point A"] });
+
+    await agent.createPodcastPlan();
+
+    const promptContent = (callModelForStructuredOutputSpy.mock.calls[0][1] as any)[0]
+      .content as string;
+    expect(promptContent).not.toContain("producer");
+  });
+
+  it("includes producer guidance in the turn-selection prompt when provided", async () => {
+    const script = makeScript({
+      speakers: [makeSpeaker("s1"), makeSpeaker("s2")],
+    });
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      "Keep it skeptical of the marketing claims."
+    );
+    const callSpy = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({ speakerId: "s1", direction: "Go." });
+
+    await agent.chooseNextSpeaker(script);
+
+    const promptContent = (callSpy.mock.calls[0][1] as any)[0].content as string;
+    expect(promptContent).toContain("Keep it skeptical of the marketing claims.");
   });
 });

@@ -335,6 +335,7 @@ export interface PodcastScript {
   id: string;
   title: string;
   description: string;
+  guidance?: string;
   speakers: Speaker[];
   speeches: Speech[];
   materials: PodcastMaterial[];
@@ -403,6 +404,7 @@ export interface AppConfig {
 export interface GenerateScriptParams {
   title: string;
   description: string;
+  guidance?: string;
   speakers: Speaker[];
   materials: PodcastMaterial[];
   maxTurns: number;
@@ -442,6 +444,7 @@ export interface ScriptRecord {
   id: string;
   title: string;
   description: string;
+  guidance?: string;
   speakerIds: string[];
   speechIds: string[];
   materialIds: string[];
