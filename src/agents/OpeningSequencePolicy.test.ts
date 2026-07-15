@@ -55,9 +55,50 @@ function makeScript(speeches: Speech[] = []): PodcastScript {
 }
 
 describe("OpeningSequencePolicy", () => {
-  it("forces the interviewer to welcome, introduce and stop on the first turn", () => {
+  it("opens cold with a hook before any welcome, for the host", () => {
     const policy = new OpeningSequencePolicy();
-    const turn = policy.nextTurn(makeScript());
+    const script = makeScript();
+
+    expect(policy.getStage(script)).toBe(OpeningStage.Hook);
+
+    const turn = policy.nextTurn(script);
+
+    expect(turn?.speaker.name).toBe("Ada");
+    expect(turn?.forceColdOpen).toBe(true);
+    expect(turn?.direction).toContain("Open cold");
+    expect(turn?.direction).toContain("Do not");
+  });
+
+  it("moves to Welcome only after the hook turn has been spoken", () => {
+    const policy = new OpeningSequencePolicy();
+    const script = makeScript();
+    const host = script.speakers.find((speaker) => !speaker.isExpert)!;
+    script.speeches.push(makeSpeech(host)); // hook turn spoken
+
+    expect(policy.getStage(script)).toBe(OpeningStage.Welcome);
+
+    const turn = policy.nextTurn(script);
+
+    expect(turn?.forceColdOpen).toBe(false);
+    expect(turn?.direction).toContain('name the episode "The Secret Signals of Fungi"');
+  });
+
+  it("applies the hook stage to solo episodes too", () => {
+    const policy = new OpeningSequencePolicy();
+    const script = makeScript();
+    script.speakers = [script.speakers.find((speaker) => !speaker.isExpert)!];
+
+    expect(policy.getStage(script)).toBe(OpeningStage.Hook);
+    expect(policy.nextTurn(script)?.forceColdOpen).toBe(true);
+  });
+
+  it("forces the interviewer to welcome, introduce and stop after the hook", () => {
+    const policy = new OpeningSequencePolicy();
+    const script = makeScript();
+    const host = script.speakers.find((speaker) => !speaker.isExpert)!;
+    script.speeches.push(makeSpeech(host)); // hook turn spoken
+
+    const turn = policy.nextTurn(script);
 
     expect(turn?.speaker.name).toBe("Ada");
     expect(turn?.direction).toContain('name the episode "The Secret Signals of Fungi"');
@@ -70,7 +111,7 @@ describe("OpeningSequencePolicy", () => {
     const policy = new OpeningSequencePolicy();
     const script = makeScript();
     const host = script.speakers.find((speaker) => !speaker.isExpert)!;
-    script.speeches.push(makeSpeech(host));
+    script.speeches.push(makeSpeech(host), makeSpeech(host)); // hook + welcome spoken
 
     const turn = policy.nextTurn(script);
 
@@ -86,7 +127,7 @@ describe("OpeningSequencePolicy", () => {
     const script = makeScript();
     const host = script.speakers.find((speaker) => !speaker.isExpert)!;
     const expert = script.speakers.find((speaker) => speaker.isExpert)!;
-    script.speeches.push(makeSpeech(host), makeSpeech(expert));
+    script.speeches.push(makeSpeech(host), makeSpeech(host), makeSpeech(expert)); // hook + welcome + ack
 
     expect(policy.getStage(script)).toBe(OpeningStage.Complete);
     expect(policy.nextTurn(script)).toBeNull();

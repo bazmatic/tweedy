@@ -11,6 +11,7 @@ import {
 import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
 
 export enum OpeningStage {
+  Hook = "hook",
   Welcome = "welcome",
   Acknowledgements = "acknowledgements",
   Complete = "complete",
@@ -23,6 +24,7 @@ export interface OpeningTurn {
   forceNearlyOutOfTime: false;
   requestSummary: false;
   isFinalTurn: false;
+  forceColdOpen: boolean;
   turnBrief: TurnBrief;
 }
 
@@ -38,8 +40,9 @@ export class OpeningSequencePolicy {
 
   getStage(script: PodcastScript): OpeningStage {
     if (script.speakers.length === 0) return OpeningStage.Complete;
-    if (script.speeches.length === 0) return OpeningStage.Welcome;
-    if (script.speeches.length < script.speakers.length) {
+    if (script.speeches.length === 0) return OpeningStage.Hook;
+    if (script.speeches.length === 1) return OpeningStage.Welcome;
+    if (script.speeches.length < script.speakers.length + 1) {
       return OpeningStage.Acknowledgements;
     }
     return OpeningStage.Complete;
@@ -50,6 +53,14 @@ export class OpeningSequencePolicy {
     const stage = this.getStage(script);
 
     if (stage === OpeningStage.Complete) return null;
+
+    if (stage === OpeningStage.Hook) {
+      const host = orderedSpeakers[0];
+      const goal =
+        "Open cold — before any welcome or introductions — with a short, vivid tease of the episode's subject. Do not greet listeners, name the show, introduce yourself, or introduce your co-host.";
+
+      return this.toOpeningTurn(host, goal, EditorialMove.Humanise, true);
+    }
 
     if (stage === OpeningStage.Welcome) {
       const host = orderedSpeakers[0];
@@ -62,14 +73,14 @@ export class OpeningSequencePolicy {
         introductions ? ` and introduce ${introductions}` : ""
       }. ${handover}`;
 
-      return this.toOpeningTurn(host, goal, EditorialMove.Humanise);
+      return this.toOpeningTurn(host, goal, EditorialMove.Humanise, false);
     }
 
-    const speaker = orderedSpeakers[script.speeches.length];
+    const speaker = orderedSpeakers[script.speeches.length - 1];
     const host = orderedSpeakers[0];
     const goal = `Respond directly to ${host.name}'s introduction. Briefly greet ${host.name} and the listeners in your own voice, then stop. Do not introduce the subject, use a hook, mention source material or begin the discussion.`;
 
-    return this.toOpeningTurn(speaker, goal, EditorialMove.React);
+    return this.toOpeningTurn(speaker, goal, EditorialMove.React, false);
   }
 
   private getOpeningOrder(speakers: Speaker[]): Speaker[] {
@@ -85,7 +96,8 @@ export class OpeningSequencePolicy {
   private toOpeningTurn(
     speaker: Speaker,
     goal: string,
-    move: EditorialMove
+    move: EditorialMove,
+    forceColdOpen: boolean
   ): OpeningTurn {
     return {
       speaker,
@@ -94,6 +106,7 @@ export class OpeningSequencePolicy {
       forceNearlyOutOfTime: false,
       requestSummary: false,
       isFinalTurn: false,
+      forceColdOpen,
       turnBrief: {
         speakerId: speaker.id,
         goal,
