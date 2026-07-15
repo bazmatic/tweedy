@@ -271,6 +271,10 @@ npx tweedy speaker add --name "Alex" --personality "Friendly and curious" --voic
 
 # Update a speaker
 npx tweedy speaker update <id> --personality "Professional and analytical"
+
+# Set a physical appearance description (used for consistent image generation
+# in downstream video tooling, not read during script generation)
+npx tweedy speaker update <id> --appearance "Woman in her 40s, curly red hair, glasses, olive cardigan"
 ```
 
 ### Material Management
