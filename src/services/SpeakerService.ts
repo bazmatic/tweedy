@@ -108,6 +108,8 @@ export class SpeakerService implements ISpeakerService {
       voiceStyle: record.voiceStyle,
       isExpert: record.isExpert,
       roleProfile: this.roleProfileResolver.resolve(record),
+      mannerisms: record.mannerisms,
+      physicalAppearance: record.physicalAppearance,
     };
   }
 }

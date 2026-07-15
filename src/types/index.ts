@@ -78,6 +78,10 @@ export interface Speaker {
   voiceStyle: string;
   isExpert: boolean;
   roleProfile?: SpeakerRoleProfile;
+  /** Example filler phrases/verbal tics this speaker reaches for (e.g. "Oh, wow"; "Huh, interesting"). */
+  mannerisms?: string;
+  /** Physical appearance description for consistent image generation downstream (e.g. video illustration). */
+  physicalAppearance?: string;
 }
 
 export enum EpistemicRole {
@@ -424,6 +428,8 @@ export interface SpeakerRecord {
   voiceStyle: string;
   isExpert: boolean;
   roleProfile?: SpeakerRoleProfile;
+  mannerisms?: string;
+  physicalAppearance?: string;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -55,3 +55,44 @@ describe("SpeakerService role-profile migration", () => {
     });
   });
 });
+
+describe("SpeakerService physicalAppearance", () => {
+  it("passes physicalAppearance through from the record to the populated speaker", async () => {
+    const speakerRepository = {
+      getById: vi.fn().mockResolvedValue({
+        ...makeRecord(false),
+        physicalAppearance: "Woman in her 40s, curly red hair, glasses",
+      }),
+    };
+    const voiceRepository = {
+      getById: vi.fn().mockResolvedValue(voiceRecord),
+    };
+    const service = new SpeakerService(
+      speakerRepository as unknown as SpeakerRepository,
+      voiceRepository as unknown as VoiceRepository
+    );
+
+    const speaker = await service.getSpeaker("speaker-1");
+
+    expect(speaker.physicalAppearance).toBe(
+      "Woman in her 40s, curly red hair, glasses"
+    );
+  });
+
+  it("leaves physicalAppearance undefined when not set on the record", async () => {
+    const speakerRepository = {
+      getById: vi.fn().mockResolvedValue(makeRecord(false)),
+    };
+    const voiceRepository = {
+      getById: vi.fn().mockResolvedValue(voiceRecord),
+    };
+    const service = new SpeakerService(
+      speakerRepository as unknown as SpeakerRepository,
+      voiceRepository as unknown as VoiceRepository
+    );
+
+    const speaker = await service.getSpeaker("speaker-1");
+
+    expect(speaker.physicalAppearance).toBeUndefined();
+  });
+});
