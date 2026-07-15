@@ -3,6 +3,8 @@ import {
   INTERJECTION_TOOLS,
   SHORT_REACTION_TOOLS,
   SpeakerAgentToolName,
+  SPEAKER_TOOL_DEFINITIONS,
+  getToolMaxTokens,
   toLlmTools,
 } from "./speaker-tools";
 
@@ -50,5 +52,17 @@ describe("speaker-tools", () => {
 
     expect(summarize).toBeDefined();
     expect(summarize?.input_schema.required).toEqual(["message", "style"]);
+  });
+});
+
+describe("COLD_OPEN tool", () => {
+  it("is defined with a sane token cap", () => {
+    const definition = SPEAKER_TOOL_DEFINITIONS.find(
+      (def) => def.name === SpeakerAgentToolName.COLD_OPEN
+    );
+
+    expect(definition).toBeDefined();
+    expect(definition?.maxTokens).toBe(100);
+    expect(getToolMaxTokens(SpeakerAgentToolName.COLD_OPEN)).toBe(100);
   });
 });

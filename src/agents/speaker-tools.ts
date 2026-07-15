@@ -11,6 +11,7 @@ export enum SpeakerAgentToolName {
   CHALLENGE = "challenge",
   SUMMARIZE = "summarize",
   CLOSING_STATEMENT = "closing_statement",
+  COLD_OPEN = "cold_open",
 }
 
 export interface SpeakerToolDefinition {
@@ -100,6 +101,14 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
     styleDescription:
       "How to deliver the closing. Include tone and delivery style for signing off. Example: 'Warm, genuine, slightly reflective tone, natural pacing'",
     maxTokens: 400,
+  },
+  {
+    name: SpeakerAgentToolName.COLD_OPEN,
+    toolDescription:
+      "Open the episode cold, before any welcome or introductions — a short, vivid tease of the subject in 1-2 sentences. Use a striking image, surprising fact, or provocative question drawn from the material. Do not say 'welcome', name the show, greet listeners, or introduce yourself or your co-host — this is a teaser, not an introduction.",
+    styleDescription:
+      "How to deliver the cold open. Include pacing and tone — often a slower, more deliberate delivery than normal chat. Example: 'Slow, deliberate pacing, let the image land before continuing'",
+    maxTokens: 100,
   },
 ];
 
