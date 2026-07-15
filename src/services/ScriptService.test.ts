@@ -381,6 +381,17 @@ describe("ScriptService opening sequence", () => {
       .mockResolvedValueOnce({
         id: "",
         speaker: host,
+        message: "Picture this...",
+        instructions: "warm",
+        voice: host.voice,
+        voiceStyle: host.voiceStyle,
+        timestamp: new Date(),
+        tool: SpeakerAgentToolName.SPEAK,
+        stopReason: "stop",
+      })
+      .mockResolvedValueOnce({
+        id: "",
+        speaker: host,
         message: "A deliberately long welcome that would normally qualify for a random interjection under the length policy.",
         instructions: "warm",
         voice: host.voice,
@@ -410,16 +421,18 @@ describe("ScriptService opening sequence", () => {
     const service = makeService({ speechRepository });
 
     await (service as any).generateScriptContent(script, {
-      maxTurns: 2,
+      maxTurns: 3,
       maxDuration: 60,
     });
 
     expect(script.speeches.map((speech) => speech.speaker.name)).toEqual([
       "Ada",
+      "Ada",
       "Miles",
     ]);
-    expect(speakMock.mock.calls[0][5]).toContain("introduce Miles");
-    expect(speakMock.mock.calls[1][5]).toContain(
+    expect(speakMock.mock.calls[0][5]).toContain("Open cold");
+    expect(speakMock.mock.calls[1][5]).toContain("introduce Miles");
+    expect(speakMock.mock.calls[2][5]).toContain(
       "Respond directly to Ada's introduction"
     );
     expect(interjectMock).not.toHaveBeenCalled();
