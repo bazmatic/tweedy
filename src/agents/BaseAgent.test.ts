@@ -241,4 +241,45 @@ describe("callModelForStructuredOutput", () => {
       synopsis: "we convert the trains \\(T\\) to strings",
     });
   });
+
+  it("recovers from a token-limit truncation by dropping the dangling incomplete array element", async () => {
+    const schema = z.object({
+      synopsis: z.string(),
+      cards: z.array(z.object({ content: z.string(), storyValue: z.number() })),
+    });
+    // The second card is cut off mid-generation (hit the token limit) —
+    // the string never closes and the object/array/root braces are missing.
+    const rawArgs =
+      `{"synopsis": "intro", "cards": [` +
+      `{"content": "first card", "storyValue": 7},` +
+      `{"content": "second card cut off mid-sentence because tokens ran out`;
+    const parseError = new Error(
+      [
+        `Function "extract" arguments:`,
+        ``,
+        rawArgs,
+        ``,
+        `are not valid JSON.`,
+        `Error: Unterminated string in JSON at position 999`,
+      ].join("\n")
+    );
+    const invoke = vi.fn().mockRejectedValue(parseError);
+    const withStructuredOutput = vi.fn().mockReturnValue({ invoke });
+    vi.spyOn(AiModelFactory, "getModel").mockReturnValue({
+      withStructuredOutput,
+    } as any);
+
+    const result = await new TestAgent().callModelForStructuredOutput(
+      ModelTask.MaterialPreparation,
+      [{ role: "user", content: "Prepare this material" }],
+      schema,
+      50
+    );
+
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      synopsis: "intro",
+      cards: [{ content: "first card", storyValue: 7 }],
+    });
+  });
 });

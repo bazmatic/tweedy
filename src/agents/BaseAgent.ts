@@ -160,6 +160,54 @@ function sanitizeJsonControlCharacters(raw: string): string {
 }
 
 /**
+ * When arguments are cut off mid-generation (hit the token limit) rather
+ * than merely malformed, the JSON is genuinely incomplete — there's no
+ * escaping fix for an unterminated string. Instead, walk the text tracking
+ * bracket nesting and find the last point where a complete element closed
+ * immediately inside an array (i.e. the last fully-generated array item),
+ * truncate there, and close out whatever containers were still open at that
+ * point. This discards only the one dangling, half-written element.
+ */
+function repairTruncatedJsonArray(raw: string): string | undefined {
+  const stack: string[] = [];
+  let inString = false;
+  let lastSafeIndex = -1;
+  let lastSafeStack: string[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (ch === "\\") {
+        i++;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{" || ch === "[") {
+      stack.push(ch);
+      continue;
+    }
+    if (ch === "}" || ch === "]") {
+      stack.pop();
+      if (stack[stack.length - 1] === "[") {
+        lastSafeIndex = i;
+        lastSafeStack = [...stack];
+      }
+    }
+  }
+  if (lastSafeIndex === -1) return undefined;
+  let repaired = raw.slice(0, lastSafeIndex + 1);
+  for (let i = lastSafeStack.length - 1; i >= 0; i--) {
+    repaired += lastSafeStack[i] === "[" ? "]" : "}";
+  }
+  return repaired;
+}
+
+/**
  * LangChain's tool-call JSON parser embeds the raw (invalid) arguments text
  * directly in its thrown error message rather than exposing it as a
  * structured field. Recover it so we can repair and re-parse instead of
@@ -172,10 +220,16 @@ function recoverFromJsonParseFailure<T>(
   if (!(error instanceof Error)) return undefined;
   const match = error.message.match(PARSER_EXCEPTION_PATTERN);
   if (!match) return undefined;
+  const sanitized = sanitizeJsonControlCharacters(match[2]);
   try {
-    const sanitized = sanitizeJsonControlCharacters(match[2]);
-    const parsed = JSON.parse(sanitized);
-    return schema.parse(parsed);
+    return schema.parse(JSON.parse(sanitized));
+  } catch {
+    // Fall through to truncation repair below.
+  }
+  const repaired = repairTruncatedJsonArray(sanitized);
+  if (!repaired) return undefined;
+  try {
+    return schema.parse(JSON.parse(repaired));
   } catch {
     return undefined;
   }
