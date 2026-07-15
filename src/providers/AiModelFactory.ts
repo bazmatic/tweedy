@@ -14,6 +14,14 @@ import { ProviderModelCatalogue } from "./ProviderModelCatalogue";
 const OPENAI_REASONING_TOKEN_BUFFER = 500;
 const OPENAI_PREMIUM_REASONING_TOKEN_BUFFER = 1500;
 
+// DeepSeek routinely overshoots the brevity guidance baked into our prompts
+// (e.g. "1-2 sentences, under 50 words") and burns through maxTokens before
+// finishing the tool-call JSON, which otherwise surfaces as a truncated tool
+// call on nearly every turn. Give it the same kind of headroom OpenAI's
+// reasoning models get above, so a verbose response still finishes inside
+// its JSON structure instead of being cut off mid-argument.
+const DEEPSEEK_TOKEN_BUFFER = 300;
+
 export class AiModelFactory {
   private static models: Map<string, BaseChatModel> = new Map();
   private static routingPolicy = new ModelRoutingPolicy();
@@ -64,7 +72,7 @@ export class AiModelFactory {
           const model = new ChatOpenAI({
             apiKey,
             model: modelId,
-            maxTokens,
+            maxTokens: maxTokens + DEEPSEEK_TOKEN_BUFFER,
             temperature,
             configuration: { baseURL: "https://api.deepseek.com" },
             modelKwargs: { thinking: { type: "disabled" } },
