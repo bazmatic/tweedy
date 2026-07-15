@@ -56,6 +56,11 @@ const SUBSTANTIVE_TOOLS = Object.freeze([
   SpeakerAgentToolName.ONE_LINER,
 ]);
 
+const SUBSTANTIVE_TOOLS_WITH_PARAPHRASE = Object.freeze([
+  ...SUBSTANTIVE_TOOLS,
+  SpeakerAgentToolName.PARAPHRASE,
+]);
+
 const CHALLENGE_TOOLS = Object.freeze([
   SpeakerAgentToolName.CHALLENGE,
   SpeakerAgentToolName.SPEAK,
@@ -76,7 +81,7 @@ const MOVE_TO_TOOLS: Readonly<
   [EditorialMove.Compare]: SUBSTANTIVE_TOOLS,
   [EditorialMove.Contrast]: SUBSTANTIVE_TOOLS,
   [EditorialMove.Connect]: SUBSTANTIVE_TOOLS,
-  [EditorialMove.Reframe]: SUBSTANTIVE_TOOLS,
+  [EditorialMove.Reframe]: SUBSTANTIVE_TOOLS_WITH_PARAPHRASE,
   [EditorialMove.Humanise]: SUBSTANTIVE_TOOLS,
   [EditorialMove.FindMeaning]: SUBSTANTIVE_TOOLS,
   [EditorialMove.Transition]: SUBSTANTIVE_TOOLS,

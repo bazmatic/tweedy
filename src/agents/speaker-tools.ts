@@ -13,6 +13,7 @@ export enum SpeakerAgentToolName {
   SUMMARIZE = "summarize",
   CLOSING_STATEMENT = "closing_statement",
   COLD_OPEN = "cold_open",
+  PARAPHRASE = "paraphrase",
 }
 
 export interface SpeakerToolDefinition {
@@ -119,6 +120,14 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
       "How to deliver the cold open. Include pacing and tone — often a slower, more deliberate delivery than normal chat. Example: 'Slow, deliberate pacing, let the image land before continuing'",
     maxTokens: 100,
   },
+  {
+    name: SpeakerAgentToolName.PARAPHRASE,
+    toolDescription:
+      "Restate the previous speaker's point in your own, simpler words — one sentence, often opening with 'So…' ('So it's basically a mandatory security deposit'). This is you checking your understanding out loud on the listener's behalf, ideally translating it into an everyday comparison or the episode's running analogy. Do not add new facts; your co-host will confirm or refine it. Never just echo their exact wording.",
+    styleDescription:
+      "How to deliver the paraphrase. Usually a rising, checking tone, as if asking 'have I got that right?'. Example: 'Working it out in real time, slight upward inflection at the end'",
+    maxTokens: 100,
+  },
 ];
 
 export const SHORT_REACTION_TOOLS: SpeakerAgentToolName[] = [
@@ -126,6 +135,7 @@ export const SHORT_REACTION_TOOLS: SpeakerAgentToolName[] = [
   SpeakerAgentToolName.FILLER_COMMENT,
   SpeakerAgentToolName.SHORT_QUESTION,
   SpeakerAgentToolName.ONE_LINER,
+  SpeakerAgentToolName.PARAPHRASE,
 ];
 
 export const SOLO_TOOLS: SpeakerAgentToolName[] = [
@@ -138,6 +148,7 @@ export const INTERJECTION_TOOLS: SpeakerAgentToolName[] = [
   SpeakerAgentToolName.INTERJECT,
   SpeakerAgentToolName.FILLER_COMMENT,
   SpeakerAgentToolName.CHALLENGE,
+  SpeakerAgentToolName.PARAPHRASE,
 ];
 
 /**
@@ -151,6 +162,7 @@ export const INTERVIEWER_TOOLS: SpeakerAgentToolName[] = [
   SpeakerAgentToolName.SHORT_QUESTION,
   SpeakerAgentToolName.ONE_LINER,
   SpeakerAgentToolName.CHALLENGE,
+  SpeakerAgentToolName.PARAPHRASE,
 ];
 
 export function getToolDefinition(name: SpeakerAgentToolName): SpeakerToolDefinition | undefined {

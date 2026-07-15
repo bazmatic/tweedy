@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   INTERJECTION_TOOLS,
+  INTERVIEWER_TOOLS,
   SHORT_REACTION_TOOLS,
   SpeakerAgentToolName,
   SPEAKER_TOOL_DEFINITIONS,
@@ -31,13 +32,14 @@ describe("speaker-tools", () => {
     expect(typeof style.description).toBe("string");
   });
 
-  it("INTERJECTION_TOOLS resolves to INTERJECT, FILLER_COMMENT, CHALLENGE in order", () => {
+  it("INTERJECTION_TOOLS resolves to INTERJECT, FILLER_COMMENT, CHALLENGE, PARAPHRASE in order", () => {
     const tools = toLlmTools(INTERJECTION_TOOLS);
 
     expect(tools.map((tool) => tool.name)).toEqual([
       SpeakerAgentToolName.INTERJECT,
       SpeakerAgentToolName.FILLER_COMMENT,
       SpeakerAgentToolName.CHALLENGE,
+      SpeakerAgentToolName.PARAPHRASE,
     ]);
   });
 
@@ -84,5 +86,14 @@ describe("CHALLENGE tool", () => {
     expect(getToolMaxTokens(SpeakerAgentToolName.CHALLENGE)).toBe(200);
     const def = getToolDefinition(SpeakerAgentToolName.CHALLENGE);
     expect(def?.toolDescription).toMatch(/2-3 sentences/);
+  });
+});
+
+describe("PARAPHRASE tool", () => {
+  it("defines paraphrase and offers it in reaction toolsets", () => {
+    expect(getToolMaxTokens(SpeakerAgentToolName.PARAPHRASE)).toBe(100);
+    expect(SHORT_REACTION_TOOLS).toContain(SpeakerAgentToolName.PARAPHRASE);
+    expect(INTERVIEWER_TOOLS).toContain(SpeakerAgentToolName.PARAPHRASE);
+    expect(INTERJECTION_TOOLS).toContain(SpeakerAgentToolName.PARAPHRASE);
   });
 });

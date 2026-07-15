@@ -56,6 +56,19 @@ function buildTurnBrief(overrides?: Partial<TurnBrief>): TurnBrief {
   };
 }
 
+function buildContext(overrides?: Partial<any>): any {
+  const speaker = makeSpeaker("guide", false);
+  return {
+    speaker,
+    speeches: [],
+    isSolo: false,
+    isFinalTurn: false,
+    forceNearlyOutOfTime: false,
+    requestSummary: false,
+    ...overrides,
+  };
+}
+
 describe("ResponseModePolicy", () => {
   const policy = new ResponseModePolicy();
   const expert = makeSpeaker("expert", true);
@@ -153,5 +166,15 @@ describe("ResponseModePolicy", () => {
       turnBrief: buildTurnBrief({ move: EditorialMove.Explain }),
     });
     expect(tools).not.toContain(SpeakerAgentToolName.EXPLAIN);
+  });
+
+  it("offers PARAPHRASE on a react move", () => {
+    const tools = policy.selectTools(
+      buildContext({
+        speaker: guide,
+        turnBrief: buildTurnBrief({ move: EditorialMove.React }),
+      })
+    );
+    expect(tools).toContain(SpeakerAgentToolName.PARAPHRASE);
   });
 });
