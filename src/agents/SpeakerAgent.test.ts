@@ -5,6 +5,7 @@ import { SpeakerAgentToolName } from "./speaker-tools";
 import {
   AudienceProfile,
   AudienceValue,
+  ConversationalDevice,
   EditorialCardKind,
   EditorialMove,
   EnergyLevel,
@@ -232,6 +233,150 @@ describe("SpeakerAgent central analogy", () => {
 
     const prompt = (call.mock.calls[0][1] as any)[0].content as string;
     expect(prompt).toContain("call back to the analogy");
+  });
+});
+
+describe("SpeakerAgent trail-off handoffs", () => {
+  it("directs completion when the previous speech trails off with an em dash", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "Right, exactly.",
+      style: "calm",
+      stopReason: "stop",
+    });
+    const speeches = [
+      {
+        id: "sp1",
+        speaker: makeSpeaker("s2"),
+        message: "and that changes everything because—",
+        instructions: "",
+        voice: makeSpeaker("s2").voice,
+        voiceStyle: "neutral",
+        timestamp: new Date(),
+        tool: SpeakerAgentToolName.SPEAK,
+      },
+    ];
+    const script = makeScript(speeches);
+
+    await agent.speak(
+      speeches,
+      script.speakers,
+      script.materials,
+      script.title,
+      script.description,
+      "talk about x"
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).toMatch(/complete the sentence they started/i);
+  });
+
+  it("does not direct completion when the previous speech does not trail off", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "Right, exactly.",
+      style: "calm",
+      stopReason: "stop",
+    });
+    const speeches = [
+      {
+        id: "sp1",
+        speaker: makeSpeaker("s2"),
+        message: "and that changes everything.",
+        instructions: "",
+        voice: makeSpeaker("s2").voice,
+        voiceStyle: "neutral",
+        timestamp: new Date(),
+        tool: SpeakerAgentToolName.SPEAK,
+      },
+    ];
+    const script = makeScript(speeches);
+
+    await agent.speak(
+      speeches,
+      script.speakers,
+      script.materials,
+      script.title,
+      script.description,
+      "talk about x"
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).not.toMatch(/complete the sentence they started/i);
+  });
+
+  it("does not direct completion when the speaker trailing off is the same speaker", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "Right, exactly.",
+      style: "calm",
+      stopReason: "stop",
+    });
+    const speeches = [
+      {
+        id: "sp1",
+        speaker: makeSpeaker("s1"),
+        message: "and that changes everything because—",
+        instructions: "",
+        voice: makeSpeaker("s1").voice,
+        voiceStyle: "neutral",
+        timestamp: new Date(),
+        tool: SpeakerAgentToolName.SPEAK,
+      },
+    ];
+    const script = makeScript(speeches);
+
+    await agent.speak(
+      speeches,
+      script.speakers,
+      script.materials,
+      script.title,
+      script.description,
+      "talk about x"
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).not.toMatch(/complete the sentence they started/i);
+  });
+
+  it("instructs a trail-off delivery when the device is trail_off", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "and that changes everything because—",
+      style: "calm",
+      stopReason: "stop",
+    });
+    const script = makeScript();
+
+    await agent.speak(
+      script.speeches,
+      script.speakers,
+      script.materials,
+      script.title,
+      script.description,
+      "Tell the story.",
+      "",
+      false,
+      false,
+      false,
+      false,
+      {
+        speakerId: "s1",
+        goal: "Build anticipation.",
+        move: EditorialMove.TellStory,
+        cardIds: [],
+        audienceValue: AudienceValue.Momentum,
+        desiredEnergy: EnergyLevel.Warm,
+        device: ConversationalDevice.TrailOff,
+      }
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).toMatch(/end .*mid-clause.*em dash/i);
   });
 });
 

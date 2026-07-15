@@ -303,6 +303,7 @@ export enum ConversationalDevice {
   Contrast = "contrast",
   Reveal = "reveal",
   ThoughtExperiment = "thought_experiment",
+  TrailOff = "trail_off",
 }
 
 export interface TurnBrief {

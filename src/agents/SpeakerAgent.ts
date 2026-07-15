@@ -1,5 +1,6 @@
 import {
   AudienceProfile,
+  ConversationalDevice,
   ISpeakerAgent,
   EditorialCard,
   EpistemicRole,
@@ -54,6 +55,17 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     this.naturalSpeechStylePolicy = naturalSpeechStylePolicy;
     this.responseModePolicy = responseModePolicy;
     this.audienceAccessibilityPolicy = audienceAccessibilityPolicy;
+  }
+
+  private getHandoffGuidance(previousSpeech: Speech | undefined): string {
+    if (
+      previousSpeech &&
+      previousSpeech.speaker.id !== this.speaker.id &&
+      previousSpeech.message.trimEnd().endsWith("—")
+    ) {
+      return ` ${previousSpeech.speaker.name} trailed off mid-sentence — complete the sentence they started as if you both already know where it was going, then carry on with your own point. Do not restate what they already said.`;
+    }
+    return "";
   }
 
   private mannerismsLine(): string {
@@ -281,7 +293,7 @@ Podcast Context:
 Conversation History (speaker: message [tool used]):
 ${conversationHistory}${materialsSection}
 
-${direction ? `Director's guidance: ${direction}` : "No specific director's guidance for this turn — continue the conversation naturally in character."}${editorialSection}${analogySection}${
+${direction ? `Director's guidance: ${direction}` : "No specific director's guidance for this turn — continue the conversation naturally in character."}${this.getHandoffGuidance(speeches.at(-1))}${editorialSection}${analogySection}${
           timeStatus && !isFinalTurn
             ? forceNearlyOutOfTime
               ? `\n\nTime status: ${timeStatus} You must use the nearly_out_of_time tool this turn to tell your co-hosts you're running low on time.`
@@ -414,7 +426,11 @@ Turn brief:
 - Editorial move: ${brief.move}
 - Primary audience value: ${brief.audienceValue}
 - Desired energy: ${brief.desiredEnergy}${
-      brief.device ? `\n- Optional conversational device: ${brief.device}` : ""
+      brief.device === ConversationalDevice.TrailOff
+        ? `\n- Conversational device: deliberately end your turn mid-clause on a trailing em dash (—), handing the incomplete thought to your co-host to finish. Set up a sentence whose ending is guessable.`
+        : brief.device
+          ? `\n- Optional conversational device: ${brief.device}`
+          : ""
     }
 Prepared editorial material for this turn:
 ${relevantCards || "(No specific editorial cards assigned.)"}
