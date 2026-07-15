@@ -38,6 +38,7 @@ function makeCard(id: string): EditorialCard {
     materialId: "material-1",
     kind: EditorialCardKind.EssentialPoint,
     content: "A precise technical fact.",
+    significance: "",
     evidence: [],
     relatedCardIds: [],
     tags: [],

@@ -13,6 +13,7 @@ describe("editorial structured-output schemas", () => {
         {
           kind: EditorialCardKind.EssentialPoint,
           content: "Fungi produce measurable electrical spikes.",
+          significance: "Suggests fungi may process information much like nervous systems do.",
           excerpts: ["Electrical spikes were recorded."],
           storyValue: 6,
         },

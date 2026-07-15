@@ -395,7 +395,11 @@ Respond naturally as ${
     if (!brief) return "";
     const relevantCards = cards
       .filter((card) => brief.cardIds.includes(card.id))
-      .map((card) => `- ${card.kind}: ${card.content}`)
+      .map((card) =>
+        card.significance
+          ? `- ${card.kind}: ${card.content} (why it matters: ${card.significance})`
+          : `- ${card.kind}: ${card.content}`
+      )
       .join("\n");
     return `
 

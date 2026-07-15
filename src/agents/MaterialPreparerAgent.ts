@@ -36,6 +36,8 @@ Do not force every card kind, but if the material genuinely supports it, include
 
 Prefer concrete, memorable and useful material. Keep factual cards faithful to the source, attach short supporting excerpts, and distinguish the source's claims from possible editorial questions. For each card, list any technical or jargon terms in keyTerms that a general listener would need explained before the card's content could be spoken aloud — leave it empty for cards that introduce no new terminology. Use Australian/British spelling.
 
+For every card, also give its significance: the discussion angle that makes it worth talking about, not just stating aloud. What does it imply, challenge, connect to, or why should a listener care? A card is a discussion point, not a fact to recite.
+
 Score every card's storyValue from 1-10: how surprising, vivid or emotionally engaging it would sound spoken aloud to a general listener — not how factually important it is. 9-10 is a hook worth repeating at a party; 4-5 is true but flat; 1-3 is a raw data point. If the source material itself contains a curated section of highlights, fun facts, or podcast-friendly angles, treat its contents as a strong prior for 8-10 scores — a raw statistic from a methods or results section should not outscore a hook the source has already flagged as compelling.
 
 Title: ${material.title}
@@ -73,6 +75,7 @@ ${material.content}`,
         ? card.kind
         : EditorialCardKind.EssentialPoint,
       content: card.content,
+      significance: card.significance,
       evidence: (card.excerpts ?? []).map((excerpt) => ({
         materialId: material.id,
         excerpt,
@@ -103,6 +106,7 @@ ${material.content}`,
       materialId: material.id,
       kind: EditorialCardKind.EssentialPoint,
       content: excerpt,
+      significance: "",
       evidence: [{ materialId: material.id, excerpt }],
       relatedCardIds: [],
       tags: [],

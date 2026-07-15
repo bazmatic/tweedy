@@ -215,6 +215,8 @@ export interface EditorialCard {
   materialId: string;
   kind: EditorialCardKind;
   content: string;
+  /** Why this matters — the discussion angle a speaker can use to make it worth talking about, not just stating. */
+  significance: string;
   evidence: EvidenceRef[];
   relatedCardIds: string[];
   tags: string[];

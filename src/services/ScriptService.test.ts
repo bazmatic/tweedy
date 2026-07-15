@@ -572,6 +572,7 @@ describe("ScriptService discussionPoints persistence", () => {
         materialId: "m1",
         kind: EditorialCardKind.Story,
         content: "A revealing anecdote.",
+        significance: "",
         evidence: [],
         relatedCardIds: [],
         tags: [],

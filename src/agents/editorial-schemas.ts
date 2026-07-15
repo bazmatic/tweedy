@@ -6,6 +6,11 @@ export const preparedCardSchema = z.object({
     .nativeEnum(EditorialCardKind)
     .describe("The editorial purpose served by this source-supported card."),
   content: z.string().describe("The reusable editorial ingredient."),
+  significance: z
+    .string()
+    .describe(
+      "Why this matters — the discussion angle a speaker can use to make it worth talking about, not just a fact to state. E.g. what it implies, challenges, connects to, or why a listener should care."
+    ),
   excerpts: z
     .array(z.string())
     .describe(

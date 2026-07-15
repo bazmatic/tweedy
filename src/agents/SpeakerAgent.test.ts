@@ -135,6 +135,7 @@ describe("SpeakerAgent editorial context", () => {
           materialId: "m1",
           kind: EditorialCardKind.Story,
           content: "She kept the rejection letter above her desk.",
+          significance: "",
           evidence: [],
           relatedCardIds: [],
           tags: [],

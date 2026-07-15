@@ -266,6 +266,7 @@ describe("DirectorAgent editorial turn briefs", () => {
         materialId: "m1",
         kind: EditorialCardKind.EssentialPoint,
         content: `Content for ${id}`,
+        significance: "",
         evidence: [],
         relatedCardIds: [],
         tags: [],
