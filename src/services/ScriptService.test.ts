@@ -23,8 +23,11 @@ const speakMock = vi.fn();
 const interjectMock = vi.fn();
 const speakerAgentConstructorMock = vi.fn();
 
+const directorAgentConstructorMock = vi.fn();
+
 vi.mock("../agents", () => ({
-  DirectorAgent: vi.fn().mockImplementation(function () {
+  DirectorAgent: vi.fn().mockImplementation(function (...args: unknown[]) {
+    directorAgentConstructorMock(...args);
     return {
       createPodcastPlan: createPodcastPlanMock,
       chooseNextSpeaker: chooseNextSpeakerMock,
@@ -583,5 +586,138 @@ describe("ScriptService discussionPoints persistence", () => {
     expect(withoutPoints.knowledgeLedger).toEqual({ introducedCards: [] });
     expect(withoutPoints.audienceProfile).toBe(AudienceProfile.General);
     expect(withoutPoints.terminologyLedger).toEqual({ explainedTerms: [] });
+  });
+});
+
+describe("ScriptService guidance", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    directorAgentConstructorMock.mockClear();
+  });
+
+  it("passes guidance to the DirectorAgent constructor and persists it on the script", async () => {
+    createPodcastPlanMock.mockResolvedValueOnce(undefined);
+
+    const speaker = {
+      id: "s1",
+      slug: "speaker-1",
+      name: "Speaker 1",
+      personality: "curious",
+      voice: {
+        id: "v1",
+        name: "Voice",
+        description: "",
+        provider: VocalProviderName.ElevenLabs,
+        providerId: "p",
+        settings: {},
+      },
+      voiceStyle: "neutral",
+      isExpert: false,
+    };
+
+    chooseNextSpeakerMock.mockResolvedValueOnce({
+      speaker,
+      direction: "Wrap up.",
+      timeStatus: "",
+      forceNearlyOutOfTime: false,
+      requestSummary: false,
+      isFinalTurn: true,
+      turnBrief: undefined,
+    });
+    speakMock.mockResolvedValueOnce({
+      id: "",
+      speaker,
+      message: "Goodbye.",
+      instructions: "calm",
+      voice: speaker.voice,
+      voiceStyle: "neutral",
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.SPEAK,
+      stopReason: "stop",
+    });
+
+    const scriptRepository = {
+      create: vi.fn().mockResolvedValue({
+        id: "script-1",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    };
+    const speakerRepository = {
+      findBySlug: vi.fn().mockResolvedValue(null),
+      getById: vi.fn().mockResolvedValue({
+        id: "s1",
+        slug: "speaker-1",
+        name: "Speaker 1",
+        personality: "curious",
+        voiceId: "v1",
+        voiceStyle: "neutral",
+        isExpert: false,
+      }),
+    };
+    const voiceRepository = {
+      getById: vi.fn().mockResolvedValue({
+        id: "v1",
+        name: "Voice",
+        description: "",
+        provider: VocalProviderName.ElevenLabs,
+        providerId: "p",
+        settings: {},
+      }),
+    };
+    const speechRepository = {
+      create: vi.fn().mockResolvedValue({ id: "speech-1" }),
+    };
+    const service = makeService({
+      scriptRepository,
+      speakerRepository,
+      voiceRepository,
+      speechRepository,
+    });
+
+    await service.generateScript({
+      title: "Test",
+      description: "Desc",
+      guidance: "Keep it skeptical of the marketing claims.",
+      speakers: [{ id: "s1" } as any],
+      materials: [],
+      maxTurns: 1,
+      maxDuration: 60,
+      allocation: "sequential" as any,
+    });
+
+    expect(directorAgentConstructorMock).toHaveBeenCalled();
+    const [, , guidanceArg] = directorAgentConstructorMock.mock.calls[0];
+    expect(guidanceArg).toBe("Keep it skeptical of the marketing claims.");
+
+    const createCall = scriptRepository.create.mock.calls[0][0];
+    expect(createCall.guidance).toBe(
+      "Keep it skeptical of the marketing claims."
+    );
+  });
+
+  it("loadScriptFromRecord restores guidance from the record", async () => {
+    const speakerRepository = { getById: vi.fn() };
+    const materialRepository = { getById: vi.fn() };
+    const speechRepository = { getById: vi.fn() };
+    const service = makeService({
+      speakerRepository,
+      materialRepository,
+      speechRepository,
+    });
+
+    const script = await (service as any).loadScriptFromRecord({
+      id: "s1",
+      title: "T",
+      description: "D",
+      guidance: "Keep it skeptical of the marketing claims.",
+      speakerIds: [],
+      speechIds: [],
+      materialIds: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    expect(script.guidance).toBe("Keep it skeptical of the marketing claims.");
   });
 });
