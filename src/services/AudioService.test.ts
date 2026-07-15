@@ -205,4 +205,46 @@ describe("AudioService.generateAudio timeline", () => {
       false
     );
   });
+
+  it("includes speakerAppearance in the timeline entry when the speaker has one set", async () => {
+    mockConcatenateAudio.mockResolvedValue({
+      offsetsSeconds: [0],
+      speechEndSeconds: [2],
+    });
+
+    const service = new AudioService();
+    vi.spyOn(service as any, "generateSpeechAudio").mockResolvedValue({
+      outputPath: "/audio/speeches/s1.mp3",
+    });
+
+    const speaker = {
+      ...makeSpeaker("sp1", "Ada"),
+      physicalAppearance: "Woman in her mid-20s, curly black hair, coral cardigan",
+    };
+    const speech = { ...makeSpeech({ id: "s1" }), speaker };
+
+    await service.generateAudio([speech], "/audio/podcast.mp3");
+
+    const [, payload] = mockWriteJson.mock.calls[0];
+    expect(payload.entries[0].speakerAppearance).toBe(
+      "Woman in her mid-20s, curly black hair, coral cardigan"
+    );
+  });
+
+  it("omits speakerAppearance from the timeline entry when the speaker has none set", async () => {
+    mockConcatenateAudio.mockResolvedValue({
+      offsetsSeconds: [0],
+      speechEndSeconds: [2],
+    });
+
+    const service = new AudioService();
+    vi.spyOn(service as any, "generateSpeechAudio").mockResolvedValue({
+      outputPath: "/audio/speeches/s1.mp3",
+    });
+
+    await service.generateAudio([makeSpeech({ id: "s1" })], "/audio/podcast.mp3");
+
+    const [, payload] = mockWriteJson.mock.calls[0];
+    expect(payload.entries[0].speakerAppearance).toBeUndefined();
+  });
 });

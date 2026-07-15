@@ -18,6 +18,7 @@ interface TimelineEntry {
   speechId: string;
   speakerId: string;
   speakerName: string;
+  speakerAppearance?: string;
   message: string;
   tool: SpeakerAgentToolName | undefined;
   isInterjection: boolean;
@@ -116,6 +117,9 @@ export class AudioService implements IAudioService {
         speechId: speech.id,
         speakerId: speech.speaker.id,
         speakerName: speech.speaker.name,
+        ...(speech.speaker.physicalAppearance
+          ? { speakerAppearance: speech.speaker.physicalAppearance }
+          : {}),
         message: speech.message,
         tool: speech.tool,
         isInterjection: speech.tool === SpeakerAgentToolName.INTERJECT,
