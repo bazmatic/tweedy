@@ -56,6 +56,12 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     this.audienceAccessibilityPolicy = audienceAccessibilityPolicy;
   }
 
+  private mannerismsLine(): string {
+    return this.speaker.mannerisms
+      ? `\n- Mannerisms (draw on these for filler comments/interjections, don't overuse): ${this.speaker.mannerisms}`
+      : "";
+  }
+
   async speak(
     speeches: Speech[],
     speakers: Speaker[],
@@ -121,10 +127,9 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
         };
 
         logger.info(
-          `Speech generated for ${this.speaker.name} (${toolName}): ${message.substring(
-            0,
-            100
-          )}...`
+          `Speech generated for ${this.speaker.name} (${toolName})` +
+          (stopReason ? ` (stopReason=${stopReason})` : "") +
+          `: ${message.length > 100 ? `${message.substring(0, 100)}...` : message}`
         );
         return speech;
       } catch (error) {
@@ -149,7 +154,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
       const roleProfile = this.roleProfileResolver.resolve(this.speaker);
       const roleGuidance =
         roleProfile.epistemicRole === EpistemicRole.Expert
-          ? "React from an expert stance. Do not perform surprise or confusion about foundational subject matter; briefly acknowledge, clarify, or gently correct it instead."
+          ? "React from an expert stance. Do not perform surprise or confusion about foundational subject matter; briefly acknowledge, clarify, or gently correct it instead. You know this material, but you are not its author — don't accept or echo a co-host's framing that you personally conducted the study."
           : "React as the audience's guide without introducing new specialist facts.";
       const messages: LlmMessage[] = [
         {
@@ -157,7 +162,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
           content: `You are ${this.speaker.name}, a podcast speaker with the following characteristics:
 - Personality: ${this.speaker.personality}
 - Voice Style: ${this.speaker.voiceStyle}
-- Epistemic Role: ${roleProfile.epistemicRole}
+- Epistemic Role: ${roleProfile.epistemicRole}${this.mannerismsLine()}
 
 ${lastSpeech.speaker.name} just said: "${lastSpeech.message}"
 
@@ -224,8 +229,14 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
       editorialCards
     );
 
+    const coHosts = speakers.filter((s) => s.id !== this.speaker.id);
+    const coHostNames = this.formatNameList(coHosts.map((s) => s.name));
     const closingPromptAddendum = isFinalTurn
-      ? `\n\nThis is the final turn of the episode. Use the closing_statement tool to deliver a warm, authentic closing that wraps up the podcast and signs off naturally. Name the episode exactly "${title}" if you name it at all. Do not invent a different programme name, release schedule or future episode details. Take enough time to complete the thought and finish the final sentence cleanly; do not trail off.`
+      ? `\n\nThis is the final turn of the episode. Use the closing_statement tool to deliver a warm, authentic closing that wraps up the podcast and signs off naturally.${
+          coHostNames
+            ? ` Just as the opening introduced everyone, thank and name your co-host${coHosts.length > 1 ? "s" : ""} (${coHostNames}) by name as part of the sign-off.`
+            : ""
+        } Name the episode exactly "${title}" if you name it at all. Do not invent a different programme name, release schedule or future episode details. Take enough time to complete the thought and finish the final sentence cleanly; do not trail off.`
       : "";
     const lengthGuidance = isFinalTurn
       ? "This closing is exempt from the normal 50-word turn limit. Let it breathe for a few natural sentences so the reflection, thanks, and sign-off all land without rushing."
@@ -242,7 +253,7 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
 - Epistemic Role: ${roleProfile.epistemicRole}
 - Source Access: ${roleProfile.sourceAccess}
 - Uncertainty Style: ${roleProfile.uncertaintyStyle}
-- Audience Profile: ${audienceProfile}
+- Audience Profile: ${audienceProfile}${this.mannerismsLine()}
 
 Podcast Context:
 - Title: ${title}
@@ -299,6 +310,11 @@ Respond naturally as ${
     };
   }
 
+  private formatNameList(names: string[]): string {
+    if (names.length <= 1) return names.join("");
+    return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  }
+
   private getConversationHistory(speeches: Speech[]): string {
     return speeches
       .slice(-10) // Last 10 speeches
@@ -322,7 +338,7 @@ Respond naturally as ${
     turnBrief?: TurnBrief
   ): string {
     if (epistemicRole === EpistemicRole.Expert) {
-      return " As the expert, answer from the material with appropriate confidence. Do not feign ignorance or perform surprise at foundational material you are responsible for explaining. Never react as though you have just discovered a source fact that you already know or have just explained; clarify its significance from an expert stance instead.";
+      return " As the expert, answer from the material with appropriate confidence. Do not feign ignorance or perform surprise at foundational material you are responsible for explaining. Never react as though you have just discovered a source fact that you already know or have just explained; clarify its significance from an expert stance instead. You are knowledgeable about this material, not its author: never claim or imply that you personally conducted the study, ran the experiment, or wrote the paper unless the material explicitly says so, and don't let a co-host address you as though you did.";
     }
 
     if (epistemicRole === EpistemicRole.InformedHost) {
