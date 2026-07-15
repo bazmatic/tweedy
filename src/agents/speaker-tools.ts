@@ -90,10 +90,10 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.CHALLENGE,
     toolDescription:
-      "Push back on what the previous speaker just said, in one short sentence — voice real doubt, skepticism, or outright disagreement. Use when you have a genuine reason to question their claim, not just to be contrarian. Distinct from ONE_LINER: this is about disputing a point, not making a clever observation.",
+      "Push back on what the previous speaker just said with a substantive objection — 2-3 sentences voicing the doubt a sharp listener would have right now. Name the concrete problem their claim seems to create ('that sounds like a nightmare for developers because…'), not just a one-word 'really?'. Use when you have a genuine reason to question their claim, not just to be contrarian. Your co-host will answer it properly, possibly over several turns, so make the objection worth answering.",
     styleDescription:
-      "How you're pushing back. Include tone and delivery. Example: 'Skeptical, slightly incredulous, leaning into \"really?\"'",
-    maxTokens: 100,
+      "How you're pushing back. Include tone and delivery. Example: 'Skeptical, slightly incredulous, leaning into the practical worry'",
+    maxTokens: 200,
   },
   {
     name: SpeakerAgentToolName.SUMMARIZE,

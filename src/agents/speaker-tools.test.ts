@@ -78,3 +78,11 @@ describe("EXPLAIN tool", () => {
     expect(def?.toolDescription).toMatch(/3-6 sentences/);
   });
 });
+
+describe("CHALLENGE tool", () => {
+  it("gives CHALLENGE room for a substantive objection", () => {
+    expect(getToolMaxTokens(SpeakerAgentToolName.CHALLENGE)).toBe(200);
+    const def = getToolDefinition(SpeakerAgentToolName.CHALLENGE);
+    expect(def?.toolDescription).toMatch(/2-3 sentences/);
+  });
+});
