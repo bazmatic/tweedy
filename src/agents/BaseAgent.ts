@@ -91,6 +91,75 @@ function extractPartialStringField(
   return unescapeJsonString(value);
 }
 
+const PARSER_EXCEPTION_PATTERN =
+  /^Function "([^"]*)" arguments:\n\n([\s\S]*)\n\nare not valid JSON\./;
+
+/**
+ * DeepSeek (and some other OpenAI-compatible providers) don't reliably escape
+ * control characters — e.g. a literal newline between paragraphs — inside
+ * tool-call argument strings, which is invalid per the JSON spec and makes
+ * LangChain's strict `JSON.parse` throw. Walk the raw text tracking whether
+ * we're inside a JSON string literal, and escape any raw control character
+ * found there instead of discarding the whole (often otherwise-valid) response.
+ */
+function sanitizeJsonControlCharacters(raw: string): string {
+  let result = "";
+  let inString = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString && ch === "\\") {
+      result += ch + (raw[i + 1] ?? "");
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      result += ch;
+      continue;
+    }
+    if (inString && ch.charCodeAt(0) < 0x20) {
+      switch (ch) {
+        case "\n":
+          result += "\\n";
+          break;
+        case "\r":
+          result += "\\r";
+          break;
+        case "\t":
+          result += "\\t";
+          break;
+        default:
+          result += `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`;
+      }
+      continue;
+    }
+    result += ch;
+  }
+  return result;
+}
+
+/**
+ * LangChain's tool-call JSON parser embeds the raw (invalid) arguments text
+ * directly in its thrown error message rather than exposing it as a
+ * structured field. Recover it so we can repair and re-parse instead of
+ * discarding an otherwise-good response and burning a retry attempt.
+ */
+function recoverFromJsonParseFailure<T>(
+  error: unknown,
+  schema: z.ZodType<T, z.ZodTypeDef, any>
+): T | undefined {
+  if (!(error instanceof Error)) return undefined;
+  const match = error.message.match(PARSER_EXCEPTION_PATTERN);
+  if (!match) return undefined;
+  try {
+    const sanitized = sanitizeJsonControlCharacters(match[2]);
+    const parsed = JSON.parse(sanitized);
+    return schema.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * When a tool-call response is cut off by the token limit, LangChain can't
  * parse the (invalid, unterminated) JSON arguments into `tool_calls`, so a
@@ -276,6 +345,13 @@ export abstract class BaseAgent {
         }
         return result;
       } catch (error) {
+        const recovered = recoverFromJsonParseFailure(error, schema);
+        if (recovered !== undefined) {
+          logger.warn(
+            "AI model structured-output arguments had unescaped control characters; sanitized and recovered instead of retrying"
+          );
+          return recovered;
+        }
         logger.error(
           `AI model structured-output call failed (attempt ${attempt}/${maxAttempts}):`,
           error

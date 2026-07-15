@@ -163,4 +163,46 @@ describe("callModelForStructuredOutput", () => {
     expect(invoke).toHaveBeenCalledOnce();
     expect(result).toEqual({ isComplete: true });
   });
+
+  it("recovers from a raw unescaped control character in tool-call arguments instead of retrying", async () => {
+    const schema = z.object({
+      accepted: z.boolean(),
+      revisedMessages: z.array(z.string()),
+    });
+    const rawArgs = JSON.stringify({
+      accepted: false,
+      revisedMessages: ["first paragraph\nsecond paragraph"],
+    })
+      // Simulate DeepSeek emitting a literal newline instead of an escaped
+      // \n inside the string value.
+      .replace("first paragraph\\nsecond paragraph", "first paragraph\nsecond paragraph");
+    const parseError = new Error(
+      [
+        `Function "extract" arguments:`,
+        ``,
+        rawArgs,
+        ``,
+        `are not valid JSON.`,
+        `Error: Bad control character in string literal in JSON at position 42`,
+      ].join("\n")
+    );
+    const invoke = vi.fn().mockRejectedValue(parseError);
+    const withStructuredOutput = vi.fn().mockReturnValue({ invoke });
+    vi.spyOn(AiModelFactory, "getModel").mockReturnValue({
+      withStructuredOutput,
+    } as any);
+
+    const result = await new TestAgent().callModelForStructuredOutput(
+      ModelTask.TurnReview,
+      [{ role: "user", content: "Review this turn" }],
+      schema,
+      50
+    );
+
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      accepted: false,
+      revisedMessages: ["first paragraph\nsecond paragraph"],
+    });
+  });
 });
