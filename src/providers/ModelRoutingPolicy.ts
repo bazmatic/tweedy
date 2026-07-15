@@ -30,6 +30,13 @@ const DEFAULT_TIER_BY_TASK: Record<ModelTask, ModelTier> = {
   [ModelTask.SpeechEffectTagging]: ModelTier.Economy,
 };
 
+// Speech-facing tasks get a higher temperature for more varied, natural-
+// sounding delivery; everything else keeps the provider default (undefined).
+const TEMPERATURE_BY_TASK: Partial<Record<ModelTask, number>> = {
+  [ModelTask.SpeechGeneration]: 1.2,
+  [ModelTask.Interjection]: 1.2,
+};
+
 /**
  * Assigns each known application task to a cost and quality tier. The mapping
  * is deliberately deterministic: no model call is spent deciding which model
@@ -38,5 +45,9 @@ const DEFAULT_TIER_BY_TASK: Record<ModelTask, ModelTier> = {
 export class ModelRoutingPolicy {
   resolve(task: ModelTask): ModelTier {
     return DEFAULT_TIER_BY_TASK[task];
+  }
+
+  resolveTemperature(task: ModelTask): number | undefined {
+    return TEMPERATURE_BY_TASK[task];
   }
 }

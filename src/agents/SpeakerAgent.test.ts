@@ -315,7 +315,7 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
     expect(toolNames.length).toBe(6);
   });
 
-  it("tells a solo audience guide to make the material accessible", async () => {
+  it("tells a solo audience guide they may ask, react, challenge, reframe or illustrate", async () => {
     const agent = new SpeakerAgent(makeSpeaker("s1", false));
     const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
       toolName: SpeakerAgentToolName.SPEAK,
@@ -335,8 +335,9 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
     );
 
     const prompt = (spy.mock.calls[0] as any)[1][0].content as string;
-    expect(prompt).toContain("make the material accessible and engaging");
-    expect(prompt).toContain("without claiming unsupported expertise");
+    expect(prompt).toContain(
+      "you may ask, react, challenge, reframe, illustrate or tell a prepared story"
+    );
   });
 });
 

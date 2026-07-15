@@ -42,11 +42,13 @@ import { SpeakerAgentToolName } from './speaker-tools';
 import { ModelTask } from '../providers/ModelRoutingPolicy';
 
 const WORDS_PER_MINUTE = 150;
-const MINUTES_PER_DISCUSSION_POINT = 2;
+const MINUTES_PER_DISCUSSION_POINT = 1.75;
 const MAX_PLAN_TOKENS = 5000;
 const MAX_TURN_DIRECTION_TOKENS = 600;
 const DOMINANT_SPEAKER_SHARE_THRESHOLD = 0.55;
 const MIN_SPEECHES_FOR_BALANCE_CHECK = 3;
+const CLOSING_STAGE_PROGRESS_THRESHOLD = 85;
+const MAX_LATE_STAGE_TURNS = 2;
 
 export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private script: PodcastScript;
@@ -54,6 +56,7 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private maxTurns: number;
   private maxDuration: number;
   private turnsUsed = 0;
+  private lateStageTurns = 0;
   private points: DiscussionPoint[] = [];
   private materialPreparer: IMaterialPreparer;
   private turnReviewer: ITurnReviewer;
@@ -218,12 +221,21 @@ Also provide a sequence of conversation beats. Each beat must have a listener-ce
 
       this.turnsUsed++;
       const progress = this.calculateProgress(script);
+      if (progress >= CLOSING_STAGE_PROGRESS_THRESHOLD) {
+        this.lateStageTurns++;
+      }
       // progress caps at 100 once estimated elapsed speech time reaches
       // maxDuration — treat that the same as hitting the turn ceiling so the
       // episode actually ends instead of dragging on until maxTurns (a
-      // generous safety ceiling, not the real pacing signal).
+      // generous safety ceiling, not the real pacing signal). Likewise, once
+      // the director has already nudged the speakers to wrap up once and
+      // progress is still in the late-stage zone on a later turn, force the
+      // close instead of nudging again — otherwise speakers repeatedly
+      // thank listeners and say goodbye without the episode ever ending.
       const isFinalTurn =
-        this.turnsUsed >= this.maxTurns || progress >= 100;
+        this.turnsUsed >= this.maxTurns ||
+        progress >= 100 ||
+        this.lateStageTurns >= MAX_LATE_STAGE_TURNS;
       const hasAnnouncedTimePressure = script.speeches.some(
         (speech) =>
           speech.tool === SpeakerAgentToolName.NEARLY_OUT_OF_TIME
@@ -246,7 +258,9 @@ Also provide a sequence of conversation beats. Each beat must have a listener-ce
       // Announce time pressure once. Later turns should shorten and close
       // without repeatedly telling listeners that time is running out.
       const forceNearlyOutOfTime =
-        progress >= 85 && !isFinalTurn && !hasAnnouncedTimePressure;
+        progress >= CLOSING_STAGE_PROGRESS_THRESHOLD &&
+        !isFinalTurn &&
+        !hasAnnouncedTimePressure;
 
       const history = this.getConversationHistory(script);
       const speakerDescriptions = script.speakers
@@ -288,6 +302,11 @@ Decide which speaker should talk next. Only give them direction if it's actually
         );
       const { speakerId, coveredPointIds } = result;
       const direction = result.direction ?? '';
+      if (result.moveRationale) {
+        logger.debug(
+          `Director move rationale (${result.move ?? 'unspecified'}): ${result.moveRationale}`
+        );
+      }
 
       const confirmedPointIds = await this.verifyCoveredPoints(
         coveredPointIds,
@@ -434,6 +453,7 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
     recentSpeeches: Speech[]
   ): Promise<Speech> {
     try {
+      // Step 1: run the raw speech past the editorial reviewer.
       const review = await this.turnReviewer.review(
         speech,
         turnBrief,
@@ -444,15 +464,21 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
         this.script.terminologyLedger
       );
       if (
+        // Step 2: only attempt a revision if the reviewer rejected the
+        // speech, it actually supplied replacement text, and that text
+        // clears the usability bar (not empty/truncated/degenerate).
         !review.accepted &&
         review.revisedMessage &&
         this.speechRevisionPolicy.isUsable(review.revisedMessage)
       ) {
+        // Step 3: build a candidate speech using the reviewer's revision.
         const revisedSpeech = {
           ...speech,
           message: review.revisedMessage,
           turnBrief,
         };
+        // Step 4: re-review the revision itself — the reviewer's fix isn't
+        // trusted blindly, it must independently pass the same review.
         const revisedReview = await this.turnReviewer.review(
           revisedSpeech,
           turnBrief,
@@ -463,12 +489,16 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
           this.script.terminologyLedger
         );
         if (!revisedReview.accepted) {
+          // Step 5a: the revision failed review too, so fall back to the
+          // original speech rather than ship an unvetted rewrite.
           logger.warn(
             `Turn reviewer rejected its revision for ${speech.speaker.name}; keeping the original speech`
           );
           return { ...speech, turnBrief, review };
         }
-        logger.info(
+        // Step 5b: the revision passed its own review — use it in place
+        // of the original speech, attaching the second review's verdict.
+        logger.warn(
           `Turn reviewer revised ${speech.speaker.name}'s speech for editorial fit`
         );
         return {
@@ -476,8 +506,12 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
           review: revisedReview,
         };
       }
+      // Step 6: reviewer accepted the original (or no usable revision was
+      // offered) — return the original speech annotated with its review.
       return { ...speech, turnBrief, review };
     } catch (error) {
+      // Step 7: review is best-effort — any failure (model error, etc.)
+      // falls back to the unreviewed original so the pipeline never stalls.
       logger.error('Failed to review turn; keeping original:', error);
       return { ...speech, turnBrief };
     }
@@ -629,13 +663,14 @@ Return only the ids of points that were genuinely, substantively covered.`,
     }
 
     const openPoints = this.points.filter((point) => !point.covered);
-    const openPointsList = openPoints
+    const nextPointsList = openPoints
+      .slice(0, 2)
       .map((point) => `- ${point.id}: ${point.text}`)
       .join('\n');
 
     return ` The conversation is behind pace on discussion points — ${velocity.openCount} point(s) remain with about ${velocity.remainingMinutes.toFixed(
       1
-    )} minutes left. Direct the next speaker to move faster and cover multiple remaining points concisely rather than dwelling on one:\n${openPointsList}`;
+    )} minutes left. Pick up the pace over the next few turns, but never direct a single speaker to cover more than one new point in one turn — cramming several points into one monologue is worse than falling behind. Move to the next point:\n${nextPointsList}`;
   }
 
   /**
@@ -767,7 +802,7 @@ Return only the ids of points that were genuinely, substantively covered.`,
       return ' This is the final turn of the episode — direct this speaker to deliver a closing statement that wraps up the conversation and signs off naturally.';
     }
 
-    if (progress >= 85) {
+    if (progress >= CLOSING_STAGE_PROGRESS_THRESHOLD) {
       if (hasAnnouncedTimePressure) {
         return ' The speakers have already told listeners that time is running out. Keep the remaining turns concise and move directly towards the close without mentioning the time pressure again.';
       }

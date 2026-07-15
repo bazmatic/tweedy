@@ -5,6 +5,7 @@ const SHARED_NATURAL_SPEECH_GUIDANCE = Object.freeze([
   "Use occasional pauses, ellipses, false starts and self-corrections.",
   "Use sentence fragments or a light stammer where they sound natural.",
   "Do not overuse any one speech habit or repeat the same reaction phrase.",
+  "Default to an unhurried, natural speaking pace; do not describe the delivery as brisk, rapid, quick, or fast unless the moment is genuinely urgent or excited.",
 ]);
 
 const ROLE_DELIVERY_GUIDANCE: Readonly<Record<EpistemicRole, string>> =

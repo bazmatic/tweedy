@@ -26,7 +26,8 @@ export class AiModelFactory {
   ): BaseChatModel {
     const tier = this.routingPolicy.resolve(task);
     const modelId = this.modelCatalogue.resolve(provider, tier);
-    const key = `${provider}:${modelId}:${maxTokens}`;
+    const temperature = this.routingPolicy.resolveTemperature(task);
+    const key = `${provider}:${modelId}:${maxTokens}:${temperature ?? "default"}`;
 
     if (!this.models.has(key)) {
       switch (provider) {
@@ -37,6 +38,10 @@ export class AiModelFactory {
               "ANTHROPIC_API_KEY environment variable is required"
             );
           }
+          // Anthropic's API caps temperature at 1.0 (already its default for
+          // these models, and newer models 400 on any other value), so there
+          // is no headroom to raise it further — omit it and let the model
+          // use its default rather than pass a value the API may reject.
           const model = new ChatAnthropic({
             apiKey,
             model: modelId,
@@ -60,6 +65,7 @@ export class AiModelFactory {
             apiKey,
             model: modelId,
             maxTokens,
+            temperature,
             configuration: { baseURL: "https://api.deepseek.com" },
             modelKwargs: { thinking: { type: "disabled" } },
           });
@@ -101,6 +107,7 @@ export class AiModelFactory {
             apiKey,
             model: modelId,
             maxTokens,
+            temperature,
             configuration: { baseURL: "https://api.x.ai/v1" },
           });
           this.models.set(key, model);

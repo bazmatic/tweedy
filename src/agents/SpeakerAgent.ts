@@ -126,11 +126,6 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
           turnBrief,
         };
 
-        logger.info(
-          `Speech generated for ${this.speaker.name} (${toolName})` +
-          (stopReason ? ` (stopReason=${stopReason})` : "") +
-          `: ${message.length > 100 ? `${message.substring(0, 100)}...` : message}`
-        );
         return speech;
       } catch (error) {
         attempts++;
@@ -343,13 +338,13 @@ Respond naturally as ${
     }
 
     if (epistemicRole === EpistemicRole.InformedHost) {
-      return " As an informed host, introduce only prepared material explicitly assigned to this turn, and frame it as preparation rather than specialist authority.";
+      return " As an informed host, introduce only prepared material explicitly assigned to this turn, and frame it as preparation rather than specialist authority. Be uncertain and naive. Comments can include misunderstandings. Questions can be 'dumb'.";
     }
 
     if (isSolo) {
-      return ` As the audience's guide, make the material accessible and engaging without claiming unsupported expertise.`;
+      return ` As the audience's guide, you may ask, react, challenge, reframe, illustrate or tell a prepared story, perhaps with personal details.`;
     }
-    return ` As the audience's guide, you may ask, react, challenge, reframe, illustrate or tell a prepared story. Use speak only when the assigned move (${turnBrief?.move ?? "the current move"}) calls for a substantive contribution, and never introduce unsupported facts.`;
+    return ` As the audience's guide, you may ask, react, challenge, reframe, illustrate or tell a prepared story, perhaps with personal details. Use speak only when the assigned move (${turnBrief?.move ?? "the current move"}) calls for a substantive contribution, and never introduce unsupported facts.`;
   }
 
   private async getRelevantMaterials(
@@ -406,7 +401,8 @@ Turn brief:
       brief.device ? `\n- Optional conversational device: ${brief.device}` : ""
     }
 Prepared editorial material for this turn:
-${relevantCards || "(No specific editorial cards assigned.)"}`;
+${relevantCards || "(No specific editorial cards assigned.)"}
+These cards are source facts, not a script — never copy their wording. Restate the idea in your own natural speaking voice, in character, as if explaining it live rather than reading from a paper.`;
   }
 
   private createFallbackSpeech(isFinalTurn = false): Speech {
@@ -440,7 +436,7 @@ ${relevantCards || "(No specific editorial cards assigned.)"}`;
       id: this.generateId(),
       speaker: this.speaker,
       message: randomMessage,
-      instructions: "Natural, conversational tone",
+      instructions: "Encouraging tone, as if inviting someone to continue speaking",
       voice: this.speaker.voice,
       voiceStyle: this.speaker.voiceStyle,
       timestamp: new Date(),

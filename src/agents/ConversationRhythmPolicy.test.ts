@@ -50,7 +50,8 @@ describe("ConversationRhythmPolicy", () => {
       speech(SpeakerAgentToolName.SPEAK),
     ]);
 
-    expect(recommendation?.preferredMoves).toContain(EditorialMove.Reframe);
+    expect(recommendation?.preferredMoves).toContain(EditorialMove.Question);
     expect(recommendation?.avoidedMoves).toContain(EditorialMove.Explain);
+    expect(recommendation?.avoidedMoves).toContain(EditorialMove.Reframe);
   });
 });

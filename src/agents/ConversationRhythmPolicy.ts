@@ -40,14 +40,14 @@ export class ConversationRhythmPolicy {
     ).length;
     if (substantiveRun >= 2) {
       return {
-        preferredMoves: [
-          EditorialMove.React,
-          EditorialMove.Question,
+        preferredMoves: [EditorialMove.React, EditorialMove.Question],
+        avoidedMoves: [
+          EditorialMove.Explain,
+          EditorialMove.AddContext,
           EditorialMove.Reframe,
         ],
-        avoidedMoves: [EditorialMove.Explain, EditorialMove.AddContext],
         reason:
-          "Recent turns were information-heavy; vary the rhythm with a reaction, question or reframe.",
+          "Recent turns were information-heavy; vary the rhythm with a reaction or question rather than reframing, since this heuristic has no way to tell whether the current subject has actually been discussed before.",
       };
     }
 

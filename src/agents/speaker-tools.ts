@@ -34,7 +34,7 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
     toolDescription:
       "Make a brief, emotional reaction sound or very short response (maximum 1-10 words, never more). Use for natural conversational responses like surprise, agreement, or interest. Keep it spontaneous and authentic. Don't interrupt and then ramble — that would be rude, and this tool must never turn into a mini-speech. Example: 'Hang on, so it was a mistake?'",
     styleDescription:
-      "How to deliver the interjection. Include emotional context and delivery style. Example: 'Genuine surprise, slightly higher pitch, quick delivery'",
+      "How to deliver the interjection. Include emotional context and delivery style, at a natural unhurried pace. Example: 'Genuine surprise, slightly higher pitch'",
     maxTokens: 100,
   },
   {
@@ -90,7 +90,7 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
     toolDescription:
       "Deliver a compact recap that briefly touches each of several named discussion points, instead of one idea per turn. Speak it as you normally would — full, natural sentences in your own conversational voice, not clipped notes or a bullet-point list read aloud. Use only when directed to catch up on multiple remaining points at once. Complete the recap cleanly rather than trailing off part-way through a point.",
     styleDescription:
-      "How to deliver the summary. Include pacing and tone. Example: 'Brisk, matter-of-fact pace, quick transitions between points'",
+      "How to deliver the summary. Include pacing and tone, at a natural unhurried pace. Example: 'Matter-of-fact tone, clear transitions between points'",
     maxTokens: 400,
   },
   {

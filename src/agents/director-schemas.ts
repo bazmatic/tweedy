@@ -15,11 +15,13 @@ import { logger } from "../utils/logger";
  */
 function fallbackWithWarning<T>(field: string, fallback: T) {
   return (ctx: { input: unknown }) => {
-    logger.warn(
-      `Director schema: "${field}" received unrecognised value ${JSON.stringify(
-        ctx.input
-      )}, falling back to ${JSON.stringify(fallback)}`
-    );
+    if (ctx.input !== undefined) {
+      logger.warn(
+        `Director schema: "${field}" received unrecognised value ${JSON.stringify(
+          ctx.input
+        )}, falling back to ${JSON.stringify(fallback)}`
+      );
+    }
     return fallback;
   };
 }
@@ -114,6 +116,12 @@ export function createSelectNextSpeakerSchema(speakers: Speaker[]) {
         .string()
         .optional()
         .describe("What this turn should contribute to the listener's journey."),
+      moveRationale: z
+        .string()
+        .optional()
+        .describe(
+          "One short sentence on why this specific move fits the actual conversation so far — e.g. what, concretely, is being reacted to, questioned, or reframed. Not shown to the speaker; for internal debugging only."
+        ),
       move: z
         .nativeEnum(EditorialMove)
         .optional()
