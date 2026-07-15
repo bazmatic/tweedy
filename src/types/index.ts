@@ -160,6 +160,7 @@ export enum EditorialCardKind {
   Connection = "connection",
   Takeaway = "takeaway",
   OpenQuestion = "open_question",
+  BigPicture = "big_picture",
 }
 
 export interface EvidenceRef {

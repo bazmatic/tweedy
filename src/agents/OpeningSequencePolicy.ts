@@ -1,5 +1,6 @@
 import {
   AudienceValue,
+  EditorialCard,
   EditorialMove,
   EnergyLevel,
   EpistemicRole,
@@ -57,9 +58,17 @@ export class OpeningSequencePolicy {
     if (stage === OpeningStage.Hook) {
       const host = orderedSpeakers[0];
       const goal =
-        "Open cold — before any welcome or introductions — with a short, vivid tease of the episode's subject. Do not greet listeners, name the show, introduce yourself, or introduce your co-host.";
+        "Open cold — before any welcome or introductions — with a short, vivid tease of the episode's subject. Ground it in the prepared editorial material below, not general knowledge. Do not greet listeners, name the show, introduce yourself, or introduce your co-host.";
+      const hookCard = this.pickHookCard(script.editorialCards ?? []);
 
-      return this.toOpeningTurn(host, goal, EditorialMove.Humanise, true);
+      return this.toOpeningTurn(
+        host,
+        goal,
+        EditorialMove.Humanise,
+        true,
+        hookCard ? [hookCard.id] : [],
+        hookCard ? KnowledgeSource.PreparedCard : KnowledgeSource.CommonKnowledge
+      );
     }
 
     if (stage === OpeningStage.Welcome) {
@@ -93,11 +102,17 @@ export class OpeningSequencePolicy {
     return [host, ...speakers.filter((speaker) => speaker.id !== host.id)];
   }
 
+  private pickHookCard(cards: EditorialCard[]): EditorialCard | undefined {
+    return [...cards].sort((a, b) => b.storyValue - a.storyValue)[0];
+  }
+
   private toOpeningTurn(
     speaker: Speaker,
     goal: string,
     move: EditorialMove,
-    forceColdOpen: boolean
+    forceColdOpen: boolean,
+    cardIds: string[] = [],
+    knowledgeSource: KnowledgeSource = KnowledgeSource.CommonKnowledge
   ): OpeningTurn {
     return {
       speaker,
@@ -111,10 +126,10 @@ export class OpeningSequencePolicy {
         speakerId: speaker.id,
         goal,
         move,
-        cardIds: [],
+        cardIds,
         audienceValue: AudienceValue.Connection,
         desiredEnergy: EnergyLevel.Warm,
-        knowledgeSource: KnowledgeSource.CommonKnowledge,
+        knowledgeSource,
       },
     };
   }

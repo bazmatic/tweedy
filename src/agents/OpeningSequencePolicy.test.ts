@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  EditorialCard,
+  EditorialCardKind,
+  KnowledgeSource,
   PodcastScript,
   Speaker,
   Speech,
@@ -67,6 +70,49 @@ describe("OpeningSequencePolicy", () => {
     expect(turn?.forceColdOpen).toBe(true);
     expect(turn?.direction).toContain("Open cold");
     expect(turn?.direction).toContain("Do not");
+  });
+
+  it("grounds the hook in the highest-storyValue editorial card", () => {
+    const policy = new OpeningSequencePolicy();
+    const script = makeScript();
+    const lowValueCard: EditorialCard = {
+      id: "card-low",
+      materialId: "material-1",
+      kind: EditorialCardKind.Background,
+      content: "Background detail",
+      evidence: [],
+      relatedCardIds: [],
+      tags: [],
+      keyTerms: [],
+      storyValue: 4,
+    };
+    const highValueCard: EditorialCard = {
+      id: "card-high",
+      materialId: "material-1",
+      kind: EditorialCardKind.Surprise,
+      content: "Fungi synchronise electrical spikes with each other",
+      evidence: [],
+      relatedCardIds: [],
+      tags: [],
+      keyTerms: [],
+      storyValue: 10,
+    };
+    script.editorialCards = [lowValueCard, highValueCard];
+
+    const turn = policy.nextTurn(script);
+
+    expect(turn?.turnBrief.cardIds).toEqual(["card-high"]);
+    expect(turn?.turnBrief.knowledgeSource).toBe(KnowledgeSource.PreparedCard);
+  });
+
+  it("falls back to common knowledge when no editorial cards are prepared", () => {
+    const policy = new OpeningSequencePolicy();
+    const script = makeScript();
+
+    const turn = policy.nextTurn(script);
+
+    expect(turn?.turnBrief.cardIds).toEqual([]);
+    expect(turn?.turnBrief.knowledgeSource).toBe(KnowledgeSource.CommonKnowledge);
   });
 
   it("moves to Welcome only after the hook turn has been spoken", () => {
