@@ -167,6 +167,74 @@ describe("SpeakerAgent editorial context", () => {
   });
 });
 
+describe("SpeakerAgent central analogy", () => {
+  it("injects the central analogy into the speaker prompt", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "Right, so the accounts hold the data.",
+      style: "curious",
+      stopReason: "stop",
+    });
+    const script = makeScript();
+
+    await agent.speak(
+      script.speeches,
+      script.speakers,
+      script.materials,
+      script.title,
+      script.description,
+      "Tell the story.",
+      "",
+      false,
+      false,
+      false,
+      false,
+      undefined,
+      [],
+      AudienceProfile.General,
+      undefined,
+      "accounts are USB drives"
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).toContain("accounts are USB drives");
+  });
+
+  it("asks for a callback to the analogy on the final turn", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.CLOSING_STATEMENT,
+      message: "Thanks for listening.",
+      style: "warm",
+      stopReason: "stop",
+    });
+    const script = makeScript();
+
+    await agent.speak(
+      script.speeches,
+      script.speakers,
+      script.materials,
+      script.title,
+      script.description,
+      "Wrap up.",
+      "",
+      false,
+      false,
+      false,
+      true,
+      undefined,
+      [],
+      AudienceProfile.General,
+      undefined,
+      "accounts are USB drives"
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).toContain("call back to the analogy");
+  });
+});
+
 describe("SpeakerAgent.interject tool set", () => {
   it("offers CHALLENGE alongside INTERJECT and FILLER_COMMENT", async () => {
     const lastSpeech = {

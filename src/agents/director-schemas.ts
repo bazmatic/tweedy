@@ -71,6 +71,12 @@ export const createPodcastPlanSchema = z
       .describe(
         "A listener-centred sequence balancing understanding, entertainment, insight and conversational momentum."
       ),
+    centralAnalogy: z
+      .string()
+      .optional()
+      .describe(
+        "One concrete, physical, everyday analogy for the episode's core concept (e.g. 'programs are public library terminals; accounts are USB drives you bring'). Both speakers will reuse and extend this analogy throughout the episode, so make it extensible."
+      ),
   })
   .describe("A complete editorial plan for the podcast episode.");
 

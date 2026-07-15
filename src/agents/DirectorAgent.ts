@@ -174,11 +174,13 @@ spelling.
 
 Also provide a separate list of at least ${minDiscussionPoints} concrete discussion points that must be covered during the episode (roughly one per ${MINUTES_PER_DISCUSSION_POINT} minutes of runtime) — short, discrete phrases rather than full sentences, since they'll be tracked individually as the conversation progresses.
 
-Also provide a sequence of conversation beats. Each beat must have a listener-centred purpose and goal, suitable energy, useful prepared card ids and realistic target turn count. Vary the beat purposes so the episode has shape rather than becoming a run of explanations.`,
+Also provide a sequence of conversation beats. Each beat must have a listener-centred purpose and goal, suitable energy, useful prepared card ids and realistic target turn count. Vary the beat purposes so the episode has shape rather than becoming a run of explanations.
+
+Also nominate one central analogy — a concrete, physical, everyday comparison for the episode's core concept. Choose something both speakers can return to and extend as new aspects of the topic appear, the way a good explainer keeps one metaphor alive for a whole episode.`,
         }
       ];
 
-      const { narrative, points, beats } = await this.callModelForStructuredOutput<CreatePodcastPlanInput>(
+      const { narrative, points, beats, centralAnalogy } = await this.callModelForStructuredOutput<CreatePodcastPlanInput>(
         ModelTask.EpisodePlanning,
         messages,
         createPodcastPlanSchema,
@@ -196,6 +198,7 @@ Also provide a sequence of conversation beats. Each beat must have a listener-ce
         beats,
         this.points
       );
+      this.script.centralAnalogy = centralAnalogy;
 
       logger.info(
         `Podcast plan created successfully with ${this.points.length} discussion points`

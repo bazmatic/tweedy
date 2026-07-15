@@ -350,6 +350,7 @@ export interface PodcastScript {
   knowledgeLedger?: KnowledgeLedger;
   audienceProfile?: AudienceProfile;
   terminologyLedger?: TerminologyLedger;
+  centralAnalogy?: string;
   createdAt: Date;
   updatedAt: Date;
 }

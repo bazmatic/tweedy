@@ -123,6 +123,20 @@ describe("DirectorAgent.createPodcastPlan", () => {
     expect(promptContent).not.toContain(material.content);
   });
 
+  it("stores the planned central analogy on the script", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
+      narrative: "flow",
+      points: ["p1"],
+      centralAnalogy: "accounts are USB drives",
+    });
+
+    await agent.createPodcastPlan();
+
+    expect(script.centralAnalogy).toBe("accounts are USB drives");
+  });
+
   it("assigns sequential ids to points and stores them on the script", async () => {
     const script = makeScript();
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });

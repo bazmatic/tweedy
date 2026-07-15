@@ -405,7 +405,8 @@ export class ScriptService implements IScriptService {
           turnBrief?.cardIds ?? []
         ),
         script.audienceProfile,
-        script.terminologyLedger
+        script.terminologyLedger,
+        script.centralAnalogy
       );
       this.logTurnSpeech(turn, speaker, rawSpeech);
       const speech = await directorAgent.reviewSpeech(
@@ -611,6 +612,7 @@ export class ScriptService implements IScriptService {
       audienceProfile: record.audienceProfile ?? AudienceProfile.General,
       terminologyLedger:
         record.terminologyLedger ?? this.terminologyLedgerPolicy.createLedger(),
+      centralAnalogy: record.centralAnalogy,
       createdAt: new Date(record.createdAt),
       updatedAt: new Date(record.updatedAt),
     };
@@ -632,6 +634,7 @@ export class ScriptService implements IScriptService {
       audienceProfile: script.audienceProfile ?? AudienceProfile.General,
       terminologyLedger:
         script.terminologyLedger ?? this.terminologyLedgerPolicy.createLedger(),
+      centralAnalogy: script.centralAnalogy,
     };
 
     const created = await this.scriptRepository.create(record);

@@ -77,7 +77,8 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     turnBrief?: TurnBrief,
     editorialCards: EditorialCard[] = [],
     audienceProfile = AudienceProfile.General,
-    terminologyLedger = EMPTY_TERMINOLOGY_LEDGER
+    terminologyLedger = EMPTY_TERMINOLOGY_LEDGER,
+    centralAnalogy?: string
   ): Promise<Speech> {
     let attempts = 0;
 
@@ -104,7 +105,8 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
             turnBrief,
             editorialCards,
             audienceProfile,
-            terminologyLedger
+            terminologyLedger,
+            centralAnalogy
           );
 
         const requiresCompleteDelivery =
@@ -206,7 +208,8 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
     turnBrief?: TurnBrief,
     editorialCards: EditorialCard[] = [],
     audienceProfile = AudienceProfile.General,
-    terminologyLedger = EMPTY_TERMINOLOGY_LEDGER
+    terminologyLedger = EMPTY_TERMINOLOGY_LEDGER,
+    centralAnalogy?: string
   ): Promise<{
     toolName: SpeakerAgentToolName;
     message: string;
@@ -226,6 +229,9 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
       turnBrief,
       editorialCards
     );
+    const analogySection = centralAnalogy
+      ? `\n\nThe episode's running analogy: ${centralAnalogy}\nKeep this analogy alive — return to it, extend it to new aspects of the topic, and use its vocabulary naturally rather than inventing competing metaphors.${isFinalTurn ? " In this closing, call back to the analogy one final time." : ""}`
+      : "";
 
     const coHosts = speakers.filter((s) => s.id !== this.speaker.id);
     const coHostNames = this.formatNameList(coHosts.map((s) => s.name));
@@ -275,7 +281,7 @@ Podcast Context:
 Conversation History (speaker: message [tool used]):
 ${conversationHistory}${materialsSection}
 
-${direction ? `Director's guidance: ${direction}` : "No specific director's guidance for this turn — continue the conversation naturally in character."}${editorialSection}${
+${direction ? `Director's guidance: ${direction}` : "No specific director's guidance for this turn — continue the conversation naturally in character."}${editorialSection}${analogySection}${
           timeStatus && !isFinalTurn
             ? forceNearlyOutOfTime
               ? `\n\nTime status: ${timeStatus} You must use the nearly_out_of_time tool this turn to tell your co-hosts you're running low on time.`

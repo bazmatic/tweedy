@@ -53,6 +53,16 @@ describe("director structured-output schemas", () => {
     ).toThrow();
   });
 
+  it("accepts a central analogy in the plan", () => {
+    const parsed = createPodcastPlanSchema.parse({
+      points: ["p"],
+      narrative: "n",
+      centralAnalogy:
+        "Solana programs are a public library computer terminal; accounts are USB drives you bring.",
+    });
+    expect(parsed.centralAnalogy).toContain("USB");
+  });
+
   it("validates coverage verification and conclusion decisions", () => {
     expect(
       verifyCoveredPointsSchema.parse({ confirmedPointIds: ["p1"] })
