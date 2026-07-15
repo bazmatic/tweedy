@@ -137,6 +137,7 @@ describe("SpeakerAgent editorial context", () => {
           evidence: [],
           relatedCardIds: [],
           tags: [],
+          keyTerms: [],
         },
       ],
       AudienceProfile.General,

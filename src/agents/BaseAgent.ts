@@ -247,26 +247,53 @@ export abstract class BaseAgent {
   >(
     task: ModelTask,
     messages: LlmMessage[],
-    schema: z.ZodType<T>,
+    schema: z.ZodType<T, z.ZodTypeDef, any>,
     maxTokens: number = 200
   ): Promise<T> {
-    try {
-      const model = AiModelFactory.getModel(
-        appConfig.defaultAiProvider,
-        task,
-        maxTokens
-      );
-      return await model
-        .withStructuredOutput<T>(schema, {
-          method: structuredOutputMethodPolicy.resolve(
-            appConfig.defaultAiProvider
-          ),
-        })
-        .invoke(toBaseMessages(messages));
-    } catch (error) {
-      logger.error("AI model structured-output call failed:", error);
-      throw error;
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const model = AiModelFactory.getModel(
+          appConfig.defaultAiProvider,
+          task,
+          maxTokens
+        );
+        const result = await model
+          .withStructuredOutput<T>(schema, {
+            method: structuredOutputMethodPolicy.resolve(
+              appConfig.defaultAiProvider
+            ),
+          })
+          .invoke(toBaseMessages(messages));
+        if (result === undefined) {
+          // The LangChain tool-call parser silently resolves to undefined
+          // (rather than throwing) when the model made zero matching tool
+          // calls — surface that as a real error instead of letting callers
+          // crash on an unexpected undefined.
+          throw new Error(
+            `AI model for task "${task}" did not produce the required tool call`
+          );
+        }
+        return result;
+      } catch (error) {
+        logger.error(
+          `AI model structured-output call failed (attempt ${attempt}/${maxAttempts}):`,
+          error
+        );
+        if (attempt === maxAttempts) {
+          throw error;
+        }
+        // This call is observably flaky — the model occasionally returns zero
+        // tool calls with no other signal — so a short backoff-and-retry here
+        // saves the many turns of already-completed script generation that
+        // would otherwise be discarded on a single bad response.
+        await new Promise((resolve) =>
+          setTimeout(resolve, attempt * 1000)
+        );
+      }
     }
+    // Unreachable: the loop always returns or throws on its final attempt.
+    throw new Error(`AI model for task "${task}" failed after retries`);
   }
 
   protected logAgentAction(action: string, details?: any): void {

@@ -15,7 +15,10 @@ export enum RoleRepairReason {
   InaccessibleKnowledge = "inaccessible_knowledge",
   NoEligibleSpeaker = "no_eligible_speaker",
   SelfTargetingDirection = "self_targeting_direction",
+  UnexplainedTerminology = "unexplained_terminology",
 }
+
+const TERM_BOUNDARY = /[^a-z0-9]+/g;
 
 enum SelfTargetingCue {
   Ask = "ask ",
@@ -138,6 +141,28 @@ export class SpeakerRolePolicy {
         },
         repaired: true,
         repairReason: RoleRepairReason.InaccessibleKnowledge,
+      };
+    }
+
+    const unexplainedTerm = this.findUnexplainedTerm(
+      script,
+      proposedSpeaker,
+      turnBrief,
+      direction
+    );
+    if (unexplainedTerm) {
+      return {
+        speaker: proposedSpeaker,
+        direction: this.buildClarificationDirection(script, unexplainedTerm),
+        turnBrief: {
+          ...turnBrief,
+          goal: `Ask for a plain-language explanation of "${unexplainedTerm}".`,
+          move: EditorialMove.Question,
+          cardIds: [],
+          knowledgeSource: KnowledgeSource.Conversation,
+        },
+        repaired: true,
+        repairReason: RoleRepairReason.UnexplainedTerminology,
       };
     }
 
@@ -296,5 +321,73 @@ export class SpeakerRolePolicy {
           turnBrief.cardIds
         )
     );
+  }
+
+  /**
+   * A non-expert speaker's direction/goal is free text the director writes
+   * itself, unconstrained by cardIds — so it can name a card's key term
+   * directly (e.g. "ask Ada about the complexity score") even when the
+   * speaker has no access to that card. Catch that deterministically by
+   * checking the assigned text against every prepared card's keyTerms, since
+   * "is this word jargon" isn't otherwise something we can judge in code.
+   * Returns the term's original (un-normalised) form so it can be quoted
+   * back naturally in the repaired direction.
+   */
+  private findUnexplainedTerm(
+    script: PodcastScript,
+    speaker: Speaker,
+    turnBrief: TurnBrief,
+    direction: string
+  ): string | undefined {
+    const profile = this.roleProfileResolver.resolve(speaker);
+    if (profile.epistemicRole === EpistemicRole.Expert) return undefined;
+
+    const cards = script.editorialCards ?? [];
+    if (cards.length === 0) return undefined;
+
+    const explainedTerms = new Set(
+      (script.terminologyLedger?.explainedTerms ?? []).map((entry) =>
+        this.normaliseTerm(entry.term)
+      )
+    );
+    const assignmentText = ` ${this.normaliseTerm(
+      `${turnBrief.goal} ${direction}`
+    )} `;
+
+    for (const card of cards) {
+      for (const term of card.keyTerms ?? []) {
+        const normalisedTerm = this.normaliseTerm(term);
+        if (
+          normalisedTerm.length > 0 &&
+          !explainedTerms.has(normalisedTerm) &&
+          assignmentText.includes(` ${normalisedTerm} `)
+        ) {
+          return term;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Rather than discarding the term the guide stumbled on, have them ask
+   * the expert to define it — a natural, curiosity-driven turn instead of a
+   * generic redirect that loses the thread.
+   */
+  private buildClarificationDirection(
+    script: PodcastScript,
+    term: string
+  ): string {
+    const expert = script.speakers.find(
+      (speaker) =>
+        this.roleProfileResolver.resolve(speaker).epistemicRole ===
+        EpistemicRole.Expert
+    );
+    const askee = expert ? expert.name : "the expert";
+    return `You've just heard the term "${term}" but don't know what it means yet — ask ${askee} to explain it in plain language before the conversation continues.`;
+  }
+
+  private normaliseTerm(value: string): string {
+    return value.toLowerCase().replace(TERM_BOUNDARY, " ").trim();
   }
 }

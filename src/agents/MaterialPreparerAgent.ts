@@ -32,7 +32,7 @@ export class MaterialPreparerAgent
 
 The podcast should help listeners understand the subject and enjoy the conversation. Insight is valuable, but this is not an analysis or science application. Extract 6-12 varied editorial cards appropriate to this particular material: essential points, background, clear explanations, examples, stories, characters, quotes, vivid details, surprises, humour opportunities, tensions, different perspectives, connections, takeaways and open questions.
 
-Do not force every card kind. Prefer concrete, memorable and useful material. Keep factual cards faithful to the source, attach short supporting excerpts, and distinguish the source's claims from possible editorial questions. Use Australian/British spelling.
+Do not force every card kind. Prefer concrete, memorable and useful material. Keep factual cards faithful to the source, attach short supporting excerpts, and distinguish the source's claims from possible editorial questions. For each card, list any technical or jargon terms in keyTerms that a general listener would need explained before the card's content could be spoken aloud — leave it empty for cards that introduce no new terminology. Use Australian/British spelling.
 
 Title: ${material.title}
 
@@ -75,6 +75,7 @@ ${material.content}`,
       })),
       relatedCardIds: [],
       tags: card.tags ?? [],
+      keyTerms: card.keyTerms ?? [],
     }));
 
     return {
@@ -98,6 +99,7 @@ ${material.content}`,
           evidence: [{ materialId: material.id, excerpt }],
           relatedCardIds: [],
           tags: [],
+          keyTerms: [],
         },
       ],
     };

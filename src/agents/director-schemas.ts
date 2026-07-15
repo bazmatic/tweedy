@@ -7,10 +7,27 @@ import {
   EnergyLevel,
   Speaker,
 } from "../types";
+import { logger } from "../utils/logger";
+
+/**
+ * Logs and falls back when the model returns an enum field that doesn't
+ * match any known value, instead of silently swallowing the mismatch.
+ */
+function fallbackWithWarning<T>(field: string, fallback: T) {
+  return (ctx: { input: unknown }) => {
+    logger.warn(
+      `Director schema: "${field}" received unrecognised value ${JSON.stringify(
+        ctx.input
+      )}, falling back to ${JSON.stringify(fallback)}`
+    );
+    return fallback;
+  };
+}
 
 export const conversationBeatSchema = z.object({
   purpose: z
     .nativeEnum(BeatPurpose)
+    .catch(fallbackWithWarning("purpose", BeatPurpose.Explore))
     .describe("The listener-centred purpose of this conversation beat."),
   goal: z.string().describe("What this beat should achieve for the listener."),
   cardIds: z
@@ -24,6 +41,7 @@ export const conversationBeatSchema = z.object({
   desiredEnergy: z
     .nativeEnum(EnergyLevel)
     .optional()
+    .catch(fallbackWithWarning("desiredEnergy", EnergyLevel.Curious))
     .describe("The desired energy level for the beat."),
   targetTurns: z
     .number()
@@ -72,8 +90,9 @@ export function createSelectNextSpeakerSchema(speakers: Speaker[]) {
         ),
       direction: z
         .string()
+        .optional()
         .describe(
-          "Clear, specific, conversational direction for what this speaker should say next."
+          "An optional brief goal or topic for this speaker's next turn — what they should address, not what they should say. Leave this empty when the conversation is flowing well and the speaker doesn't need steering; only give direction when it's actually needed to move things forward, close a point, or redirect. Never write out what they should say — leave wording, phrasing and angle to the speaker."
         ),
       coveredPointIds: z
         .array(z.string())
@@ -98,6 +117,7 @@ export function createSelectNextSpeakerSchema(speakers: Speaker[]) {
       move: z
         .nativeEnum(EditorialMove)
         .optional()
+        .catch(fallbackWithWarning("move", EditorialMove.Explain))
         .describe("The subject-neutral editorial move for this turn."),
       cardIds: z
         .array(z.string())
@@ -106,14 +126,17 @@ export function createSelectNextSpeakerSchema(speakers: Speaker[]) {
       audienceValue: z
         .nativeEnum(AudienceValue)
         .optional()
+        .catch(fallbackWithWarning("audienceValue", AudienceValue.Understanding))
         .describe("The primary value this turn gives the audience."),
       desiredEnergy: z
         .nativeEnum(EnergyLevel)
         .optional()
+        .catch(fallbackWithWarning("desiredEnergy", EnergyLevel.Curious))
         .describe("The desired energy level for this turn."),
       device: z
         .nativeEnum(ConversationalDevice)
         .optional()
+        .catch(fallbackWithWarning("device", undefined))
         .describe(
           "An optional conversational device, only when it fits naturally."
         ),

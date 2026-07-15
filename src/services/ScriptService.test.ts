@@ -495,6 +495,7 @@ describe("ScriptService discussionPoints persistence", () => {
         evidence: [],
         relatedCardIds: [],
         tags: [],
+        keyTerms: [],
       },
     ];
     script.conversationBeats = [

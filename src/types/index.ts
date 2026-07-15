@@ -28,6 +28,8 @@ export enum VocalProviderName {
 export enum AiProviderName {
   Anthropic = "anthropic",
   DeepSeek = "deepseek",
+  OpenAI = "openai",
+  Grok = "grok",
 }
 
 export enum ResearchProviderName {
@@ -215,6 +217,8 @@ export interface EditorialCard {
   evidence: EvidenceRef[];
   relatedCardIds: string[];
   tags: string[];
+  /** Technical/jargon terms this card would introduce, if spoken aloud. */
+  keyTerms: string[];
 }
 
 export interface PreparedMaterial {

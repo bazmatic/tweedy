@@ -19,4 +19,16 @@ describe("StructuredOutputMethodPolicy", () => {
       StructuredOutputMethod.FunctionCalling
     );
   });
+
+  it("uses LangChain's compatible function-calling strategy for OpenAI", () => {
+    expect(policy.resolve(AiProviderName.OpenAI)).toBe(
+      StructuredOutputMethod.FunctionCalling
+    );
+  });
+
+  it("uses LangChain's compatible function-calling strategy for Grok", () => {
+    expect(policy.resolve(AiProviderName.Grok)).toBe(
+      StructuredOutputMethod.FunctionCalling
+    );
+  });
 });

@@ -127,6 +127,7 @@ Judge the turn according to what it is trying to do. Do not demand analysis from
       revisedMessage,
       accepted:
         judgement.accepted &&
+        judgement.addsVariety &&
         judgement.roleConsistent &&
         judgement.knowledgeConsistent &&
         judgement.audienceAccessible &&

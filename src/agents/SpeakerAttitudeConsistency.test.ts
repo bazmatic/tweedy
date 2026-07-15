@@ -45,6 +45,7 @@ function makeCard(id: string): EditorialCard {
     evidence: [],
     relatedCardIds: [],
     tags: [],
+    keyTerms: [],
   };
 }
 

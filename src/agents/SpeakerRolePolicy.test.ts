@@ -104,6 +104,7 @@ describe("SpeakerRolePolicy", () => {
         evidence: [],
         relatedCardIds: [],
         tags: [],
+        keyTerms: [],
       },
     ];
 
@@ -134,6 +135,78 @@ describe("SpeakerRolePolicy", () => {
       guide,
       makeBrief(guide.id, EditorialMove.Summarise),
       "Summarise the result."
+    );
+
+    expect(result.speaker.id).toBe(guide.id);
+    expect(result.repaired).toBe(false);
+  });
+
+  it("redirects a guide's direction that names an unexplained key term", () => {
+    const script = makeScript(expert, guide);
+    script.editorialCards = [
+      {
+        id: "card-1",
+        materialId: "material-1",
+        kind: EditorialCardKind.EssentialPoint,
+        content: "Fungal spikes are scored for structural complexity.",
+        evidence: [],
+        relatedCardIds: [],
+        tags: [],
+        keyTerms: ["complexity score"],
+      },
+    ];
+    const brief = makeBrief(guide.id, EditorialMove.Question);
+    brief.goal = "Ask about the complexity score.";
+    brief.cardIds = [];
+
+    const result = policy.repairAssignment(
+      script,
+      guide,
+      brief,
+      "Ask Ada what the complexity score actually measures."
+    );
+
+    expect(result.speaker.id).toBe(guide.id);
+    expect(result.repaired).toBe(true);
+    expect(result.repairReason).toBe(RoleRepairReason.UnexplainedTerminology);
+    expect(result.direction).toContain('"complexity score"');
+    expect(result.direction).toContain(`ask ${expert.name}`);
+    expect(result.turnBrief.move).toBe(EditorialMove.Question);
+  });
+
+  it("allows a guide's direction to name a key term once it has been explained aloud", () => {
+    const script = makeScript(expert, guide);
+    script.editorialCards = [
+      {
+        id: "card-1",
+        materialId: "material-1",
+        kind: EditorialCardKind.EssentialPoint,
+        content: "Fungal spikes are scored for structural complexity.",
+        evidence: [],
+        relatedCardIds: [],
+        tags: [],
+        keyTerms: ["complexity score"],
+      },
+    ];
+    script.terminologyLedger = {
+      explainedTerms: [
+        {
+          term: "complexity score",
+          plainLanguageMeaning: "A measure of pattern variety in the signal.",
+          explainedBySpeakerId: expert.id,
+          explainedAtTurn: 1,
+        },
+      ],
+    };
+    const brief = makeBrief(guide.id, EditorialMove.Question);
+    brief.goal = "Ask a follow-up about the complexity score.";
+    brief.cardIds = [];
+
+    const result = policy.repairAssignment(
+      script,
+      guide,
+      brief,
+      "Ask Ada a follow-up about the complexity score."
     );
 
     expect(result.speaker.id).toBe(guide.id);

@@ -20,7 +20,6 @@ export function computeClipOffsets(clips: ClipTiming[]): number[] {
     const previousSpeechEnd = offsets[i - 1] + previous.speechEndSeconds;
 
     if (clips[i].isInterjection) {
-      console.log("INTERJECTION");
       offsets.push(Math.max(0, previousSpeechEnd - OVERLAP_SECONDS));
     } else {
       offsets.push(previousSpeechEnd + GAP_SECONDS);

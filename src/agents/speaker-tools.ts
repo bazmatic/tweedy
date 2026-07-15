@@ -48,7 +48,7 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.FILLER_COMMENT,
     toolDescription:
-      "Use a very brief acknowledgment phrase of 1-3 words to show active listening and maintain conversation flow. Keep these responses minimal and natural, using common conversational fillers. Example: 'I see', 'Right', 'Got it', 'Makes sense', 'Interesting', etc.",
+      "Use a very brief reaction of 1-3 words to show active, warm listening and maintain conversation flow. This is a human reacting with genuine interest or encouragement, not a status update — never a cold acknowledgment of receipt like 'Noted', 'Got it', or 'Understood'. Favor reactions that convey curiosity, warmth, or being impressed. Example: 'Oh, wow', 'Hm, interesting', 'Oh, I see', 'No way', 'Love that', etc.",
     styleDescription:
       "How to deliver the filler comment. Include timing, tone, and emphasis. Example: 'Pause slightly before speaking, use a thoughtful tone, emphasize \"perspective\"'",
     maxTokens: 100,
@@ -88,7 +88,7 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.SUMMARIZE,
     toolDescription:
-      "Deliver a compact recap that briefly touches each of several named discussion points, one short clause per point, instead of one idea per turn. Use only when directed to catch up on multiple remaining points at once. Complete the recap cleanly rather than trailing off part-way through a point.",
+      "Deliver a compact recap that briefly touches each of several named discussion points, instead of one idea per turn. Speak it as you normally would — full, natural sentences in your own conversational voice, not clipped notes or a bullet-point list read aloud. Use only when directed to catch up on multiple remaining points at once. Complete the recap cleanly rather than trailing off part-way through a point.",
     styleDescription:
       "How to deliver the summary. Include pacing and tone. Example: 'Brisk, matter-of-fact pace, quick transitions between points'",
     maxTokens: 400,

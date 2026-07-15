@@ -67,6 +67,10 @@ export function createSpeakerCommands(): Command {
     .option("-v, --voice-id <voiceId>", "Voice ID to use")
     .option("-s, --voice-style <style>", "Voice style/instructions")
     .option(
+      "-m, --mannerisms <mannerisms>",
+      "Example filler phrases/verbal tics (e.g. 'Oh, wow; Huh, interesting')"
+    )
+    .option(
       "-a, --appearance <description>",
       "Physical appearance description, for consistent image generation downstream (e.g. 'Woman in her 40s, curly red hair, glasses, olive cardigan')"
     )
@@ -92,6 +96,7 @@ export function createSpeakerCommands(): Command {
           personality: options.personality,
           voiceId: options.voiceId,
           voiceStyle: options.voiceStyle || "Natural conversational tone",
+          mannerisms: options.mannerisms,
           physicalAppearance: options.appearance,
           isExpert: epistemicRole === EpistemicRole.Expert,
           roleProfile: roleProfileFactory.create(epistemicRole),
@@ -111,6 +116,10 @@ export function createSpeakerCommands(): Command {
     .option("-v, --voice-id <voiceId>", "New voice ID")
     .option("-s, --voice-style <style>", "New voice style")
     .option(
+      "-m, --mannerisms <mannerisms>",
+      "New example filler phrases/verbal tics"
+    )
+    .option(
       "-a, --appearance <description>",
       "New physical appearance description"
     )
@@ -128,6 +137,7 @@ export function createSpeakerCommands(): Command {
         if (options.personality) updateData.personality = options.personality;
         if (options.voiceId) updateData.voiceId = options.voiceId;
         if (options.voiceStyle) updateData.voiceStyle = options.voiceStyle;
+        if (options.mannerisms) updateData.mannerisms = options.mannerisms;
         if (options.appearance) updateData.physicalAppearance = options.appearance;
         if (options.role) {
           const epistemicRole = parseEpistemicRole(options.role);

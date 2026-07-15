@@ -2,8 +2,17 @@ import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatOpenAI } from "@langchain/openai";
 import { AiProviderName } from "../types";
-import { ModelRoutingPolicy, ModelTask } from "./ModelRoutingPolicy";
+import { ModelRoutingPolicy, ModelTask, ModelTier } from "./ModelRoutingPolicy";
 import { ProviderModelCatalogue } from "./ProviderModelCatalogue";
+
+// Reasoning tokens are drawn from the same budget as visible output for
+// OpenAI's reasoning models, so maxTokens (sized to enforce brevity in the
+// visible response) needs extra headroom on top for the model to reason in,
+// or it can return truncated or missing output. Premium tasks reason at
+// "medium" effort (see below) and burn through more reasoning tokens than
+// "minimal", so they get a larger buffer.
+const OPENAI_REASONING_TOKEN_BUFFER = 500;
+const OPENAI_PREMIUM_REASONING_TOKEN_BUFFER = 1500;
 
 export class AiModelFactory {
   private static models: Map<string, BaseChatModel> = new Map();
@@ -53,6 +62,46 @@ export class AiModelFactory {
             maxTokens,
             configuration: { baseURL: "https://api.deepseek.com" },
             modelKwargs: { thinking: { type: "disabled" } },
+          });
+          this.models.set(key, model);
+          break;
+        }
+        case AiProviderName.OpenAI: {
+          const apiKey = process.env.OPENAI_API_KEY;
+          if (!apiKey) {
+            throw new Error(
+              "OPENAI_API_KEY environment variable is required"
+            );
+          }
+          // gpt-5 models reason by default; effort is kept at "minimal" for
+          // economy/balanced tasks since those are short turns that don't
+          // need deep reasoning, but premium tasks get more room to reason.
+          // The API call still needs OPENAI_REASONING_TOKEN_BUFFER on top of
+          // maxTokens for that reasoning (see constant above).
+          const isPremium = tier === ModelTier.Premium;
+          const model = new ChatOpenAI({
+            apiKey,
+            model: modelId,
+            maxTokens:
+              maxTokens +
+              (isPremium
+                ? OPENAI_PREMIUM_REASONING_TOKEN_BUFFER
+                : OPENAI_REASONING_TOKEN_BUFFER),
+            reasoning: { effort: isPremium ? "medium" : "minimal" },
+          });
+          this.models.set(key, model);
+          break;
+        }
+        case AiProviderName.Grok: {
+          const apiKey = process.env.XAI_API_KEY;
+          if (!apiKey) {
+            throw new Error("XAI_API_KEY environment variable is required");
+          }
+          const model = new ChatOpenAI({
+            apiKey,
+            model: modelId,
+            maxTokens,
+            configuration: { baseURL: "https://api.x.ai/v1" },
           });
           this.models.set(key, model);
           break;

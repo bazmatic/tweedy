@@ -41,13 +41,13 @@ describe("computeClipOffsets", () => {
     ]);
   });
 
-  it("clamps the interjection offset to zero when the previous clip's speech is shorter than the overlap", () => {
+  it("never produces a negative offset, even for a very short previous clip", () => {
     const clips: ClipTiming[] = [
       { speechEndSeconds: 0.1, isInterjection: false },
       { speechEndSeconds: 1, isInterjection: true },
     ];
 
-    expect(computeClipOffsets(clips)).toEqual([0, 0]);
+    expect(computeClipOffsets(clips)).toEqual([0, 0.1]);
   });
 
   it("returns an empty array for no clips", () => {

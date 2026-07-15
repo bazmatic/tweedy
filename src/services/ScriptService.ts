@@ -6,9 +6,11 @@ import {
   PodcastMaterial,
   Speech,
   AudienceProfile,
+  BeatPurpose,
   ScriptEditPlan,
   ScriptEditSummary,
   ScriptEditTurnAction,
+  TurnBrief,
 } from "../types";
 import {
   ScriptRepository,
@@ -26,7 +28,7 @@ import {
 import { logger } from "../utils/logger";
 import { shouldInterject } from "./interjection-policy";
 import { RAGService } from "../rag";
-import { OpeningSequencePolicy } from "../agents/OpeningSequencePolicy";
+import { OpeningSequencePolicy, OpeningTurn } from "../agents/OpeningSequencePolicy";
 import { KnowledgeLedgerPolicy } from "../agents/KnowledgeLedgerPolicy";
 import { TerminologyLedgerPolicy } from "../agents/TerminologyLedgerPolicy";
 import {
@@ -375,6 +377,7 @@ export class ScriptService implements IScriptService {
 
       const { speaker, direction, timeStatus, forceNearlyOutOfTime, requestSummary, isFinalTurn, turnBrief } =
         openingTurn ?? await directorAgent.chooseNextSpeaker(script);
+      //this.logTurn(turn, params, speaker, openingTurn, isFinalTurn, forceNearlyOutOfTime, timeStatus, direction, turnBrief);
       const speakerAgent = new SpeakerAgent(speaker, this.ragService);
 
       const rawSpeech = await speakerAgent.speak(
@@ -398,6 +401,7 @@ export class ScriptService implements IScriptService {
         script.audienceProfile,
         script.terminologyLedger
       );
+      this.logTurnSpeech(turn, speaker, rawSpeech);
       const speech = await directorAgent.reviewSpeech(
         rawSpeech,
         direction,
@@ -405,6 +409,11 @@ export class ScriptService implements IScriptService {
         script.editorialCards ?? [],
         script.speeches
       );
+      if (speech.review) {
+        logger.info(
+          `Turn ${turn + 1}: director review for ${speech.speaker.name}: ${JSON.stringify(speech.review)}`
+        );
+      }
       if (
         this.speechRepetitionPolicy.isRepetition(speech, script.speeches)
       ) {
@@ -416,6 +425,16 @@ export class ScriptService implements IScriptService {
       this.knowledgeLedgerPolicy.recordAcceptedTurn(script, speech);
       this.terminologyLedgerPolicy.recordAcceptedTurn(script, speech);
       await this.persistSpeech(script, speech);
+
+      // The enforced opening sequence (welcome + round-robin hellos) covers
+      // the same editorial ground as the plan's Welcome/Hook beats, but
+      // doesn't go through the director's coveredBeatIds bookkeeping. Mark
+      // those beats covered once the opening sequence finishes so the
+      // director doesn't see them as still-open and re-assign the welcome
+      // to another speaker.
+      if (openingTurn && openingSequence.nextTurn(script) === null) {
+        this.markOpeningBeatsCovered(script);
+      }
 
       // If that turn ran long — or was cut off by the token limit — let a
       // different speaker chime in with a quick reaction before the director
@@ -440,6 +459,9 @@ export class ScriptService implements IScriptService {
           this.ragService
         );
         const interjection = await interjectionAgent.interject(script.speeches[script.speeches.length - 1]);
+        logger.info(
+          `Turn ${turn + 1}: ${interjector.name} interjected via ${interjection.tool}: "${interjection.message}"`
+        );
         await this.persistSpeech(script, interjection);
       }
 
@@ -452,6 +474,46 @@ export class ScriptService implements IScriptService {
     }
 
     this.logUncoveredPoints(script);
+  }
+
+  private markOpeningBeatsCovered(script: PodcastScript): void {
+    for (const beat of script.conversationBeats ?? []) {
+      if (
+        !beat.covered &&
+        (beat.purpose === BeatPurpose.Welcome ||
+          beat.purpose === BeatPurpose.Hook)
+      ) {
+        beat.covered = true;
+        beat.coveredAtTurn = script.speeches.length;
+      }
+    }
+  }
+
+  private logTurnSpeech(turn: number, speaker: Speaker, rawSpeech: Speech) {
+    logger.info(
+      `Turn ${turn + 1}: ${speaker.name} spoke via ${rawSpeech.tool}` +
+      (rawSpeech.stopReason ? ` (stopReason=${rawSpeech.stopReason})` : "") +
+      `: "${rawSpeech.message}"`
+    );
+  }
+
+  private logTurn(turn: number, params: GenerateScriptParams, speaker: Speaker, openingTurn: OpeningTurn | null, isFinalTurn: boolean, forceNearlyOutOfTime: boolean, timeStatus: string, direction: string, turnBrief: TurnBrief) {
+    const flags = [
+      openingTurn ? "opening sequence" : null,
+      isFinalTurn ? "final turn" : null,
+      forceNearlyOutOfTime ? "nearly out of time" : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    const lines = [
+      `Turn ${turn + 1}/${params.maxTurns}: ${speaker.name} selected${flags ? ` (${flags})` : ""}`,
+      timeStatus ? `  timeStatus: ${JSON.stringify(timeStatus)}` : null,
+      direction ? `  direction: "${direction}"` : null,
+      turnBrief ? `  turnBrief: ${JSON.stringify(turnBrief)}` : null,
+    ].filter(Boolean);
+
+    logger.info(lines.join("\n"));
   }
 
   private logUncoveredPoints(script: PodcastScript): void {

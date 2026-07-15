@@ -15,6 +15,12 @@ export const preparedCardSchema = z.object({
     .array(z.string())
     .optional()
     .describe("Optional subject-neutral retrieval tags."),
+  keyTerms: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Technical or jargon terms a listener would need explained if this card were spoken aloud. Empty if the card introduces no new terminology."
+    ),
 });
 
 export type PreparedCardInput = z.infer<typeof preparedCardSchema>;
@@ -74,7 +80,7 @@ export const reviewTurnSchema = z
       .array(z.string())
       .max(1)
       .describe(
-        "Complete corrected speech: empty when accepted, otherwise exactly one item."
+        "Complete corrected speech: empty when accepted, otherwise exactly one item. Natural spoken dialogue only — never include card ids, citation markers, or any other bookkeeping text; report card and term usage only via introducedCardIds and introducedTerms."
       ),
   })
   .describe("An editorial and role-consistency review of one podcast turn.");

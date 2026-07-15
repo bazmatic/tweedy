@@ -263,7 +263,7 @@ ${speakerDescriptions}
 Conversation so far (each line tagged with the tool used to deliver it — "speak" is substantive content; "interject", "filler_comment", "one_liner", and "short_question" are brief reactions, not real answers or new points):
 ${history || '(nothing said yet — this is the opening of the episode)'}
 
-Decide which speaker should talk next and give them clear direction. Also choose a subject-neutral editorial move, the primary audience value, desired energy, relevant beat and prepared card ids. Every turn should help the listener understand, entertain them, reveal something meaningful, create connection, or move the conversation forwards; it need not do all of these. Don't force analysis onto a story or humour onto an explanation. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. A challenge creates a right of reply: direct the speaker who was challenged to respond before the challenger speaks again. Respect the chronological order shown above; a remark made before a challenge cannot be described as a response to that challenge. On the opening of the episode (nothing said yet), this must be the interviewer, and the direction must have them deliver a warm, friendly welcome to listeners — greeting them, naming the episode ("${this.script.title}"), and introducing the speakers by name — before moving into substantive content. Don't repeat this welcome on later turns. Mark genuinely completed beat ids in coveredBeatIds. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack). Use Australian/British spelling.${this.getPacingNote(
+Decide which speaker should talk next. Only give them direction if it's actually needed — a brief goal or topic, not a script. If the conversation is flowing well and the next speaker can naturally carry it forward, leave direction empty rather than inventing something for them to say. When you do give direction, tell them what to address, not what to say; leave the wording, phrasing and specific angle to the speaker so they sound like themselves rather than reciting your lines. Also choose a subject-neutral editorial move, the primary audience value, desired energy, relevant beat and prepared card ids. Every turn should help the listener understand, entertain them, reveal something meaningful, create connection, or move the conversation forwards; it need not do all of these. Don't force analysis onto a story or humour onto an explanation. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. A challenge creates a right of reply: direct the speaker who was challenged to respond before the challenger speaks again. Respect the chronological order shown above; a remark made before a challenge cannot be described as a response to that challenge. The episode's welcome and speaker introductions are already handled before you are ever consulted — never direct anyone to (re)welcome listeners or (re)introduce themselves or a co-host, no matter how far into the episode this is. Mark genuinely completed beat ids in coveredBeatIds. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack). Use Australian/British spelling.${this.getPacingNote(
             script
           )}${wrapUpNote}${velocityNote}${balanceNote}${rhythmNote}${this.speakerRolePolicy.buildDirectorGuidance(script)}${this.audienceAccessibilityPolicy.buildDirectorGuidance(script.audienceProfile ?? AudienceProfile.General)}`
         }
@@ -276,7 +276,8 @@ Decide which speaker should talk next and give them clear direction. Also choose
           createSelectNextSpeakerSchema(script.speakers),
           MAX_TURN_DIRECTION_TOKENS
         );
-      const { speakerId, direction, coveredPointIds } = result;
+      const { speakerId, coveredPointIds } = result;
+      const direction = result.direction ?? '';
 
       const confirmedPointIds = await this.verifyCoveredPoints(
         coveredPointIds,
@@ -394,6 +395,33 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
     turnBrief = this.defaultTurnBrief(speech.speaker.id, direction),
     editorialCards: EditorialCard[] = this.script.editorialCards ?? [],
     recentSpeeches: Speech[] = this.script.speeches
+  ): Promise<Speech> {
+    const reviewed = await this.reviewSpeechUnsanitized(
+      speech,
+      turnBrief,
+      editorialCards,
+      recentSpeeches
+    );
+    return { ...reviewed, message: this.stripCardIdArtifacts(reviewed.message) };
+  }
+
+  /**
+   * The reviewer is shown card ids in its prompt for its own bookkeeping
+   * (introducedCardIds) but can occasionally echo one back into
+   * revisedMessages as if it were a citation. Strip any such artifact
+   * before the message ever reaches the transcript or audio pipeline.
+   */
+  private stripCardIdArtifacts(message: string): string {
+    return message
+      .replace(/\s*\[[\w-]+-card-\d+\]/gi, '')
+      .trimEnd();
+  }
+
+  private async reviewSpeechUnsanitized(
+    speech: Speech,
+    turnBrief: TurnBrief,
+    editorialCards: EditorialCard[],
+    recentSpeeches: Speech[]
   ): Promise<Speech> {
     try {
       const review = await this.turnReviewer.review(
@@ -783,17 +811,11 @@ Return only the ids of points that were genuinely, substantively covered.`,
 
     return inputs.map((input, index) => ({
       id: `b${index + 1}`,
-      purpose: Object.values(BeatPurpose).includes(input.purpose)
-        ? input.purpose
-        : BeatPurpose.Explore,
+      purpose: input.purpose,
       goal: input.goal,
       cardIds: input.cardIds ?? [],
       prerequisiteBeatIds: input.prerequisiteBeatIds ?? [],
-      desiredEnergy:
-        input.desiredEnergy &&
-        Object.values(EnergyLevel).includes(input.desiredEnergy)
-          ? input.desiredEnergy
-          : EnergyLevel.Curious,
+      desiredEnergy: input.desiredEnergy ?? EnergyLevel.Curious,
       targetTurns: Math.max(1, input.targetTurns ?? 1),
       covered: false,
     }));
@@ -807,21 +829,10 @@ Return only the ids of points that were genuinely, substantively covered.`,
       speakerId: input.speakerId,
       beatId: input.beatId,
       goal: input.goal ?? direction,
-      move:
-        input.move && Object.values(EditorialMove).includes(input.move)
-          ? input.move
-          : EditorialMove.Explain,
+      move: input.move ?? EditorialMove.Explain,
       cardIds: input.cardIds ?? [],
-      audienceValue:
-        input.audienceValue &&
-        Object.values(AudienceValue).includes(input.audienceValue)
-          ? input.audienceValue
-          : AudienceValue.Understanding,
-      desiredEnergy:
-        input.desiredEnergy &&
-        Object.values(EnergyLevel).includes(input.desiredEnergy)
-          ? input.desiredEnergy
-          : EnergyLevel.Curious,
+      audienceValue: input.audienceValue ?? AudienceValue.Understanding,
+      desiredEnergy: input.desiredEnergy ?? EnergyLevel.Curious,
       device: input.device,
     };
   }
@@ -850,9 +861,18 @@ Return only the ids of points that were genuinely, substantively covered.`,
           `- ${beat.id} [${beat.purpose}, ${beat.desiredEnergy}]: ${beat.goal}`
       )
       .join('\n');
+    const introducedCardIds = new Set(
+      (script.knowledgeLedger?.introducedCards ?? []).map(
+        (entry) => entry.cardId
+      )
+    );
     const cardText = cards
       .slice(0, 20)
-      .map((card) => `- ${card.id} [${card.kind}]: ${card.content}`)
+      .map((card) =>
+        introducedCardIds.has(card.id)
+          ? `- ${card.id} [${card.kind}] (ALREADY USED — do not reassign unless the conversation needs to explicitly revisit it): ${card.content}`
+          : `- ${card.id} [${card.kind}]: ${card.content}`
+      )
       .join('\n');
     return `\n\nOpen conversation beats:\n${beatText || '(none)'}\n\nPrepared editorial cards:\n${cardText || '(none)'}`;
   }
