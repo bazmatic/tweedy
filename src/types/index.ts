@@ -625,6 +625,7 @@ export interface ISpeakerAgent {
     direction: string,
     timeStatus?: string,
     forceNearlyOutOfTime?: boolean,
+    forceColdOpen?: boolean,
     requestSummary?: boolean,
     isFinalTurn?: boolean,
     turnBrief?: TurnBrief,

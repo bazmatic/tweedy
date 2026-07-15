@@ -425,6 +425,70 @@ describe("ScriptService opening sequence", () => {
     expect(interjectMock).not.toHaveBeenCalled();
     expect(chooseNextSpeakerMock).not.toHaveBeenCalled();
   });
+
+  it("forces the cold open tool on the very first opening turn", async () => {
+    let recordNumber = 0;
+    const speechRepository = {
+      create: vi.fn().mockImplementation(async () => ({
+        id: `record-${++recordNumber}`,
+      })),
+    };
+    const service = makeService({ speechRepository });
+    const script = makeScript();
+    script.speakers = [
+      {
+        id: "host",
+        slug: "host",
+        name: "Ada",
+        personality: "warm",
+        voice: {
+          id: "voice-host",
+          name: "Voice",
+          description: "",
+          provider: VocalProviderName.ElevenLabs,
+          providerId: "provider-id",
+          settings: {},
+        },
+        voiceStyle: "natural",
+        isExpert: false,
+      },
+      {
+        id: "expert",
+        slug: "expert",
+        name: "Miles",
+        personality: "curious",
+        voice: {
+          id: "voice-expert",
+          name: "Voice",
+          description: "",
+          provider: VocalProviderName.ElevenLabs,
+          providerId: "provider-id",
+          settings: {},
+        },
+        voiceStyle: "natural",
+        isExpert: true,
+      },
+    ];
+
+    speakMock.mockResolvedValue({
+      id: "speech-hook",
+      speaker: script.speakers[0],
+      message: "Picture a mushroom, wired for sound.",
+      instructions: "slow, deliberate",
+      voice: script.speakers[0].voice,
+      voiceStyle: script.speakers[0].voiceStyle,
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.COLD_OPEN,
+    });
+
+    await (service as any).generateScriptContent(script, {
+      maxTurns: 1,
+      maxDuration: 60,
+    });
+
+    expect(speakMock.mock.calls[0][8]).toBe(true); // forceColdOpen
+    expect(script.speeches[0].tool).toBe(SpeakerAgentToolName.COLD_OPEN);
+  });
 });
 
 describe("ScriptService.logUncoveredPoints", () => {

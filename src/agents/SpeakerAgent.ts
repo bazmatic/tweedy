@@ -71,6 +71,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     direction: string,
     timeStatus = "",
     forceNearlyOutOfTime = false,
+    forceColdOpen = false,
     requestSummary = false,
     isFinalTurn = false,
     turnBrief?: TurnBrief,
@@ -97,6 +98,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
             direction,
             timeStatus,
             forceNearlyOutOfTime,
+            forceColdOpen,
             requestSummary,
             isFinalTurn,
             turnBrief,
@@ -198,6 +200,7 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
     direction: string,
     timeStatus: string,
     forceNearlyOutOfTime: boolean,
+    forceColdOpen: boolean,
     requestSummary: boolean,
     isFinalTurn: boolean,
     turnBrief?: TurnBrief,
@@ -279,6 +282,7 @@ Respond naturally as ${
       isFinalTurn,
       forceNearlyOutOfTime,
       requestSummary,
+      forceColdOpen,
       turnBrief,
     });
 

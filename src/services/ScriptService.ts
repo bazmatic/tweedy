@@ -394,6 +394,7 @@ export class ScriptService implements IScriptService {
         direction,
         timeStatus,
         forceNearlyOutOfTime,
+        openingTurn?.forceColdOpen ?? false,
         requestSummary,
         isFinalTurn,
         turnBrief,
