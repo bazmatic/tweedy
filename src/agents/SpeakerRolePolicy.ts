@@ -384,7 +384,7 @@ export class SpeakerRolePolicy {
         EpistemicRole.Expert
     );
     const askee = expert ? expert.name : "the expert";
-    return `You've just heard the term "${term}" but don't know what it means yet — ask ${askee} to explain it in plain language before the conversation continues.`;
+    return `You've just heard the term "${term}" but don't know what it means yet — If appropriate, ask ${askee} to explain it before the conversation continues.`;
   }
 
   private normaliseTerm(value: string): string {
