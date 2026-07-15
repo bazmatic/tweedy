@@ -5,6 +5,7 @@ import {
   SystemMessage,
 } from "@langchain/core/messages";
 import { z } from "zod";
+import { jsonrepair } from "jsonrepair";
 import { AiModelFactory } from "../providers/AiModelFactory";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
 import { StructuredOutputMethodPolicy } from "../providers/StructuredOutputMethodPolicy";
@@ -93,71 +94,6 @@ function extractPartialStringField(
 
 const PARSER_EXCEPTION_PATTERN =
   /^Function "([^"]*)" arguments:\n\n([\s\S]*)\n\nare not valid JSON\./;
-
-/**
- * DeepSeek (and some other OpenAI-compatible providers) don't reliably escape
- * control characters — e.g. a literal newline between paragraphs — inside
- * tool-call argument strings, which is invalid per the JSON spec and makes
- * LangChain's strict `JSON.parse` throw. Walk the raw text tracking whether
- * we're inside a JSON string literal, and escape any raw control character
- * found there instead of discarding the whole (often otherwise-valid) response.
- */
-const VALID_JSON_ESCAPE_CHARS = new Set([
-  '"',
-  "\\",
-  "/",
-  "b",
-  "f",
-  "n",
-  "r",
-  "t",
-  "u",
-]);
-
-function sanitizeJsonControlCharacters(raw: string): string {
-  let result = "";
-  let inString = false;
-  for (let i = 0; i < raw.length; i++) {
-    const ch = raw[i];
-    if (inString && ch === "\\") {
-      const next = raw[i + 1];
-      if (next !== undefined && VALID_JSON_ESCAPE_CHARS.has(next)) {
-        result += ch + next;
-        i++;
-        continue;
-      }
-      // An invalid escape sequence — e.g. LaTeX-style "\(" copied verbatim
-      // from source material — isn't a legal JSON escape. Escape the
-      // backslash itself so the following character is read literally
-      // instead of aborting the whole parse.
-      result += "\\\\";
-      continue;
-    }
-    if (ch === '"') {
-      inString = !inString;
-      result += ch;
-      continue;
-    }
-    if (inString && ch.charCodeAt(0) < 0x20) {
-      switch (ch) {
-        case "\n":
-          result += "\\n";
-          break;
-        case "\r":
-          result += "\\r";
-          break;
-        case "\t":
-          result += "\\t";
-          break;
-        default:
-          result += `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`;
-      }
-      continue;
-    }
-    result += ch;
-  }
-  return result;
-}
 
 /**
  * When arguments are cut off mid-generation (hit the token limit) rather
@@ -281,6 +217,15 @@ function coerceUnquotedScalarFields(raw: string, schema: z.ZodTypeAny): string {
  * directly in its thrown error message rather than exposing it as a
  * structured field. Recover it so we can repair and re-parse instead of
  * discarding an otherwise-good response and burning a retry attempt.
+ *
+ * Most malformations (raw control characters, invalid escape sequences, and
+ * plenty of shapes we haven't hit yet) are generic JSON syntax problems, so
+ * delegate those to `jsonrepair` rather than hand-rolling a parser per shape.
+ * Only two things need schema awareness that a generic repair can't have:
+ * a value written with no quoting/bracketing at all (needs the field's
+ * expected type to know how to re-wrap it), and a token-limit truncation
+ * where the right fix is to drop the dangling incomplete element rather
+ * than pad it out with placeholder fields.
  */
 function recoverFromJsonParseFailure<T>(
   error: unknown,
@@ -289,20 +234,21 @@ function recoverFromJsonParseFailure<T>(
   if (!(error instanceof Error)) return undefined;
   const match = error.message.match(PARSER_EXCEPTION_PATTERN);
   if (!match) return undefined;
+
   const coerced = coerceUnquotedScalarFields(match[2], schema);
-  const sanitized = sanitizeJsonControlCharacters(coerced);
-  try {
-    return schema.parse(JSON.parse(sanitized));
-  } catch {
-    // Fall through to truncation repair below.
-  }
-  const repaired = repairTruncatedJsonArray(sanitized);
-  if (!repaired) return undefined;
-  try {
-    return schema.parse(JSON.parse(repaired));
-  } catch {
-    return undefined;
-  }
+  const tryParse = (text: string): T | undefined => {
+    try {
+      return schema.parse(JSON.parse(jsonrepair(text)));
+    } catch {
+      return undefined;
+    }
+  };
+
+  const direct = tryParse(coerced);
+  if (direct !== undefined) return direct;
+
+  const truncationRepaired = repairTruncatedJsonArray(coerced);
+  return truncationRepaired ? tryParse(truncationRepaired) : undefined;
 }
 
 /**
@@ -493,7 +439,7 @@ export abstract class BaseAgent {
         const recovered = recoverFromJsonParseFailure(error, schema);
         if (recovered !== undefined) {
           logger.warn(
-            "AI model structured-output arguments had unescaped control characters; sanitized and recovered instead of retrying"
+            "AI model structured-output arguments were malformed JSON; repaired and recovered instead of retrying"
           );
           return recovered;
         }

@@ -237,8 +237,11 @@ describe("callModelForStructuredOutput", () => {
     );
 
     expect(invoke).toHaveBeenCalledOnce();
+    // jsonrepair drops an invalid escape's backslash rather than escaping it,
+    // so the literal "\(" collapses to "(" — content changes slightly, but
+    // the response survives instead of being discarded entirely.
     expect(result).toEqual({
-      synopsis: "we convert the trains \\(T\\) to strings",
+      synopsis: "we convert the trains (T) to strings",
     });
   });
 

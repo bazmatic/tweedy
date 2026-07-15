@@ -53,6 +53,9 @@ importers:
       inquirer:
         specifier: ^9.3.8
         version: 9.3.8(@types/node@20.19.43)
+      jsonrepair:
+        specifier: ^3.15.0
+        version: 3.15.0
       openai:
         specifier: ^5.23.2
         version: 5.23.2(ws@8.21.0)(zod@3.25.76)
@@ -894,6 +897,10 @@ packages:
   jsonpointer@5.0.1:
     resolution: {integrity: sha512-p/nXbhSEcu3pZRdkW1OfJhpsVtW1gd4Wa1fnQc9YLiTfAjn0312eMKimbdIQzuZl9aa9xUGaRlP9T/CJE/ditQ==}
     engines: {node: '>=0.10.0'}
+
+  jsonrepair@3.15.0:
+    resolution: {integrity: sha512-wy8OTjwsJwQRnQJkKnMJJ9vcytRdBPAgIF/Hy6+s1dAj42BHMKiyL8JzEieIl3JY7idt8eyHwBWTO8mh/+mtwA==}
+    hasBin: true
 
   langsmith@0.8.1:
     resolution: {integrity: sha512-Y48oSj51aLvehAVwy+VU2i9COlCFmLi9T5REFyL4pWT2npcIKiBSiSlnyjxdkNXOdZ0YYz7Lud8aiZPjkjkXvA==}
@@ -2311,6 +2318,8 @@ snapshots:
       graceful-fs: 4.2.11
 
   jsonpointer@5.0.1: {}
+
+  jsonrepair@3.15.0: {}
 
   langsmith@0.8.1(openai@5.23.2(ws@8.21.0)(zod@3.25.76))(ws@8.21.0):
     dependencies:
