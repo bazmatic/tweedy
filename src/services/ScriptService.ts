@@ -346,14 +346,10 @@ export class ScriptService implements IScriptService {
     script: PodcastScript,
     params: GenerateScriptParams
   ): Promise<void> {
-    const directorAgent = new DirectorAgent(
-      script,
-      {
-        maxTurns: Math.max(1, params.maxTurns - script.speakers.length),
-        maxDuration: params.maxDuration,
-      },
-      params.guidance
-    );
+    const directorAgent = new DirectorAgent(script, {
+      maxTurns: Math.max(1, params.maxTurns - script.speakers.length),
+      maxDuration: params.maxDuration,
+    });
     const openingSequence = new OpeningSequencePolicy();
     await directorAgent.createPodcastPlan();
     try {

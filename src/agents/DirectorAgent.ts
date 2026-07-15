@@ -64,12 +64,10 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private dialogueCadencePolicy: DialogueCadencePolicy;
   private audienceAccessibilityPolicy: AudienceAccessibilityPolicy;
   private episodeConclusionPolicy: EpisodeConclusionPolicy;
-  private guidance?: string;
 
   constructor(
     script: PodcastScript,
     budget: { maxTurns: number; maxDuration: number },
-    guidance?: string,
     dependencies: {
       materialPreparer?: IMaterialPreparer;
       turnReviewer?: ITurnReviewer;
@@ -86,7 +84,6 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
     this.script = script;
     this.maxTurns = budget.maxTurns;
     this.maxDuration = budget.maxDuration;
-    this.guidance = guidance;
     this.materialPreparer =
       dependencies.materialPreparer ?? new MaterialPreparerAgent();
     this.turnReviewer = dependencies.turnReviewer ?? new TurnReviewerAgent();
@@ -138,8 +135,8 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
         Math.round(durationMinutes / MINUTES_PER_DISCUSSION_POINT)
       );
 
-      const guidanceSection = this.guidance
-        ? `\n\nGuidance from the producer for this episode: ${this.guidance}`
+      const guidanceSection = this.script.guidance
+        ? `\n\nGuidance from the producer for this episode: ${this.script.guidance}`
         : '';
 
       const messages = [
@@ -239,8 +236,8 @@ Also provide a sequence of conversation beats. Each beat must have a listener-ce
       const balanceNote = this.getBalanceNote(script);
       const rhythmNote = this.getRhythmNote(script);
       const editorialSection = this.getEditorialSection(script);
-      const guidanceNote = this.guidance
-        ? ` Keep steering the conversation in line with the producer's guidance for this episode: ${this.guidance}`
+      const guidanceNote = script.guidance
+        ? ` Keep steering the conversation in line with the producer's guidance for this episode: ${script.guidance}`
         : '';
 
       // Announce time pressure once. Later turns should shorten and close

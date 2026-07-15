@@ -595,7 +595,7 @@ describe("ScriptService guidance", () => {
     directorAgentConstructorMock.mockClear();
   });
 
-  it("passes guidance to the DirectorAgent constructor and persists it on the script", async () => {
+  it("sets guidance on the script passed to DirectorAgent and persists it", async () => {
     createPodcastPlanMock.mockResolvedValueOnce(undefined);
 
     const speaker = {
@@ -687,8 +687,8 @@ describe("ScriptService guidance", () => {
     });
 
     expect(directorAgentConstructorMock).toHaveBeenCalled();
-    const [, , guidanceArg] = directorAgentConstructorMock.mock.calls[0];
-    expect(guidanceArg).toBe("Keep it skeptical of the marketing claims.");
+    const [scriptArg] = directorAgentConstructorMock.mock.calls[0];
+    expect(scriptArg.guidance).toBe("Keep it skeptical of the marketing claims.");
 
     const createCall = scriptRepository.create.mock.calls[0][0];
     expect(createCall.guidance).toBe(
