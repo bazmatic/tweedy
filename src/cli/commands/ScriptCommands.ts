@@ -99,6 +99,10 @@ export function createScriptCommands(): Command {
     )
     .option("-m, --materials <materials>", "Comma-separated material IDs")
     .option(
+      "-g, --guidance <text>",
+      "Free-form guidance to steer the episode's direction"
+    )
+    .option(
       "--max-turns <turns>",
       "Maximum number of turns (safety ceiling only; pacing is driven by --max-duration)",
       "60"
@@ -133,6 +137,7 @@ export function createScriptCommands(): Command {
         const params = {
           title: options.title,
           description: options.description || "",
+          guidance: options.guidance || undefined,
           speakers: speakerIds,
           materials: materialIds,
           maxTurns: parseInt(options.maxTurns),
