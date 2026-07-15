@@ -415,11 +415,11 @@ export class ScriptService implements IScriptService {
         script.editorialCards ?? [],
         script.speeches
       );
-      if (speech.review) {
-        logger.info(
-          `Turn ${turn + 1}: director review for ${speech.speaker.name}: ${JSON.stringify(speech.review)}`
-        );
-      }
+      // if (speech.review) {
+      //   logger.info(
+      //     `Turn ${turn + 1}: director review for ${speech.speaker.name}: ${JSON.stringify(speech.review)}`
+      //   );
+      // }
       if (
         this.speechRepetitionPolicy.isRepetition(speech, script.speeches)
       ) {

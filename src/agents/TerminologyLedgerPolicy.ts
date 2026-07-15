@@ -46,7 +46,13 @@ export class TerminologyLedgerPolicy {
     }
 
     const normalisedMessage = ` ${this.normalise(message)} `;
-    if (!normalisedMessage.includes(` ${normalisedTerm} `)) return false;
+    const termWords = normalisedTerm.split(" ").filter(Boolean);
+    const allWordsPresent = termWords.every((word) =>
+      normalisedMessage.includes(` ${word} `) ||
+      normalisedMessage.includes(` ${word}s `) ||
+      normalisedMessage.includes(` ${word.replace(/s$/, "")} `)
+    );
+    if (!allWordsPresent) return false;
 
     return !ledger.explainedTerms.some(
       (entry) => this.normalise(entry.term) === normalisedTerm

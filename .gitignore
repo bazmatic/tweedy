@@ -55,6 +55,7 @@ temp/
 
 plans/
 specs/
+*.txt
 
 # TypeScript
 *.tsbuildinfo
@@ -63,3 +64,4 @@ specs/
 .codegraph/
 .superpowers/
 .cursor/
+

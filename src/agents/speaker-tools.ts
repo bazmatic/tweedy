@@ -25,7 +25,7 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.SPEAK,
     toolDescription:
-      "Deliver a SHORT, concise, natural-sounding response in the podcast. Get ONE idea, fact, or beat out and then stop — 1-2 sentences max, never a multi-part explanation. Brevity is critical: shorter is always better than longer, and you should stop the moment the single idea has landed rather than padding it out. Keep it very brief to maintain conversational flow. The message should be natural spoken language, while stage directions in instructions guide delivery. Use pauses and ums, like, ah, ..., etc.",
+      "Deliver a SHORT, concise, natural-sounding response in the podcast. Get ONE idea, fact, or beat out and then stop — 1-2 sentences max, never a multi-part explanation. Brevity is critical: shorter is always better than longer, and you should stop the moment the single idea has landed rather than padding it out. Keep it very brief to maintain conversational flow. The message should be natural spoken language, while stage directions in instructions guide delivery. Use pauses and ums, like, ah, ..., etc. For a spoken pause or a mid-sentence interruption of thought, use an em dash (—), never a bare hyphen (-) — a hyphen should only ever join a genuine compound word (e.g. \"well-known\"), never stand in for a pause.",
     styleDescription:
       "How to deliver the speech. Include timing, tone, and emphasis. Example: 'Pause slightly before speaking, use a thoughtful tone, emphasize \"perspective\"'",
     maxTokens: 300,

@@ -81,6 +81,12 @@ ${material.content}`,
       storyValue: card.storyValue,
     }));
 
+    for (const card of cards) {
+      logger.info(
+        `Prepared card ${card.id} [${card.kind}, storyValue=${card.storyValue}]: ${card.content}`
+      );
+    }
+
     return {
       materialId: material.id,
       synopsis: input.synopsis ?? "",
@@ -90,22 +96,24 @@ ${material.content}`,
 
   private createFallback(material: PodcastMaterial): PreparedMaterial {
     const excerpt = material.content.substring(0, FALLBACK_CONTENT_LENGTH);
+    const card: EditorialCard = {
+      id: `${material.id}-card-1`,
+      materialId: material.id,
+      kind: EditorialCardKind.EssentialPoint,
+      content: excerpt,
+      evidence: [{ materialId: material.id, excerpt }],
+      relatedCardIds: [],
+      tags: [],
+      keyTerms: [],
+      storyValue: 5,
+    };
+    logger.info(
+      `Prepared card ${card.id} [${card.kind}, storyValue=${card.storyValue}] (fallback): ${card.content}`
+    );
     return {
       materialId: material.id,
       synopsis: excerpt,
-      cards: [
-        {
-          id: `${material.id}-card-1`,
-          materialId: material.id,
-          kind: EditorialCardKind.EssentialPoint,
-          content: excerpt,
-          evidence: [{ materialId: material.id, excerpt }],
-          relatedCardIds: [],
-          tags: [],
-          keyTerms: [],
-          storyValue: 5,
-        },
-      ],
+      cards: [card],
     };
   }
 }

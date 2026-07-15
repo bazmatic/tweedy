@@ -271,7 +271,7 @@ ${direction ? `Director's guidance: ${direction}` : "No specific director's guid
 
 Respond naturally as ${
           this.speaker.name
-        }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getExpertiseNudge(isSolo, roleProfile.epistemicRole, turnBrief)} ${this.audienceAccessibilityPolicy.buildSpeakerGuidance(audienceProfile, terminologyLedger)} ${lengthGuidance} Serve the assigned audience value without forcing analysis, jokes or profundity where they do not belong. Trust your co-host to ask a follow-up; don't pre-empt their next question. Don't reuse a striking phrase, metaphor or turn of phrase a co-host already said in the conversation history above — say the same idea in your own words instead of echoing theirs. Use Australian/British spelling. Be authentic to your personality and epistemic role. ${this.naturalSpeechStylePolicy.buildGuidance(roleProfile)} Don't include stage directions, emotes, or sound effects — those belong in the style argument only.`,
+        }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getExpertiseNudge(isSolo, roleProfile.epistemicRole, turnBrief)} ${this.audienceAccessibilityPolicy.buildSpeakerGuidance(audienceProfile, terminologyLedger)} ${lengthGuidance} Serve the assigned audience value without forcing analysis, jokes or profundity where they do not belong. When the material offers an everyday comparison (a pet, a common habit, something the audience has personally experienced), take that as an opening for a quip, a personal anecdote or a bit of humour — don't just restate its analytical point again in your own words. Trust your co-host to ask a follow-up; don't pre-empt their next question. Don't reuse a striking phrase, metaphor or turn of phrase a co-host already said in the conversation history above — say the same idea in your own words instead of echoing theirs. Use Australian/British spelling. Be authentic to your personality and epistemic role. ${this.naturalSpeechStylePolicy.buildGuidance(roleProfile)} Don't include stage directions, emotes, or sound effects — those belong in the style argument only. For a spoken pause or interruption, use an em dash (—), never a bare hyphen (-) — reserve the hyphen strictly for compound words.`,
       },
     ];
 
@@ -345,10 +345,12 @@ Respond naturally as ${
       return " As an informed host, introduce only prepared material explicitly assigned to this turn, and frame it as preparation rather than specialist authority. Be uncertain and naive. Comments can include misunderstandings. Questions can be 'dumb'.";
     }
 
+    const naiveQuestionGuidance =
+      " When asking a question, keep it genuinely open and naive — ask what something means or how it works rather than naming the specific mechanism, comparison or result yourself; if you find yourself stating a specific fact or match inside the question, you already know too much for this role. Never ask what a term means if it already appears in the previously explained terms below — build on that explanation instead of re-requesting it.";
     if (isSolo) {
-      return ` As the audience's guide, you may ask, react, challenge, reframe, illustrate or tell a prepared story, perhaps with personal details.`;
+      return ` As the audience's guide, you may ask, react, challenge, reframe, illustrate or tell a prepared story, perhaps with personal details.${naiveQuestionGuidance}`;
     }
-    return ` As the audience's guide, you may ask, react, challenge, reframe, illustrate or tell a prepared story, perhaps with personal details. Use speak only when the assigned move (${turnBrief?.move ?? "the current move"}) calls for a substantive contribution, and never introduce unsupported facts.`;
+    return ` As the audience's guide, you may ask, react, challenge, reframe, illustrate or tell a prepared story, perhaps with personal details. Use speak only when the assigned move (${turnBrief?.move ?? "the current move"}) calls for a substantive contribution, and never introduce unsupported facts.${naiveQuestionGuidance}`;
   }
 
   private async getRelevantMaterials(

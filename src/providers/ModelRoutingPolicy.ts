@@ -32,9 +32,12 @@ const DEFAULT_TIER_BY_TASK: Record<ModelTask, ModelTier> = {
 
 // Speech-facing tasks get a higher temperature for more varied, natural-
 // sounding delivery; everything else keeps the provider default (undefined).
+// Card preparation also benefits from more varied editorial output rather
+// than the same handful of angles every time.
 const TEMPERATURE_BY_TASK: Partial<Record<ModelTask, number>> = {
-  [ModelTask.SpeechGeneration]: 1.2,
+  [ModelTask.SpeechGeneration]: 1.275,
   [ModelTask.Interjection]: 1.2,
+  [ModelTask.MaterialPreparation]: 1.2,
 };
 
 /**
