@@ -282,4 +282,46 @@ describe("callModelForStructuredOutput", () => {
       cards: [{ content: "first card", storyValue: 7 }],
     });
   });
+
+  it("recovers when a string-array field is written as bare unquoted prose instead of a JSON array", async () => {
+    const schema = z.object({
+      accepted: z.boolean(),
+      feedback: z.array(z.string()).max(1),
+      revisedMessages: z.array(z.string()).max(1),
+    });
+    // The model dropped quoting/bracketing entirely for the last two fields,
+    // writing raw prose (including its own literal quote marks) instead.
+    const rawArgs =
+      `{"accepted": false, "feedback": Ada's role is expert, but she says ` +
+      `"I love this."., "revisedMessages": So, the split gill is widespread.}`;
+    const parseError = new Error(
+      [
+        `Function "extract" arguments:`,
+        ``,
+        rawArgs,
+        ``,
+        `are not valid JSON.`,
+        `Error: Unexpected token 'A', ..."eedback": Ada's role"... is not valid JSON`,
+      ].join("\n")
+    );
+    const invoke = vi.fn().mockRejectedValue(parseError);
+    const withStructuredOutput = vi.fn().mockReturnValue({ invoke });
+    vi.spyOn(AiModelFactory, "getModel").mockReturnValue({
+      withStructuredOutput,
+    } as any);
+
+    const result = await new TestAgent().callModelForStructuredOutput(
+      ModelTask.TurnReview,
+      [{ role: "user", content: "Review this turn" }],
+      schema,
+      50
+    );
+
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      accepted: false,
+      feedback: [`Ada's role is expert, but she says "I love this.".`],
+      revisedMessages: ["So, the split gill is widespread."],
+    });
+  });
 });

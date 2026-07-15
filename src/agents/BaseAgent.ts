@@ -208,6 +208,75 @@ function repairTruncatedJsonArray(raw: string): string | undefined {
 }
 
 /**
+ * Occasionally a model drops the quoting/bracketing for a string or
+ * string-array field entirely and writes the value as bare, unquoted prose
+ * (sometimes containing its own literal quote marks), e.g.
+ * `"feedback": Ada's role is expert, but she says "I love this"., "revisedMessages": ...}`.
+ * That isn't recoverable by escaping — the value was never delimited in the
+ * first place. Walk the schema's own field list (known field names bound
+ * this correctly, since the model can't invent a field name that isn't in
+ * the tool's schema) to find each string/string-array field's raw span in
+ * the text, and if it wasn't properly quoted/bracketed, wrap the raw text
+ * as a JSON string (re-escaping anything inside it) ourselves.
+ */
+function coerceUnquotedScalarFields(raw: string, schema: z.ZodTypeAny): string {
+  if (!(schema instanceof z.ZodObject)) return raw;
+  const shape = schema.shape as Record<string, z.ZodTypeAny>;
+  const fieldNames = Object.keys(shape);
+  let result = raw;
+  for (let idx = 0; idx < fieldNames.length; idx++) {
+    const field = fieldNames[idx];
+    const def = shape[field];
+    const isString = def instanceof z.ZodString;
+    const isStringArray =
+      def instanceof z.ZodArray && def.element instanceof z.ZodString;
+    if (!isString && !isStringArray) continue;
+
+    const marker = `"${field}"`;
+    const markerIndex = result.indexOf(marker);
+    if (markerIndex === -1) continue;
+    const colonIndex = result.indexOf(":", markerIndex + marker.length);
+    if (colonIndex === -1) continue;
+    let valueStart = colonIndex + 1;
+    while (
+      result[valueStart] === " " ||
+      result[valueStart] === "\n" ||
+      result[valueStart] === "\t"
+    )
+      valueStart++;
+
+    const firstChar = result[valueStart];
+    if (firstChar === '"' || (isStringArray && firstChar === "[")) continue;
+
+    let valueEnd = result.length;
+    for (let j = idx + 1; j < fieldNames.length; j++) {
+      const nextMarker = `"${fieldNames[j]}"`;
+      const nextIndex = result.indexOf(nextMarker, valueStart);
+      if (nextIndex !== -1) {
+        const commaIndex = result.lastIndexOf(",", nextIndex);
+        valueEnd =
+          commaIndex !== -1 && commaIndex >= valueStart
+            ? commaIndex
+            : nextIndex;
+        break;
+      }
+    }
+    if (valueEnd === result.length) {
+      const lastBrace = result.lastIndexOf("}");
+      if (lastBrace !== -1 && lastBrace > valueStart) valueEnd = lastBrace;
+    }
+
+    const rawValue = result.slice(valueStart, valueEnd).trim();
+    if (!rawValue) continue;
+    const replacement = isStringArray
+      ? `[${JSON.stringify(rawValue)}]`
+      : JSON.stringify(rawValue);
+    result = result.slice(0, valueStart) + replacement + result.slice(valueEnd);
+  }
+  return result;
+}
+
+/**
  * LangChain's tool-call JSON parser embeds the raw (invalid) arguments text
  * directly in its thrown error message rather than exposing it as a
  * structured field. Recover it so we can repair and re-parse instead of
@@ -220,7 +289,8 @@ function recoverFromJsonParseFailure<T>(
   if (!(error instanceof Error)) return undefined;
   const match = error.message.match(PARSER_EXCEPTION_PATTERN);
   if (!match) return undefined;
-  const sanitized = sanitizeJsonControlCharacters(match[2]);
+  const coerced = coerceUnquotedScalarFields(match[2], schema);
+  const sanitized = sanitizeJsonControlCharacters(coerced);
   try {
     return schema.parse(JSON.parse(sanitized));
   } catch {
