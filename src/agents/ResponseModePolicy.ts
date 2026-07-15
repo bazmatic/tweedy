@@ -26,6 +26,7 @@ export interface ResponseModeContext {
   isFinalTurn: boolean;
   forceNearlyOutOfTime: boolean;
   requestSummary: boolean;
+  forceColdOpen?: boolean;
   turnBrief?: TurnBrief;
 }
 
@@ -94,6 +95,9 @@ export class ResponseModePolicy {
   ) {}
 
   selectTools(context: ResponseModeContext): SpeakerAgentToolName[] {
+    if (context.forceColdOpen) {
+      return [SpeakerAgentToolName.COLD_OPEN];
+    }
     if (context.isFinalTurn) {
       return [SpeakerAgentToolName.CLOSING_STATEMENT];
     }

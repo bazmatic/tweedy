@@ -100,4 +100,18 @@ describe("ResponseModePolicy", () => {
 
     expect(tools).toContain(SpeakerAgentToolName.SPEAK);
   });
+
+  it("forces the cold open tool regardless of other context", () => {
+    const tools = policy.selectTools({
+      speaker: expert,
+      speeches: [makeQuestion(guide)],
+      isSolo: true,
+      isFinalTurn: true,
+      forceNearlyOutOfTime: true,
+      requestSummary: true,
+      forceColdOpen: true,
+    });
+
+    expect(tools).toEqual([SpeakerAgentToolName.COLD_OPEN]);
+  });
 });
