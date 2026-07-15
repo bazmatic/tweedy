@@ -410,6 +410,7 @@ describe("SpeakerAgent.interject tool set", () => {
       SpeakerAgentToolName.INTERJECT,
       SpeakerAgentToolName.FILLER_COMMENT,
       SpeakerAgentToolName.CHALLENGE,
+      SpeakerAgentToolName.PARAPHRASE,
     ]);
   });
 
@@ -526,9 +527,10 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
         SpeakerAgentToolName.SHORT_QUESTION,
         SpeakerAgentToolName.ONE_LINER,
         SpeakerAgentToolName.CHALLENGE,
+        SpeakerAgentToolName.PARAPHRASE,
       ])
     );
-    expect(toolNames.length).toBe(6);
+    expect(toolNames.length).toBe(7);
   });
 
   it("tells a solo audience guide they may ask, react, challenge, reframe or illustrate", async () => {
