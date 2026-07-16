@@ -178,6 +178,48 @@ describe("SpeakerRolePolicy", () => {
     expect(result.turnBrief.move).toBe(EditorialMove.Question);
   });
 
+  it("does not ask a guide to clarify a key term they already used themselves", () => {
+    const script = makeScript(expert, guide);
+    script.editorialCards = [
+      {
+        id: "card-1",
+        materialId: "material-1",
+        kind: EditorialCardKind.EssentialPoint,
+        content: "Fungal threads are called hyphae.",
+        significance: "",
+        evidence: [],
+        relatedCardIds: [],
+        tags: [],
+        keyTerms: ["hyphae"],
+        storyValue: 5,
+      },
+    ];
+    script.speeches = [
+      {
+        id: "speech-1",
+        speaker: guide,
+        message: "These fungal threads, the hyphae, carry electrical spikes.",
+        instructions: "",
+        voice: guide.voice,
+        voiceStyle: guide.voiceStyle,
+        timestamp: new Date(),
+      },
+    ];
+    const brief = makeBrief(guide.id, EditorialMove.Question);
+    brief.goal = "Ask about hyphae.";
+    brief.cardIds = [];
+
+    const result = policy.repairAssignment(
+      script,
+      guide,
+      brief,
+      "Ask Ada what hyphae actually are."
+    );
+
+    expect(result.repaired).toBe(false);
+    expect(result.repairReason).toBeUndefined();
+  });
+
   it("allows a guide's direction to name a key term once it has been explained aloud", () => {
     const script = makeScript(expert, guide);
     script.editorialCards = [

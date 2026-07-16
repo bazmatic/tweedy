@@ -353,6 +353,10 @@ export class SpeakerRolePolicy {
     const assignmentText = ` ${this.normaliseTerm(
       `${turnBrief.goal} ${direction}`
     )} `;
+    const alreadySpokenByThisSpeaker = ` ${script.speeches
+      .filter((speech) => speech.speaker.id === speaker.id)
+      .map((speech) => this.normaliseTerm(speech.message))
+      .join(" ")} `;
 
     for (const card of cards) {
       for (const term of card.keyTerms ?? []) {
@@ -360,7 +364,8 @@ export class SpeakerRolePolicy {
         if (
           normalisedTerm.length > 0 &&
           !explainedTerms.has(normalisedTerm) &&
-          assignmentText.includes(` ${normalisedTerm} `)
+          assignmentText.includes(` ${normalisedTerm} `) &&
+          !alreadySpokenByThisSpeaker.includes(` ${normalisedTerm} `)
         ) {
           return term;
         }

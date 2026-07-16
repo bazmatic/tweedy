@@ -251,8 +251,18 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
 
     const coHosts = speakers.filter((s) => s.id !== this.speaker.id);
     const coHostNames = this.formatNameList(coHosts.map((s) => s.name));
+    const previousSpeech = speeches.at(-1);
+    const unansweredQuestion =
+      isFinalTurn &&
+      previousSpeech &&
+      previousSpeech.speaker.id !== this.speaker.id &&
+      (previousSpeech.tool === SpeakerAgentToolName.SHORT_QUESTION ||
+        previousSpeech.tool === SpeakerAgentToolName.NEARLY_OUT_OF_TIME ||
+        previousSpeech.message.trim().endsWith("?"))
+        ? ` Before you wrap up, briefly answer the question ${previousSpeech.speaker.name} just asked ("${previousSpeech.message.slice(-120)}") in a sentence or two — don't let it hang unanswered — then move into your sign-off.`
+        : "";
     const closingPromptAddendum = isFinalTurn
-      ? `\n\nThis is the final turn of the episode. Use the closing_statement tool to deliver a warm, authentic closing that wraps up the podcast and signs off naturally.${
+      ? `\n\nThis is the final turn of the episode. Use the closing_statement tool to deliver a warm, authentic closing that wraps up the podcast and signs off naturally.${unansweredQuestion}${
           coHostNames
             ? ` Just as the opening introduced everyone, thank and name your co-host${coHosts.length > 1 ? "s" : ""} (${coHostNames}) by name as part of the sign-off.`
             : ""

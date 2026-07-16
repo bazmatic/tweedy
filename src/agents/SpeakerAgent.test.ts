@@ -234,6 +234,51 @@ describe("SpeakerAgent central analogy", () => {
     const prompt = (call.mock.calls[0][1] as any)[0].content as string;
     expect(prompt).toContain("call back to the analogy");
   });
+
+  it("directs the closer to answer a co-host's unanswered question before signing off", async () => {
+    const s1 = makeSpeaker("s1");
+    const s2 = makeSpeaker("s2");
+    const agent = new SpeakerAgent(s1);
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.CLOSING_STATEMENT,
+      message: "Thanks for listening.",
+      style: "warm",
+      stopReason: "stop",
+    });
+    const script = makeScript(
+      [
+        {
+          id: "speech-1",
+          speaker: s2,
+          message: "What does algorithmic complexity actually mean here?",
+          instructions: "",
+          voice: s2.voice,
+          voiceStyle: s2.voiceStyle,
+          timestamp: new Date(),
+          tool: SpeakerAgentToolName.NEARLY_OUT_OF_TIME,
+        },
+      ],
+      [s1, s2]
+    );
+
+    await agent.speak(
+      script.speeches,
+      script.speakers,
+      script.materials,
+      script.title,
+      script.description,
+      "Wrap up.",
+      "",
+      false,
+      false,
+      false,
+      true
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).toContain("briefly answer the question");
+    expect(prompt).toContain("algorithmic complexity");
+  });
 });
 
 describe("SpeakerAgent trail-off handoffs", () => {
