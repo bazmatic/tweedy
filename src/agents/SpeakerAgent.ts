@@ -270,13 +270,18 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
       turnBrief,
     });
 
+    const summaryCatchUpNote =
+      requestSummary && !forceNearlyOutOfTime && toolSet.includes(SpeakerAgentToolName.SUMMARIZE)
+        ? " The episode is running behind on covering its points, so the summarize tool is also on the table if you'd rather catch up several at once — that's exempt from the normal length limit and should still be spoken in full, natural sentences, not clipped notes."
+        : "";
+
     const lengthGuidance = isFinalTurn
       ? "This closing is exempt from the normal 50-word turn limit. Let it breathe for a few natural sentences so the reflection, thanks, and sign-off all land without rushing."
-      : requestSummary && !forceNearlyOutOfTime
-        ? "This recap is exempt from the normal 50-word turn limit since it covers several points. Still speak it in full, natural conversational sentences — not clipped notes or a list read aloud — just give it the extra room it needs to land each point properly."
-        : toolSet.includes(SpeakerAgentToolName.EXPLAIN)
-          ? "If this moment calls for substantive explanation, use the explain tool and give the idea 3-6 sentences to breathe — one concept, developed properly. Otherwise keep it to 1-2 sentences with a short-form tool. Aim for a mix across the episode: long expository passages from the expert, punctuated by short reactions."
-          : "**CRITICAL: Keep this to 1-2 sentences max (under 50 words).** Get ONE idea or conversational beat out and then stop.";
+      : toolSet.includes(SpeakerAgentToolName.EXPLAIN)
+        ? `If this moment calls for substantive explanation, use the explain tool and give the idea 3-6 sentences to breathe — one concept, developed properly. Otherwise keep it to 1-2 sentences with a short-form tool. Aim for a mix across the episode: long expository passages from the expert, punctuated by short reactions.${summaryCatchUpNote}`
+        : requestSummary && !forceNearlyOutOfTime
+          ? "This recap is exempt from the normal 50-word turn limit since it covers several points. Still speak it in full, natural conversational sentences — not clipped notes or a list read aloud — just give it the extra room it needs to land each point properly."
+          : `**CRITICAL: Keep this to 1-2 sentences max (under 50 words).** Get ONE idea or conversational beat out and then stop.${summaryCatchUpNote}`;
 
     const messages: LlmMessage[] = [
       {

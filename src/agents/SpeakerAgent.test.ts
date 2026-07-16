@@ -610,7 +610,7 @@ describe("SpeakerAgent expertise nudge", () => {
 });
 
 describe("SpeakerAgent requestSummary", () => {
-  it("forces the SUMMARIZE tool and raises the token budget when requestSummary is true", async () => {
+  it("offers the SUMMARIZE tool alongside the normal toolset and raises the token budget when requestSummary is true", async () => {
     const agent = new SpeakerAgent(makeSpeaker("s1"));
     const spy = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
       toolName: SpeakerAgentToolName.SUMMARIZE,
@@ -634,10 +634,10 @@ describe("SpeakerAgent requestSummary", () => {
     );
 
     const offeredTools = spy.mock.calls[0][2] as { name: string }[];
-    expect(offeredTools.map((tool) => tool.name)).toEqual([
-      SpeakerAgentToolName.SUMMARIZE,
-    ]);
-    expect(spy.mock.calls[0][3]).toBe(400);
+    const offeredNames = offeredTools.map((tool) => tool.name);
+    expect(offeredNames).toContain(SpeakerAgentToolName.SUMMARIZE);
+    expect(offeredNames).toContain(SpeakerAgentToolName.SPEAK);
+    expect(spy.mock.calls[0][3]).toBeGreaterThanOrEqual(400);
   });
 
   it("still forces NEARLY_OUT_OF_TIME over SUMMARIZE when both flags are true", async () => {

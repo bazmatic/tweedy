@@ -111,47 +111,55 @@ export class ResponseModePolicy {
     if (context.forceNearlyOutOfTime) {
       return [SpeakerAgentToolName.NEARLY_OUT_OF_TIME];
     }
-    if (
+    const offersSummaryAlongsideBrief =
       context.requestSummary &&
       (!context.turnBrief ||
-        !MOVES_THAT_MUST_NOT_BECOME_SUMMARIES.includes(context.turnBrief.move))
-    ) {
-      return [SpeakerAgentToolName.SUMMARIZE];
+        !MOVES_THAT_MUST_NOT_BECOME_SUMMARIES.includes(context.turnBrief.move));
+
+    if (context.isSolo) {
+      return offersSummaryAlongsideBrief
+        ? [SpeakerAgentToolName.SUMMARIZE, ...SOLO_TOOLS]
+        : [...SOLO_TOOLS];
     }
-    if (context.isSolo) return [...SOLO_TOOLS];
 
     const profile = this.roleProfileResolver.resolve(context.speaker);
+    let selected: SpeakerAgentToolName[];
     if (
       this.getObligation(context.speeches, context.speaker) ===
       ConversationalObligation.AnswerChallenge
     ) {
-      return [...CHALLENGE_RESPONSE_TOOLS];
-    }
-    if (
+      selected = [...CHALLENGE_RESPONSE_TOOLS];
+    } else if (
       profile.epistemicRole === EpistemicRole.Expert &&
       this.getObligation(context.speeches, context.speaker) ===
         ConversationalObligation.AnswerQuestion
     ) {
-      return [...EXPERT_ANSWER_TOOLS];
-    }
-
-    if (context.turnBrief) {
-      const tools = MOVE_TO_TOOLS[context.turnBrief.move];
-      if (tools) {
-        const selected = [...tools];
-        if (
-          profile.epistemicRole === EpistemicRole.Expert &&
-          selected.includes(SpeakerAgentToolName.SPEAK)
-        ) {
-          selected.unshift(SpeakerAgentToolName.EXPLAIN);
-        }
-        return selected;
+      selected = [...EXPERT_ANSWER_TOOLS];
+    } else if (
+      context.turnBrief &&
+      MOVE_TO_TOOLS[context.turnBrief.move] !== undefined
+    ) {
+      selected = [...MOVE_TO_TOOLS[context.turnBrief.move]!];
+      if (
+        profile.epistemicRole === EpistemicRole.Expert &&
+        selected.includes(SpeakerAgentToolName.SPEAK)
+      ) {
+        selected.unshift(SpeakerAgentToolName.EXPLAIN);
       }
+    } else {
+      selected =
+        profile.epistemicRole === EpistemicRole.Expert
+          ? [...EXPERT_DEFAULT_TOOLS]
+          : [...INTERVIEWER_TOOLS];
     }
 
-    return profile.epistemicRole === EpistemicRole.Expert
-      ? [...EXPERT_DEFAULT_TOOLS]
-      : [...INTERVIEWER_TOOLS];
+    if (
+      offersSummaryAlongsideBrief &&
+      !selected.includes(SpeakerAgentToolName.SUMMARIZE)
+    ) {
+      selected.unshift(SpeakerAgentToolName.SUMMARIZE);
+    }
+    return selected;
   }
 
   private getObligation(

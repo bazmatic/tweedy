@@ -168,6 +168,42 @@ describe("ResponseModePolicy", () => {
     expect(tools).not.toContain(SpeakerAgentToolName.EXPLAIN);
   });
 
+  it("offers SUMMARIZE alongside the brief's normal tools when behind pace, rather than replacing them", () => {
+    const tools = policy.selectTools({
+      speaker: expert,
+      speeches: [],
+      isSolo: false,
+      isFinalTurn: false,
+      forceNearlyOutOfTime: false,
+      requestSummary: true,
+      turnBrief: buildTurnBrief({ move: EditorialMove.Explain }),
+    });
+    expect(tools).toContain(SpeakerAgentToolName.SUMMARIZE);
+    expect(tools).toContain(SpeakerAgentToolName.EXPLAIN);
+    expect(tools).toContain(SpeakerAgentToolName.SPEAK);
+  });
+
+  it("does not offer SUMMARIZE when behind pace on a move that must not become a summary", () => {
+    const tools = policy.selectTools({
+      speaker: guide,
+      speeches: [],
+      isSolo: false,
+      isFinalTurn: false,
+      forceNearlyOutOfTime: false,
+      requestSummary: true,
+      turnBrief: {
+        speakerId: guide.id,
+        goal: "React for the listener.",
+        move: EditorialMove.React,
+        cardIds: [],
+        audienceValue: AudienceValue.Connection,
+        desiredEnergy: EnergyLevel.Curious,
+      },
+    });
+    expect(tools).not.toContain(SpeakerAgentToolName.SUMMARIZE);
+    expect(tools).toContain(SpeakerAgentToolName.INTERJECT);
+  });
+
   it("offers PARAPHRASE on a react move", () => {
     const tools = policy.selectTools(
       buildContext({
