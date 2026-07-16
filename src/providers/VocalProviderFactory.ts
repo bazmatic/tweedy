@@ -6,6 +6,7 @@ import { HumeProvider } from './HumeProvider';
 import { CartesiaProvider } from './CartesiaProvider';
 import { KokoroProvider } from './KokoroProvider';
 import { GrokProvider } from './GrokProvider';
+import { GoogleChirpProvider } from './GoogleChirpProvider';
 import { logger } from '../utils/logger';
 
 export class VocalProviderFactory {
@@ -34,6 +35,9 @@ export class VocalProviderFactory {
           break;
         case VocalProviderName.Grok:
           this.providers.set(provider, new GrokProvider());
+          break;
+        case VocalProviderName.GoogleChirp:
+          this.providers.set(provider, new GoogleChirpProvider());
           break;
         default:
           throw new Error(`Unknown vocal provider: ${provider}`);
