@@ -466,7 +466,8 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
         recentSpeeches,
         this.script.knowledgeLedger,
         this.script.audienceProfile,
-        this.script.terminologyLedger
+        this.script.terminologyLedger,
+        this.script.speakers
       );
       if (
         // Step 2: only attempt a revision if the reviewer rejected the

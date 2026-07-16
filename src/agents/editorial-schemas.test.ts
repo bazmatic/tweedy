@@ -40,6 +40,7 @@ describe("editorial structured-output schemas", () => {
       roleConsistent: true,
       knowledgeConsistent: true,
       audienceAccessible: true,
+      castConsistent: true,
       introducedCardIds: [],
       introducedTerms: [
         { term: "hypha", plainLanguageMeaning: "a fungal thread" },

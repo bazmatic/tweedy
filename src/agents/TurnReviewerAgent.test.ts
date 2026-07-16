@@ -52,6 +52,7 @@ describe("TurnReviewerAgent", () => {
         roleConsistent: true,
         knowledgeConsistent: true,
         audienceAccessible: true,
+        castConsistent: true,
         introducedCardIds: [],
         introducedTerms: [],
         feedback: [],
@@ -166,6 +167,7 @@ describe("TurnReviewerAgent", () => {
       roleConsistent: true,
       knowledgeConsistent: true,
       audienceAccessible: true,
+      castConsistent: true,
       introducedCardIds: [],
       introducedTerms: [],
       feedback: ["Make the explanation clearer."],
@@ -186,6 +188,48 @@ describe("TurnReviewerAgent", () => {
       []
     );
 
+    expect(result.accepted).toBe(false);
+  });
+
+  it("passes the real speaker roster to the reviewer and rejects a cast-inconsistent turn", async () => {
+    const agent = new TurnReviewerAgent();
+    const call = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({
+        accepted: true,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+        roleConsistent: true,
+        knowledgeConsistent: true,
+        audienceAccessible: true,
+        castConsistent: false,
+        introducedCardIds: [],
+        introducedTerms: [],
+      });
+
+    const result = await agent.review(
+      { ...speech, message: "Karina, set that up for our listeners." },
+      {
+        speakerId: "s1",
+        goal: "Hand off to a co-host.",
+        move: EditorialMove.Transition,
+        cardIds: [],
+        audienceValue: AudienceValue.Understanding,
+        desiredEnergy: EnergyLevel.Curious,
+      },
+      [],
+      [],
+      undefined,
+      AudienceProfile.General,
+      undefined,
+      [speaker, { ...speaker, id: "s2", name: "Miles" }]
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).toContain("This episode's actual speakers: Ada, Miles");
     expect(result.accepted).toBe(false);
   });
 });

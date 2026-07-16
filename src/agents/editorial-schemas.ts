@@ -73,6 +73,11 @@ export const reviewTurnSchema = z
     roleConsistent: z.boolean(),
     knowledgeConsistent: z.boolean(),
     audienceAccessible: z.boolean(),
+    castConsistent: z
+      .boolean()
+      .describe(
+        "False if the speech addresses, thanks, or refers to a named person by name who is not one of the episode's actual speakers."
+      ),
     introducedCardIds: z
       .array(z.string())
       .describe(

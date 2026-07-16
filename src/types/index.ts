@@ -328,6 +328,7 @@ export interface TurnReview {
   roleConsistent?: boolean;
   knowledgeConsistent?: boolean;
   audienceAccessible?: boolean;
+  castConsistent?: boolean;
   introducedCardIds?: string[];
   introducedTerms?: ReviewedTechnicalTerm[];
   feedback?: string;
@@ -678,7 +679,8 @@ export interface ITurnReviewer {
     recentSpeeches: Speech[],
     knowledgeLedger?: KnowledgeLedger,
     audienceProfile?: AudienceProfile,
-    terminologyLedger?: TerminologyLedger
+    terminologyLedger?: TerminologyLedger,
+    speakers?: Speaker[]
   ): Promise<ReviewedTurn>;
 }
 
