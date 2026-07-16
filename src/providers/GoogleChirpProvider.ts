@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { GoogleAuth } from 'google-auth-library';
@@ -30,6 +30,21 @@ export class GoogleChirpProvider extends BaseVocalProvider {
 
   protected getProviderName(): string {
     return 'GoogleChirp';
+  }
+
+  private redactAuthHeader(error: unknown): unknown {
+    if (!axios.isAxiosError(error)) return error;
+
+    const redacted = error as AxiosError;
+    if (redacted.config?.headers?.Authorization) {
+      redacted.config.headers.Authorization = '[REDACTED]';
+    }
+    if ((redacted.request as { _header?: string } | undefined)?._header) {
+      (redacted.request as { _header?: string })._header = (
+        redacted.request as { _header: string }
+      )._header.replace(/Authorization: Bearer [^\r\n]+/i, 'Authorization: [REDACTED]');
+    }
+    return redacted;
   }
 
   private async authHeaders(): Promise<Record<string, string>> {
@@ -72,7 +87,7 @@ export class GoogleChirpProvider extends BaseVocalProvider {
 
       return { outputPath };
     } catch (error) {
-      this.logTtsError(error);
+      this.logTtsError(this.redactAuthHeader(error));
       throw error;
     }
   }
@@ -102,7 +117,7 @@ export class GoogleChirpProvider extends BaseVocalProvider {
           };
         });
     } catch (error) {
-      logger.error('Failed to get Google Chirp voices:', error);
+      logger.error('Failed to get Google Chirp voices:', this.redactAuthHeader(error));
       throw error;
     }
   }

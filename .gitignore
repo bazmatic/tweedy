@@ -10,6 +10,9 @@ dist/
 .env.local
 .env.*.local
 
+# Google Cloud service-account credentials
+keys/
+
 # Data directories
 data/
 audio/

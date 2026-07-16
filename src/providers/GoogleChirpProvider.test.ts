@@ -124,6 +124,41 @@ describe("GoogleChirpProvider", () => {
     );
   });
 
+  it("redacts the Authorization header before logging a failed tts() request", async () => {
+    const axiosError = {
+      isAxiosError: true,
+      message: "Request failed with status code 403",
+      config: { headers: { Authorization: "Bearer test-access-token" } },
+    };
+    (axios.post as any).mockRejectedValue(axiosError);
+    (axios.isAxiosError as any).mockReturnValue(true);
+
+    const provider = new GoogleChirpProvider();
+    const voice = {
+      id: "v1",
+      name: "Achernar",
+      description: "Achernar",
+      provider: VocalProviderName.GoogleChirp,
+      providerId: "en-US-Chirp3-HD-Achernar",
+      settings: {},
+    };
+    const speech = {
+      id: "s1",
+      speaker: {} as any,
+      message: "Hi.",
+      instructions: "",
+      voice,
+      voiceStyle: "",
+      timestamp: new Date(),
+    };
+
+    await expect(
+      provider.tts({ speech: speech as any, voice: voice as any, outputFileName: "fail.mp3" })
+    ).rejects.toBe(axiosError);
+
+    expect(axiosError.config.headers.Authorization).toBe("[REDACTED]");
+  });
+
   it("fetches voices and filters to Chirp3-HD names only", async () => {
     (axios.get as any).mockResolvedValue({
       data: {
