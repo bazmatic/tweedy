@@ -19,6 +19,7 @@ import { logger } from "../utils/logger";
 const chooseNextSpeakerMock = vi.fn();
 const createPodcastPlanMock = vi.fn().mockResolvedValue(undefined);
 const reviewSpeechMock = vi.fn((speech) => Promise.resolve(speech));
+const isConversationCompleteMock = vi.fn().mockResolvedValue(false);
 const speakMock = vi.fn();
 const interjectMock = vi.fn();
 const speakerAgentConstructorMock = vi.fn();
@@ -32,6 +33,7 @@ vi.mock("../agents", () => ({
       createPodcastPlan: createPodcastPlanMock,
       chooseNextSpeaker: chooseNextSpeakerMock,
       reviewSpeech: reviewSpeechMock,
+      isConversationComplete: isConversationCompleteMock,
     };
   }),
   SpeakerAgent: vi.fn().mockImplementation(function (speaker, ragService) {
@@ -43,6 +45,15 @@ vi.mock("../agents", () => ({
   }),
   EpisodeRecapPolicy: vi.fn().mockImplementation(function () {
     return { buildRecap: vi.fn().mockReturnValue("") };
+  }),
+  SpeakerRoleProfileResolver: vi.fn().mockImplementation(function () {
+    return {
+      resolve: (speaker: any) => ({
+        epistemicRole: speaker.isExpert ? "expert" : "audience_guide",
+        sourceAccess: speaker.isExpert ? "full" : "heard_only",
+        uncertaintyStyle: speaker.isExpert ? "precise" : "listener_surrogate",
+      }),
+    };
   }),
 }));
 
@@ -504,6 +515,196 @@ describe("ScriptService opening sequence", () => {
 
     expect(speakMock.mock.calls[0][8]).toBe(true); // forceColdOpen
     expect(script.speeches[0].tool).toBe(SpeakerAgentToolName.COLD_OPEN);
+  });
+});
+
+function makeVoice(id: string) {
+  return {
+    id,
+    name: "Voice",
+    description: "",
+    provider: VocalProviderName.ElevenLabs,
+    providerId: "p",
+    settings: {},
+  };
+}
+
+function makePastSpeech(speaker: any, index: number) {
+  return {
+    id: `past-${index}`,
+    speaker,
+    message: `Past turn ${index}`,
+    instructions: "",
+    voice: speaker.voice,
+    voiceStyle: speaker.voiceStyle,
+    timestamp: new Date(),
+    tool: SpeakerAgentToolName.SPEAK,
+    stopReason: "stop" as const,
+  };
+}
+
+describe("ScriptService forced interjection eligibility", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("never forces an expert into a short interjection, skipping the interjection entirely when they're the only other speaker", async () => {
+    const guide = {
+      id: "guide",
+      slug: "miles",
+      name: "Miles",
+      personality: "curious",
+      voice: makeVoice("voice-guide"),
+      voiceStyle: "natural",
+      isExpert: false,
+    };
+    const expert = {
+      id: "expert",
+      slug: "ada",
+      name: "Ada",
+      personality: "precise",
+      voice: makeVoice("voice-expert"),
+      voiceStyle: "natural",
+      isExpert: true,
+    };
+    const script = makeScript();
+    script.speakers = [guide, expert];
+    // Past speeches push the opening sequence past "Complete" so the
+    // director-driven loop (and forced-interjection check) runs.
+    script.speeches = [
+      makePastSpeech(guide, 1),
+      makePastSpeech(expert, 2),
+      makePastSpeech(guide, 3),
+    ];
+
+    chooseNextSpeakerMock.mockResolvedValue({
+      speaker: guide,
+      direction: "talk about it",
+      timeStatus: "",
+      forceNearlyOutOfTime: false,
+      isFinalTurn: false,
+    });
+    speakMock.mockResolvedValue({
+      id: "",
+      speaker: guide,
+      message: "x".repeat(200),
+      instructions: "warm",
+      voice: guide.voice,
+      voiceStyle: guide.voiceStyle,
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.SPEAK,
+      stopReason: "stop",
+    });
+
+    let recordNumber = 0;
+    const speechRepository = {
+      create: vi.fn().mockImplementation(async () => ({
+        id: `record-${++recordNumber}`,
+      })),
+    };
+    const service = makeService({ speechRepository });
+
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+
+    await (service as any).generateScriptContent(script, {
+      maxTurns: 1,
+      maxDuration: 60,
+    });
+
+    randomSpy.mockRestore();
+
+    expect(interjectMock).not.toHaveBeenCalled();
+  });
+
+  it("still allows a non-expert co-host to interject when an expert runs long", async () => {
+    const guide1 = {
+      id: "guide1",
+      slug: "miles",
+      name: "Miles",
+      personality: "curious",
+      voice: makeVoice("voice-guide1"),
+      voiceStyle: "natural",
+      isExpert: false,
+    };
+    const expert = {
+      id: "expert",
+      slug: "ada",
+      name: "Ada",
+      personality: "precise",
+      voice: makeVoice("voice-expert"),
+      voiceStyle: "natural",
+      isExpert: true,
+    };
+    const guide2 = {
+      id: "guide2",
+      slug: "sam",
+      name: "Sam",
+      personality: "warm",
+      voice: makeVoice("voice-guide2"),
+      voiceStyle: "natural",
+      isExpert: false,
+    };
+    const script = makeScript();
+    script.speakers = [guide1, expert, guide2];
+    script.speeches = [
+      makePastSpeech(guide1, 1),
+      makePastSpeech(expert, 2),
+      makePastSpeech(guide2, 3),
+      makePastSpeech(guide1, 4),
+    ];
+
+    chooseNextSpeakerMock.mockResolvedValue({
+      speaker: expert,
+      direction: "explain it",
+      timeStatus: "",
+      forceNearlyOutOfTime: false,
+      isFinalTurn: false,
+    });
+    speakMock.mockResolvedValue({
+      id: "",
+      speaker: expert,
+      message: "x".repeat(200),
+      instructions: "warm",
+      voice: expert.voice,
+      voiceStyle: expert.voiceStyle,
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.SPEAK,
+      stopReason: "stop",
+    });
+    interjectMock.mockResolvedValue({
+      id: "",
+      speaker: guide1,
+      message: "Wait, really?",
+      instructions: "surprised",
+      voice: guide1.voice,
+      voiceStyle: guide1.voiceStyle,
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.INTERJECT,
+      stopReason: "stop",
+    });
+
+    let recordNumber = 0;
+    const speechRepository = {
+      create: vi.fn().mockImplementation(async () => ({
+        id: `record-${++recordNumber}`,
+      })),
+    };
+    const service = makeService({ speechRepository });
+
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+
+    await (service as any).generateScriptContent(script, {
+      maxTurns: 1,
+      maxDuration: 60,
+    });
+
+    randomSpy.mockRestore();
+
+    expect(interjectMock).toHaveBeenCalled();
+    expect(speakerAgentConstructorMock).toHaveBeenCalledWith(
+      guide1,
+      expect.anything()
+    );
   });
 });
 

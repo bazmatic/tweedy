@@ -99,6 +99,67 @@ describe("SpeakerAgent stopReason threading", () => {
   });
 });
 
+describe("SpeakerAgent output integrity", () => {
+  it("falls back instead of persisting an interjection with a leaked model artifact", async () => {
+    const lastSpeech = {
+      id: "sp1",
+      speaker: makeSpeaker("s2"),
+      message: "and then...",
+      instructions: "",
+      voice: makeSpeaker("s2").voice,
+      voiceStyle: "neutral",
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.SPEAK,
+    };
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.FILLER_COMMENT,
+      message:
+        "<___ what's the best way to fill the space here? <tag>thinking</tag></___>\nHm, so maybe there is something intentional here.",
+      style: "curious",
+      stopReason: "stop",
+    });
+
+    const speech = await agent.interject(lastSpeech);
+
+    expect(speech.message).not.toContain("<tag>");
+    expect(["Hmm...", "Ah ok.", "Huh.", "Wow.", "Oh..."]).toContain(
+      speech.message
+    );
+  });
+
+  it("retries speak() when the model leaks a non-speech artifact, succeeding on a clean retry", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const call = vi
+      .spyOn(agent as any, "callModelWithTools")
+      .mockResolvedValueOnce({
+        toolName: SpeakerAgentToolName.SPEAK,
+        message: "<tag>thinking</tag> here's my real answer",
+        style: "curious",
+        stopReason: "stop",
+      })
+      .mockResolvedValueOnce({
+        toolName: SpeakerAgentToolName.SPEAK,
+        message: "Here's my real answer.",
+        style: "curious",
+        stopReason: "stop",
+      });
+
+    const script = makeScript();
+    const speech = await agent.speak(
+      script.speeches,
+      script.speakers,
+      script.materials,
+      script.title,
+      script.description,
+      "talk about x"
+    );
+
+    expect(speech.message).toBe("Here's my real answer.");
+    expect(call).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("SpeakerAgent editorial context", () => {
   it("receives the turn's audience value, editorial move and selected cards", async () => {
     const agent = new SpeakerAgent(makeSpeaker("s1", true));

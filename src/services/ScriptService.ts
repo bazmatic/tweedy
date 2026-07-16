@@ -7,6 +7,7 @@ import {
   Speech,
   AudienceProfile,
   BeatPurpose,
+  EpistemicRole,
   ScriptEditPlan,
   ScriptEditSummary,
   ScriptEditTurnAction,
@@ -25,6 +26,7 @@ import {
   SpeakerAgentToolName,
   SpeechRepetitionPolicy,
   EpisodeRecapPolicy,
+  SpeakerRoleProfileResolver,
 } from "../agents";
 import { logger } from "../utils/logger";
 import { shouldInterject } from "./interjection-policy";
@@ -53,7 +55,8 @@ export class ScriptService implements IScriptService {
     private readonly terminologyLedgerPolicy = new TerminologyLedgerPolicy(),
     private readonly speechRepetitionPolicy = new SpeechRepetitionPolicy(),
     private readonly scriptEditPlanner = new ScriptEditPlanner(),
-    private readonly episodeRecapPolicy = new EpisodeRecapPolicy()
+    private readonly episodeRecapPolicy = new EpisodeRecapPolicy(),
+    private readonly roleProfileResolver = new SpeakerRoleProfileResolver()
   ) {}
 
   async generateScript(params: GenerateScriptParams): Promise<PodcastScript> {
@@ -457,22 +460,32 @@ export class ScriptService implements IScriptService {
         !isFinalTurn &&
         shouldInterject(speech, script.speakers.length, Math.random())
       ) {
+        // Experts carry the episode's substantive content, so forcing one
+        // into a cheap, capped-length reaction turn would misrepresent
+        // their epistemic role — and the resulting backchannel then trips
+        // DialogueCadencePolicy's resume-after-backchannel rule, handing
+        // the floor straight back to whoever was already monologuing.
         const eligibleInterjectors = script.speakers.filter(
-          (s) => s.id !== speaker.id
+          (s) =>
+            s.id !== speaker.id &&
+            this.roleProfileResolver.resolve(s).epistemicRole !==
+              EpistemicRole.Expert
         );
-        const interjector =
-          eligibleInterjectors[
-            Math.floor(Math.random() * eligibleInterjectors.length)
-          ];
-        const interjectionAgent = new SpeakerAgent(
-          interjector,
-          this.ragService
-        );
-        const interjection = await interjectionAgent.interject(script.speeches[script.speeches.length - 1]);
-        logger.info(
-          `Turn ${turn + 1}: ${interjector.name} interjected via ${interjection.tool}: "${interjection.message}"`
-        );
-        await this.persistSpeech(script, interjection);
+        if (eligibleInterjectors.length > 0) {
+          const interjector =
+            eligibleInterjectors[
+              Math.floor(Math.random() * eligibleInterjectors.length)
+            ];
+          const interjectionAgent = new SpeakerAgent(
+            interjector,
+            this.ragService
+          );
+          const interjection = await interjectionAgent.interject(script.speeches[script.speeches.length - 1]);
+          logger.info(
+            `Turn ${turn + 1}: ${interjector.name} interjected via ${interjection.tool}: "${interjection.message}"`
+          );
+          await this.persistSpeech(script, interjection);
+        }
       }
 
       // The director declares final turn either at the maxTurns safety

@@ -20,7 +20,7 @@ const OPENAI_PREMIUM_REASONING_TOKEN_BUFFER = 1500;
 // call on nearly every turn. Give it the same kind of headroom OpenAI's
 // reasoning models get above, so a verbose response still finishes inside
 // its JSON structure instead of being cut off mid-argument.
-const DEEPSEEK_TOKEN_BUFFER = 300;
+const DEEPSEEK_TOKEN_BUFFER = 100;
 
 export class AiModelFactory {
   private static models: Map<string, BaseChatModel> = new Map();

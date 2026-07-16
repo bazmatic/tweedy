@@ -107,17 +107,17 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.CLOSING_STATEMENT,
     toolDescription:
-      "Deliver a closing statement that wraps up the podcast. Reflect on the key takeaway or theme, thank your co-host(s), and sign off naturally. Keep it warm and authentic to your personality. Take enough space to land the ending properly, and always finish the final sentence. This is the final word of the episode. Speak to the listener directly in the second person at least once (\"what does this mean for you…\", \"we'll see you next time\").",
+      "Deliver a short closing statement that wraps up the podcast. Reflect on the key takeaway or theme and sign off naturally. Keep it authentic to your personality. Always finish the final sentence. This is the final word of the episode. Speak to the listener directly in the second person at least once (\"what does this mean for you…\", \"we'll see you next time\").",
     styleDescription:
       "How to deliver the closing. Include tone and delivery style for signing off. Example: 'Warm, genuine, slightly reflective tone, natural pacing'",
-    maxTokens: 400,
+    maxTokens: 600,
   },
   {
     name: SpeakerAgentToolName.COLD_OPEN,
     toolDescription:
       "Open the episode cold, before any welcome or introductions — a short, vivid tease of the subject in 1-2 sentences. Use a striking image, surprising fact, or provocative question drawn from the material. Do not say 'welcome', name the show, greet listeners, or introduce yourself or your co-host — this is a teaser, not an introduction. Address the listener directly in the second person where it fits (\"Imagine you're…\", \"If you're listening to this, you already…\").",
     styleDescription:
-      "How to deliver the cold open. Include pacing and tone — often a slower, more deliberate delivery than normal chat. Example: 'Slow, deliberate pacing, let the image land before continuing'",
+      "How to deliver the cold open. Include pacing and tone — often a slower, more dramatic delivery than normal chat. Example: 'Slow, dramatic pacing, with great gravitas and a sense of deep significance. Let the image land before continuing'",
     maxTokens: 100,
   },
   {

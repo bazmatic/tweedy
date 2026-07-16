@@ -26,6 +26,7 @@ import { NaturalSpeechStylePolicy } from "./NaturalSpeechStylePolicy";
 import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
 import { ResponseModePolicy } from "./ResponseModePolicy";
 import { AudienceAccessibilityPolicy } from "./AudienceAccessibilityPolicy";
+import { SpeechIntegrityPolicy } from "./SpeechIntegrityPolicy";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
 
 const EMPTY_TERMINOLOGY_LEDGER: TerminologyLedger = { explainedTerms: [] };
@@ -39,6 +40,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
   private readonly naturalSpeechStylePolicy: NaturalSpeechStylePolicy;
   private readonly responseModePolicy: ResponseModePolicy;
   private readonly audienceAccessibilityPolicy: AudienceAccessibilityPolicy;
+  private readonly speechIntegrityPolicy: SpeechIntegrityPolicy;
 
   constructor(
     speaker: Speaker,
@@ -46,7 +48,8 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     roleProfileResolver = new SpeakerRoleProfileResolver(),
     naturalSpeechStylePolicy = new NaturalSpeechStylePolicy(),
     responseModePolicy = new ResponseModePolicy(roleProfileResolver),
-    audienceAccessibilityPolicy = new AudienceAccessibilityPolicy()
+    audienceAccessibilityPolicy = new AudienceAccessibilityPolicy(),
+    speechIntegrityPolicy = new SpeechIntegrityPolicy()
   ) {
     super();
     this.speaker = speaker;
@@ -55,6 +58,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     this.naturalSpeechStylePolicy = naturalSpeechStylePolicy;
     this.responseModePolicy = responseModePolicy;
     this.audienceAccessibilityPolicy = audienceAccessibilityPolicy;
+    this.speechIntegrityPolicy = speechIntegrityPolicy;
   }
 
   private getHandoffGuidance(previousSpeech: Speech | undefined): string {
@@ -130,6 +134,11 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
             `${toolName} reached the token limit before it could finish`
           );
         }
+        if (!this.speechIntegrityPolicy.isSpeakable(message)) {
+          throw new Error(
+            `${toolName} produced a non-speakable message (leaked model artifact or empty output)`
+          );
+        }
 
         const speech: Speech = {
           id: this.generateId(),
@@ -189,6 +198,12 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
         toLlmTools(INTERJECTION_TOOLS),
         getToolMaxTokens(SpeakerAgentToolName.INTERJECT)
       );
+
+      if (!this.speechIntegrityPolicy.isSpeakable(result.message)) {
+        throw new Error(
+          `${result.toolName} interjection produced a non-speakable message (leaked model artifact or empty output)`
+        );
+      }
 
       return {
         id: this.generateId(),

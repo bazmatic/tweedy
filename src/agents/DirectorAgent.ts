@@ -43,7 +43,7 @@ import { ModelTask } from '../providers/ModelRoutingPolicy';
 
 const WORDS_PER_MINUTE = 150;
 const MINUTES_PER_DISCUSSION_POINT = 1.75;
-const MAX_PLAN_TOKENS = 5000;
+const MAX_PLAN_TOKENS = 10000;
 const MAX_TURN_DIRECTION_TOKENS = 600;
 const DOMINANT_SPEAKER_SHARE_THRESHOLD = 0.55;
 const MIN_SPEECHES_FOR_BALANCE_CHECK = 3;

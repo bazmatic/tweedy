@@ -62,6 +62,34 @@ export function createAudioCommands(): Command {
     });
 
   audioCommand
+    .command("regenerate-speech <scriptId> <speechId>")
+    .description(
+      "Re-synthesize a single speech (e.g. after fixing a typo/mispronunciation) and re-splice it into the existing audio track"
+    )
+    .option("-o, --output <path>", "Output file path")
+    .action(async (scriptId, speechId, options) => {
+      try {
+        logger.progress(`Regenerating speech ${speechId} for script ${scriptId}...`);
+
+        const script = await scriptService.getScript(scriptId);
+        const outputPath =
+          options.output ||
+          path.join(appConfig.audioDir, `podcast-${scriptId}.mp3`);
+
+        await audioService.regenerateSpeech(
+          script.speeches,
+          speechId,
+          outputPath,
+          scriptId
+        );
+
+        logger.success(`Audio regenerated: ${outputPath}`);
+      } catch (error) {
+        logger.error("Failed to regenerate speech:", error);
+      }
+    });
+
+  audioCommand
     .command("process <input> <output>")
     .description("Process an audio file (normalize, remove silence)")
     .action(async (input, output) => {
