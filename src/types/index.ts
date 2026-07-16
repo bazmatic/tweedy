@@ -23,6 +23,7 @@ export enum VocalProviderName {
   Cartesia = "cartesia",
   Kokoro = "kokoro",
   Grok = "grok",
+  GoogleChirp = "google_chirp",
 }
 
 export enum AiProviderName {
