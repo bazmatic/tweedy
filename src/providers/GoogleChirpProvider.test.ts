@@ -3,6 +3,7 @@ import axios from "axios";
 import * as fs from "fs-extra";
 import { GoogleChirpProvider } from "./GoogleChirpProvider";
 import { VocalProviderName } from "../types";
+import { AiModelFactory } from "./AiModelFactory";
 
 vi.mock("axios");
 vi.mock("fs-extra", () => ({
@@ -15,6 +16,10 @@ vi.mock("google-auth-library", () => ({
   GoogleAuth: vi.fn().mockImplementation(function (this: any) {
     this.getClient = vi.fn().mockResolvedValue({ getAccessToken: getAccessTokenMock });
   }),
+}));
+
+vi.mock("./AiModelFactory", () => ({
+  AiModelFactory: { getModel: vi.fn() },
 }));
 
 describe("GoogleChirpProvider", () => {
@@ -120,6 +125,152 @@ describe("GoogleChirpProvider", () => {
         voice: { languageCode: "en-US", name: "en-US-Chirp3-HD-Achernar" },
         audioConfig: { audioEncoding: "MP3" },
       },
+      expect.any(Object)
+    );
+  });
+
+  it("sends SSML built from LLM-tagged text when tagging succeeds", async () => {
+    (axios.post as any).mockResolvedValue({
+      data: { audioContent: Buffer.from("audio-bytes").toString("base64") },
+    });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi.fn().mockResolvedValue({ content: "Hello, [pause] there." }),
+    });
+
+    const provider = new GoogleChirpProvider();
+    const voice = {
+      id: "v1",
+      name: "Achernar",
+      description: "Achernar",
+      provider: VocalProviderName.GoogleChirp,
+      providerId: "en-US-Chirp3-HD-Achernar",
+      settings: {},
+    };
+    const speech = {
+      id: "s1",
+      speaker: {} as any,
+      message: "Hello, there.",
+      instructions: "",
+      voice,
+      voiceStyle: "",
+      timestamp: new Date(),
+    };
+
+    await provider.tts({ speech: speech as any, voice: voice as any, outputFileName: "ssml.mp3" });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({
+        input: { ssml: '<speak>Hello, <break time="300ms"/> there.</speak>' },
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it("falls back to plain text when the LLM changes the wording", async () => {
+    (axios.post as any).mockResolvedValue({
+      data: { audioContent: Buffer.from("audio-bytes").toString("base64") },
+    });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi.fn().mockResolvedValue({ content: "Hi, [pause] there." }),
+    });
+
+    const provider = new GoogleChirpProvider();
+    const voice = {
+      id: "v1",
+      name: "Achernar",
+      description: "Achernar",
+      provider: VocalProviderName.GoogleChirp,
+      providerId: "en-US-Chirp3-HD-Achernar",
+      settings: {},
+    };
+    const speech = {
+      id: "s1",
+      speaker: {} as any,
+      message: "Hello, there.",
+      instructions: "",
+      voice,
+      voiceStyle: "",
+      timestamp: new Date(),
+    };
+
+    await provider.tts({ speech: speech as any, voice: voice as any, outputFileName: "fallback.mp3" });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({ input: { text: "Hello, there." } }),
+      expect.any(Object)
+    );
+  });
+
+  it("falls back to plain text when the LLM emits an invented tag", async () => {
+    (axios.post as any).mockResolvedValue({
+      data: { audioContent: Buffer.from("audio-bytes").toString("base64") },
+    });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi.fn().mockResolvedValue({ content: "Hello [shrug] there." }),
+    });
+
+    const provider = new GoogleChirpProvider();
+    const voice = {
+      id: "v1",
+      name: "Achernar",
+      description: "Achernar",
+      provider: VocalProviderName.GoogleChirp,
+      providerId: "en-US-Chirp3-HD-Achernar",
+      settings: {},
+    };
+    const speech = {
+      id: "s1",
+      speaker: {} as any,
+      message: "Hello there.",
+      instructions: "",
+      voice,
+      voiceStyle: "",
+      timestamp: new Date(),
+    };
+
+    await provider.tts({ speech: speech as any, voice: voice as any, outputFileName: "invented.mp3" });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({ input: { text: "Hello there." } }),
+      expect.any(Object)
+    );
+  });
+
+  it("falls back to plain text when the tagging model throws", async () => {
+    (axios.post as any).mockResolvedValue({
+      data: { audioContent: Buffer.from("audio-bytes").toString("base64") },
+    });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi.fn().mockRejectedValue(new Error("model unavailable")),
+    });
+
+    const provider = new GoogleChirpProvider();
+    const voice = {
+      id: "v1",
+      name: "Achernar",
+      description: "Achernar",
+      provider: VocalProviderName.GoogleChirp,
+      providerId: "en-US-Chirp3-HD-Achernar",
+      settings: {},
+    };
+    const speech = {
+      id: "s1",
+      speaker: {} as any,
+      message: "Hello there.",
+      instructions: "",
+      voice,
+      voiceStyle: "",
+      timestamp: new Date(),
+    };
+
+    await provider.tts({ speech: speech as any, voice: voice as any, outputFileName: "modelerror.mp3" });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({ input: { text: "Hello there." } }),
       expect.any(Object)
     );
   });

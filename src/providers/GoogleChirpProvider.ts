@@ -2,13 +2,21 @@ import axios, { AxiosError } from 'axios';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { GoogleAuth } from 'google-auth-library';
+import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { BaseVocalProvider } from './BaseVocalProvider';
 import { VocalProviderTtsParams, TtsResult, Voice, VocalProviderName } from '../types';
 import { appConfig } from '../utils/config';
 import { logger } from '../utils/logger';
+import { AiModelFactory } from './AiModelFactory';
+import { ModelTask } from './ModelRoutingPolicy';
+import { VALID_TAG_PATTERN, VALID_INLINE_TAGS, VALID_WRAPPING_TAGS, toSsml } from './google-chirp-ssml-tags';
 
 const DEFAULT_LANGUAGE_CODE = 'en-US';
 const AUTH_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
+
+function normalizeWhitespace(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
 
 interface GoogleVoiceListEntry {
   name: string;
@@ -56,6 +64,46 @@ export class GoogleChirpProvider extends BaseVocalProvider {
     return { Authorization: `Bearer ${token}` };
   }
 
+  private async addExpressiveMarkup(text: string): Promise<string | undefined> {
+    try {
+      const model = AiModelFactory.getModel(
+        appConfig.defaultAiProvider,
+        ModelTask.SpeechEffectTagging,
+        500
+      );
+      const response = await model.invoke([
+        new SystemMessage(
+          "You add expressive speech markup to text for Google Cloud Text-to-Speech's Chirp3-HD voices. " +
+            "Chirp3-HD supports exactly these tags, and ONLY these — do not invent, rename, or add any other tag:\n" +
+            `- Inline tags (self-closing, never have a closing counterpart): ${VALID_INLINE_TAGS.map((t) => `[${t}]`).join(', ')}\n` +
+            `- Wrapping tags (open/close pair, can be stacked): ${VALID_WRAPPING_TAGS.map((t) => `<${t}>...</${t}>`).join(', ')}\n` +
+            "Insert tags naturally and sparingly wherever they fit the tone of the text — do not overuse them. " +
+            "Do not change, add, or remove a single word, letter, or punctuation mark of the original text — " +
+            "the only thing you may add is tags from the list above. " +
+            "Respond with only the tagged text, nothing else — no commentary, no markdown fences."
+        ),
+        new HumanMessage(text),
+      ]);
+
+      const tagged =
+        typeof response.content === 'string' ? response.content.trim() : '';
+      if (!tagged) return undefined;
+
+      const strippedOfValidTags = tagged.replace(VALID_TAG_PATTERN, '');
+      if (normalizeWhitespace(strippedOfValidTags) !== normalizeWhitespace(text)) {
+        logger.warn(
+          'Chirp effect-tagged text failed validation (malformed tags or altered wording), using plain text'
+        );
+        return undefined;
+      }
+
+      return toSsml(tagged);
+    } catch (error) {
+      logger.warn('Failed to add Chirp expressive markup, using plain text:', error);
+      return undefined;
+    }
+  }
+
   async tts(params: VocalProviderTtsParams): Promise<TtsResult> {
     this.validateParams(params);
     this.logTtsRequest(params);
@@ -67,11 +115,12 @@ export class GoogleChirpProvider extends BaseVocalProvider {
       const options = params.voice.settings.providerOptions || {};
       const languageCode = (options.languageCode as string) ?? DEFAULT_LANGUAGE_CODE;
       const authHeaders = await this.authHeaders();
+      const ssml = await this.addExpressiveMarkup(params.speech.message);
 
       const response = await axios.post(
         `${this.baseUrl}/text:synthesize`,
         {
-          input: { text: params.speech.message },
+          input: ssml ? { ssml } : { text: params.speech.message },
           voice: { languageCode, name: params.voice.providerId },
           audioConfig: {
             audioEncoding: 'MP3',
