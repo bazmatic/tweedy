@@ -238,6 +238,144 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     );
   });
 
+  it("includes LLM-inserted delivery tags in input.text for a single-speaker chunk when tagging succeeds and preserves wording", async () => {
+    (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi.fn().mockResolvedValue({ content: "Solo line, [pause] with a beat." }),
+    });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [makeTurn("sp1", "Puck", "Solo line, with a beat.")];
+
+    await provider.synthesizeChunk(turns, "chunks/tagged-solo.mp3");
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({
+        input: { text: "Solo line, [pause] with a beat." },
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it("includes LLM-inserted delivery tags in input.text for each turn of a multi-speaker chunk", async () => {
+    (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi
+        .fn()
+        .mockResolvedValueOnce({ content: "Hi, [pause] there." })
+        .mockResolvedValueOnce({ content: "Hey." }),
+    });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [makeTurn("sp1", "Puck", "Hi, there."), makeTurn("sp2", "Kore", "Hey.")];
+
+    await provider.synthesizeChunk(turns, "chunks/tagged-multi.mp3");
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({
+        input: { text: "Speaker1: Hi, [pause] there.\nSpeaker2: Hey." },
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it("falls back to the plain (untagged) text when the LLM changes the wording", async () => {
+    (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi.fn().mockResolvedValue({ content: "Solo lines, [pause] with a beat." }),
+    });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [makeTurn("sp1", "Puck", "Solo line, with a beat.")];
+
+    await provider.synthesizeChunk(turns, "chunks/mismatch-solo.mp3");
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({ input: { text: "Solo line, with a beat." } }),
+      expect.any(Object)
+    );
+  });
+
+  it("falls back to the plain text when the tagging model throws", async () => {
+    (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi.fn().mockRejectedValue(new Error("model unavailable")),
+    });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [makeTurn("sp1", "Puck", "Solo line.")];
+
+    await provider.synthesizeChunk(turns, "chunks/model-error-solo.mp3");
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({ input: { text: "Solo line." } }),
+      expect.any(Object)
+    );
+  });
+
+  it("falls back to the plain text when the LLM returns an empty response", async () => {
+    (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi.fn().mockResolvedValue({ content: "" }),
+    });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [makeTurn("sp1", "Puck", "Solo line.")];
+
+    await provider.synthesizeChunk(turns, "chunks/empty-response-solo.mp3");
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({ input: { text: "Solo line." } }),
+      expect.any(Object)
+    );
+  });
+
+  it("keeps buildStylePrompt's per-line override quoting on the original untagged text even when tagging changes what's spoken", async () => {
+    (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi.fn().mockResolvedValue({ content: "Right, [pause] of course." }),
+    });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [
+      { ...makeTurn("sp1", "Puck", "First line."), voiceStyle: "insightful, dry wit" },
+      { ...makeTurn("sp1", "Puck", "Right, of course."), voiceStyle: "dry, sardonic humor" },
+    ];
+
+    await provider.synthesizeChunk(turns, "chunks/override-plus-tags.mp3");
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({
+        input: {
+          text: "First line.\nRight, [pause] of course.",
+          prompt:
+            'Speak with insightful, dry wit. For the line "Right, of course.", sound dry, sardonic humor instead.',
+        },
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it("strips markdown emphasis before sending text to the delivery-tagging model", async () => {
+    (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
+    const invokeMock = vi.fn().mockResolvedValue({ content: "" });
+    (AiModelFactory.getModel as any).mockReturnValue({ invoke: invokeMock });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [makeTurn("sp1", "Puck", "It's called *Omphalotus nidiformis*.")];
+
+    await provider.synthesizeChunk(turns, "chunks/markdown-before-tagging.mp3");
+
+    const humanMessage = invokeMock.mock.calls[0][0][1];
+    expect(humanMessage.content).toBe("It's called Omphalotus nidiformis.");
+  });
+
   it("adds a per-line override in single-voice mode when one turn's voiceStyle differs from the speaker's usual style", async () => {
     (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
 

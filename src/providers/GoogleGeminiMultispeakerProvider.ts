@@ -2,6 +2,9 @@ import axios, { AxiosError } from "axios";
 import * as fs from "fs-extra";
 import * as path from "path";
 import { GoogleAuth } from "google-auth-library";
+import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { AiModelFactory } from "./AiModelFactory";
+import { ModelTask } from "./ModelRoutingPolicy";
 import {
   IMultispeakerVocalProvider,
   MultispeakerTurn,
@@ -33,6 +36,10 @@ const GEMINI_TTS_VOICE_NAMES = [
   "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird", "Zubenelgenubi",
   "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat",
 ];
+
+function normalizeWhitespace(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
 
 export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvider {
   private auth: GoogleAuth;
@@ -94,6 +101,54 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
    * input, not markdown-aware. */
   private stripMarkdownEmphasis(text: string): string {
     return text.replace(/\*+/g, "");
+  }
+
+  /** Inserts Gemini-native bracketed delivery-direction tags (e.g. [pause],
+   * [very slowly], [sarcastically, one word at a time]) into text via an
+   * LLM call. Unlike Chirp3-HD's fixed tag vocabulary, Gemini's bracket
+   * syntax is free-form per Google's documentation, so validation can't
+   * whitelist specific tags — instead it strips any [...] span and checks
+   * the remaining wording is unchanged from the input. Always resolves;
+   * falls back to the original text on any validation failure or error. */
+  private async addDeliveryTags(text: string): Promise<string> {
+    try {
+      const model = AiModelFactory.getModel(
+        appConfig.defaultAiProvider,
+        ModelTask.SpeechEffectTagging,
+        500
+      );
+      const response = await model.invoke([
+        new SystemMessage(
+          "You add delivery-direction tags to text for Google's Gemini TTS. " +
+            "Gemini supports free-form bracketed director's notes anywhere in the text, e.g. [pause], " +
+            "[very slowly], [sarcastically, one word at a time] — write whatever natural-language direction " +
+            "fits, there is no fixed tag list. " +
+            "Use them sparingly: most lines should come back completely unchanged, with zero tags added — " +
+            "only add one where it clearly improves delivery (a natural hesitation, a beat before a punchline, " +
+            "a marked tonal shift). Never add more than one tag to a short line. " +
+            "Do not change, add, or remove a single word, letter, or punctuation mark of the original text — " +
+            "the only thing you may add is bracketed tags. " +
+            "Respond with only the tagged text, nothing else — no commentary, no markdown fences."
+        ),
+        new HumanMessage(text),
+      ]);
+
+      const tagged = typeof response.content === "string" ? response.content.trim() : "";
+      if (!tagged) return text;
+
+      const strippedOfBrackets = tagged.replace(/\[[^\]]*\]/g, "");
+      if (normalizeWhitespace(strippedOfBrackets) !== normalizeWhitespace(text)) {
+        logger.warn(
+          "Gemini delivery-tagged text failed validation (altered wording), using plain text"
+        );
+        return text;
+      }
+
+      return tagged;
+    } catch (error) {
+      logger.warn("Failed to add Gemini delivery tags, using plain text:", error);
+      return text;
+    }
   }
 
   private buildAliasedText(turns: MultispeakerTurn[]): string {
@@ -220,12 +275,19 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
               multiSpeakerVoiceConfig: { speakerVoiceConfigs: this.buildSpeakerVoiceConfigs(turns) },
             };
 
+      const prompt = this.buildStylePrompt(turns);
+
+      const taggedTurns = await Promise.all(
+        turns.map(async (turn) => ({
+          ...turn,
+          text: await this.addDeliveryTags(this.stripMarkdownEmphasis(turn.text)),
+        }))
+      );
+
       const text =
         distinctSpeakerIds.size === 1
-          ? turns.map((turn) => this.stripMarkdownEmphasis(turn.text)).join("\n")
-          : this.buildAliasedText(turns);
-
-      const prompt = this.buildStylePrompt(turns);
+          ? taggedTurns.map((turn) => turn.text).join("\n")
+          : this.buildAliasedText(taggedTurns);
 
       const authHeaders = await this.authHeaders();
       const response = await axios.post(
