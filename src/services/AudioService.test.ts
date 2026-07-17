@@ -282,6 +282,7 @@ describe("AudioService multispeaker generation", () => {
     }));
     (MultispeakerVocalProviderFactory.getProvider as any).mockReturnValue({
       maxTurnsPerChunk: 2,
+      maxBytesPerChunk: null,
       synthesizeChunk,
     });
     (splitChunkIntoTurns as any).mockResolvedValue([
@@ -342,6 +343,7 @@ describe("AudioService multispeaker generation", () => {
     const synthesizeChunk = vi.fn().mockResolvedValue({ outputPath: "/audio/chunks/s2.mp3" });
     (MultispeakerVocalProviderFactory.getProvider as any).mockReturnValue({
       maxTurnsPerChunk: 1,
+      maxBytesPerChunk: null,
       synthesizeChunk,
     });
     (splitChunkIntoTurns as any).mockResolvedValue([{ startSeconds: 0, endSeconds: 1 }]);

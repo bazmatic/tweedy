@@ -58,6 +58,12 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     expect(provider.maxTurnsPerChunk).toBe(8);
   });
 
+  it("declares a maxBytesPerChunk under Google's documented 4000-byte input.text limit", () => {
+    const provider = new GoogleGeminiMultispeakerProvider();
+    expect(provider.maxBytesPerChunk).toBeLessThan(4000);
+    expect(provider.maxBytesPerChunk).toBe(3600);
+  });
+
   it("posts turns as aliased speaker lines and writes the decoded audio to disk", async () => {
     const audioB64 = Buffer.from("audio-bytes").toString("base64");
     (axios.post as any).mockResolvedValue({ data: { audioContent: audioB64 } });

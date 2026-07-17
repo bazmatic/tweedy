@@ -199,7 +199,7 @@ export class AudioService implements IAudioService {
       voice: s.voice,
       text: s.message,
     }));
-    const chunks = chunkTurns(turns, provider.maxTurnsPerChunk);
+    const chunks = chunkTurns(turns, provider.maxTurnsPerChunk, provider.maxBytesPerChunk);
     const chunkTurnCounts = chunks.map((c) => c.length);
     const chunkStartIndices = this.computeChunkStartIndices(chunkTurnCounts);
     return { chunks, chunkTurnCounts, chunkStartIndices };

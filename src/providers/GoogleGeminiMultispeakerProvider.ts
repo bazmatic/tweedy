@@ -16,6 +16,12 @@ const DEFAULT_LANGUAGE_CODE = "en-US";
 const AUTH_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 const MODEL_NAME = "gemini-2.5-flash-tts";
 const DEFAULT_MAX_TURNS_PER_CHUNK = 8;
+// Google documents a hard 4000-byte limit on the `input.text` field for this
+// endpoint (confirmed live: a 4405-byte chunk was rejected with
+// "Either `input.text` or `input.prompt` is longer than the limit of 4000
+// bytes."). Budget below that ceiling to leave headroom for encoding
+// variance across turns.
+const MAX_BYTES_PER_CHUNK = 3600;
 
 // Known Gemini TTS voice names (30-voice catalogue documented for the
 // multi-speaker-capable Gemini TTS models). Not discoverable via the
@@ -32,6 +38,7 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
   private auth: GoogleAuth;
   private baseUrl = "https://texttospeech.googleapis.com/v1";
   readonly maxTurnsPerChunk: number;
+  readonly maxBytesPerChunk: number = MAX_BYTES_PER_CHUNK;
 
   constructor() {
     if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {

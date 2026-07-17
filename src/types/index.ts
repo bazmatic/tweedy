@@ -612,6 +612,8 @@ export interface MultispeakerTurn {
 export interface IMultispeakerVocalProvider {
   /** Max turns per synthesizeChunk call. null = provider has no limit, whole script in one call. */
   readonly maxTurnsPerChunk: number | null;
+  /** Max bytes of joined turn text per synthesizeChunk call. null = no byte limit (turn count only). */
+  readonly maxBytesPerChunk: number | null;
   synthesizeChunk(turns: MultispeakerTurn[], outputFileName: string): Promise<TtsResult>;
   getVoices(): Promise<Voice[]>;
 }
