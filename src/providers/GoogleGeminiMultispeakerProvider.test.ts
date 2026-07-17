@@ -102,6 +102,47 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     expect(result.outputPath).toContain("chunks/s1.mp3");
   });
 
+  it("strips markdown emphasis asterisks from turn text so Gemini doesn't read them aloud as \"asterisk\"", async () => {
+    const audioB64 = Buffer.from("audio-bytes").toString("base64");
+    (axios.post as any).mockResolvedValue({ data: { audioContent: audioB64 } });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [
+      makeTurn("sp1", "Puck", "It's called *Omphalotus nidiformis*, the ghost fungus."),
+      makeTurn("sp2", "Kore", "That's a **great** name."),
+    ];
+
+    await provider.synthesizeChunk(turns, "chunks/asterisk.mp3");
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({
+        input: {
+          text: "Speaker1: It's called Omphalotus nidiformis, the ghost fungus.\nSpeaker2: That's a great name.",
+        },
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it("strips markdown emphasis asterisks in single-voice mode too", async () => {
+    const audioB64 = Buffer.from("audio-bytes").toString("base64");
+    (axios.post as any).mockResolvedValue({ data: { audioContent: audioB64 } });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [makeTurn("sp1", "Puck", "It's called *Omphalotus nidiformis*.")];
+
+    await provider.synthesizeChunk(turns, "chunks/asterisk-solo.mp3");
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({
+        input: { text: "It's called Omphalotus nidiformis." },
+      }),
+      expect.any(Object)
+    );
+  });
+
   it("synthesizes a single-speaker chunk (e.g. a solo monologue run) via plain single-voice mode, not multi-speaker", async () => {
     const audioB64 = Buffer.from("audio-bytes").toString("base64");
     (axios.post as any).mockResolvedValue({ data: { audioContent: audioB64 } });

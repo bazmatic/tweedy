@@ -88,9 +88,19 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
     return aliasBySpeakerId;
   }
 
+  /** Strips markdown emphasis markers (*word*, **word**) from turn text —
+   * Gemini TTS reads literal asterisks aloud as the word "asterisk" rather
+   * than treating them as emphasis, since this is plain text-to-speech
+   * input, not markdown-aware. */
+  private stripMarkdownEmphasis(text: string): string {
+    return text.replace(/\*+/g, "");
+  }
+
   private buildAliasedText(turns: MultispeakerTurn[]): string {
     const aliasBySpeakerId = this.buildSpeakerAliases(turns);
-    return turns.map((turn) => `${aliasBySpeakerId.get(turn.speaker.id)}: ${turn.text}`).join("\n");
+    return turns
+      .map((turn) => `${aliasBySpeakerId.get(turn.speaker.id)}: ${this.stripMarkdownEmphasis(turn.text)}`)
+      .join("\n");
   }
 
   private buildSpeakerVoiceConfigs(
@@ -140,7 +150,7 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
 
       const text =
         distinctSpeakerIds.size === 1
-          ? turns.map((turn) => turn.text).join("\n")
+          ? turns.map((turn) => this.stripMarkdownEmphasis(turn.text)).join("\n")
           : this.buildAliasedText(turns);
 
       const authHeaders = await this.authHeaders();
