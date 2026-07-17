@@ -7,6 +7,7 @@ export { CartesiaProvider } from './CartesiaProvider';
 export { KokoroProvider } from './KokoroProvider';
 export { GrokProvider } from './GrokProvider';
 export { VocalProviderFactory } from './VocalProviderFactory';
+export { MultispeakerVocalProviderFactory, isMultispeakerCapable } from './MultispeakerVocalProviderFactory';
 export { AudioProcessor } from './AudioProcessor';
 export { AiModelFactory } from './AiModelFactory';
 export { ModelRoutingPolicy, ModelTask, ModelTier } from './ModelRoutingPolicy';

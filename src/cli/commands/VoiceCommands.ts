@@ -1,9 +1,15 @@
 import { Command } from "commander";
 import { VoiceService } from "../../services";
 import { VoiceRepository } from "../../repositories";
-import { VocalProviderFactory } from "../../providers";
-import { VocalProviderName } from "../../types";
+import { VocalProviderFactory, MultispeakerVocalProviderFactory, isMultispeakerCapable } from "../../providers";
+import { VocalProviderName, Voice } from "../../types";
 import { logger } from "../../utils/logger";
+
+function resolveVoiceLister(provider: VocalProviderName): { getVoices(): Promise<Voice[]> } {
+  return isMultispeakerCapable(provider)
+    ? MultispeakerVocalProviderFactory.getProvider(provider)
+    : VocalProviderFactory.getProvider(provider);
+}
 
 export function createVoiceCommands(): Command {
   const voiceCommand = new Command("voice");
@@ -80,12 +86,12 @@ export function createVoiceCommands(): Command {
     .description("Import voices from a provider")
     .option(
       "-p, --provider <provider>",
-      "Provider to import from (elevenlabs, openai, hume, cartesia)",
+      "Provider to import from (elevenlabs, openai, hume, cartesia, google_gemini_multispeaker)",
       "elevenlabs"
     )
     .action(async (options) => {
       try {
-        const provider = VocalProviderFactory.getProvider(
+        const provider = resolveVoiceLister(
           options.provider as VocalProviderName
         );
         const voices = await provider.getVoices();

@@ -3,7 +3,7 @@ import { MultispeakerVocalProviderFactory } from "../providers/MultispeakerVocal
 import { chunkTurns } from "../providers/multispeaker-chunking";
 import { splitChunkIntoTurns } from "../providers/silence-turn-splitter";
 import { checkMultispeakerEligibility } from "./multispeaker-eligibility";
-import { Speech, TtsResult, WordTimestamp, MultispeakerTurn, VocalProviderName } from "../types";
+import { Speech, TtsResult, WordTimestamp, MultispeakerTurn, VocalProviderName, IMultispeakerVocalProvider } from "../types";
 import { logger } from "../utils/logger";
 import { SpeakerAgentToolName } from "../agents/speaker-tools";
 import { appConfig } from "../utils/config";
@@ -121,6 +121,9 @@ export class AudioService implements IAudioService {
     scriptId?: string
   ): Promise<string> {
     const eligibility = checkMultispeakerEligibility(speeches);
+    if (eligibility.warning) {
+      logger.warn(eligibility.warning);
+    }
     if (eligibility.eligible && eligibility.provider) {
       return this.regenerateMultispeakerChunk(speeches, speechId, outputPath, eligibility.provider, scriptId);
     }
@@ -185,6 +188,21 @@ export class AudioService implements IAudioService {
       cursor += count;
     }
     return starts;
+  }
+
+  private buildChunkPlan(
+    speeches: Speech[],
+    provider: IMultispeakerVocalProvider
+  ): { chunks: MultispeakerTurn[][]; chunkTurnCounts: number[]; chunkStartIndices: number[] } {
+    const turns: MultispeakerTurn[] = speeches.map((s) => ({
+      speaker: s.speaker,
+      voice: s.voice,
+      text: s.message,
+    }));
+    const chunks = chunkTurns(turns, provider.maxTurnsPerChunk);
+    const chunkTurnCounts = chunks.map((c) => c.length);
+    const chunkStartIndices = this.computeChunkStartIndices(chunkTurnCounts);
+    return { chunks, chunkTurnCounts, chunkStartIndices };
   }
 
   private chunkFileName(speeches: Speech[], chunkStartIndex: number): string {
@@ -254,14 +272,7 @@ export class AudioService implements IAudioService {
       logger.info(`Generating multispeaker audio for ${speeches.length} speeches`);
 
       const provider = MultispeakerVocalProviderFactory.getProvider(providerName);
-      const turns: MultispeakerTurn[] = speeches.map((s) => ({
-        speaker: s.speaker,
-        voice: s.voice,
-        text: s.message,
-      }));
-      const chunks = chunkTurns(turns, provider.maxTurnsPerChunk);
-      const chunkTurnCounts = chunks.map((c) => c.length);
-      const chunkStartIndices = this.computeChunkStartIndices(chunkTurnCounts);
+      const { chunks, chunkTurnCounts, chunkStartIndices } = this.buildChunkPlan(speeches, provider);
 
       const chunkFiles: string[] = [];
       for (let i = 0; i < chunks.length; i++) {
@@ -306,14 +317,7 @@ export class AudioService implements IAudioService {
       }
 
       const provider = MultispeakerVocalProviderFactory.getProvider(providerName);
-      const turns: MultispeakerTurn[] = speeches.map((s) => ({
-        speaker: s.speaker,
-        voice: s.voice,
-        text: s.message,
-      }));
-      const chunks = chunkTurns(turns, provider.maxTurnsPerChunk);
-      const chunkTurnCounts = chunks.map((c) => c.length);
-      const chunkStartIndices = this.computeChunkStartIndices(chunkTurnCounts);
+      const { chunks, chunkTurnCounts, chunkStartIndices } = this.buildChunkPlan(speeches, provider);
       const targetChunkIndex = chunkStartIndices.findIndex(
         (start, i) => targetIndex >= start && targetIndex < start + chunkTurnCounts[i]
       );
