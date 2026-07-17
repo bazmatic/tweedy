@@ -107,13 +107,22 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
         return { speakerAlias: alias, speakerId: turn.voice.providerId };
       });
 
+      // Gemini TTS voices are locale-agnostic by name (unlike Chirp3-HD's
+      // per-locale voice IDs) — the same voice name takes on an accent via
+      // languageCode. One call carries one languageCode for every speaker
+      // in it, so this reads it off the first turn's voice; multispeaker
+      // eligibility already requires every speaker in a script to share
+      // one provider, and in practice a script's speakers share one locale.
+      const languageCode =
+        (turns[0].voice.settings.providerOptions?.languageCode as string) ?? DEFAULT_LANGUAGE_CODE;
+
       const authHeaders = await this.authHeaders();
       const response = await axios.post(
         `${this.baseUrl}/text:synthesize`,
         {
           input: { text },
           voice: {
-            languageCode: DEFAULT_LANGUAGE_CODE,
+            languageCode,
             modelName: MODEL_NAME,
             multiSpeakerVoiceConfig: { speakerVoiceConfigs },
           },
