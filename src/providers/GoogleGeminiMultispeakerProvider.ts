@@ -43,9 +43,15 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
 
   private redactAuthHeader(error: unknown): unknown {
     if (!axios.isAxiosError(error)) return error;
+
     const redacted = error as AxiosError;
     if (redacted.config?.headers?.Authorization) {
       redacted.config.headers.Authorization = "[REDACTED]";
+    }
+    if ((redacted.request as { _header?: string } | undefined)?._header) {
+      (redacted.request as { _header?: string })._header = (
+        redacted.request as { _header: string }
+      )._header.replace(/Authorization: Bearer [^\r\n]+/i, "Authorization: [REDACTED]");
     }
     return redacted;
   }

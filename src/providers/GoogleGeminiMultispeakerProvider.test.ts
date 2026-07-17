@@ -103,6 +103,26 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     );
   });
 
+  it("redacts the Authorization header (config and raw request._header) before logging a failed synthesizeChunk request", async () => {
+    const axiosError: any = {
+      isAxiosError: true,
+      message: "Request failed with status code 403",
+      config: { headers: { Authorization: "Bearer test-access-token" } },
+      request: { _header: "POST /v1/text:synthesize HTTP/1.1\r\nAuthorization: Bearer test-access-token\r\n\r\n" },
+    };
+    (axios.post as any).mockRejectedValue(axiosError);
+    (axios.isAxiosError as any).mockReturnValue(true);
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [makeTurn("sp1", "Puck", "Hello there.")];
+
+    await expect(provider.synthesizeChunk(turns, "chunks/fail.mp3")).rejects.toBe(axiosError);
+
+    expect(axiosError.config.headers.Authorization).toBe("[REDACTED]");
+    expect(axiosError.request._header).not.toContain("test-access-token");
+    expect(axiosError.request._header).toContain("Authorization: [REDACTED]");
+  });
+
   it("returns the known Gemini TTS voice catalogue tagged with the provider enum", async () => {
     const provider = new GoogleGeminiMultispeakerProvider();
     const voices = await provider.getVoices();
