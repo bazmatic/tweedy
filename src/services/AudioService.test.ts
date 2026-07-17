@@ -340,14 +340,22 @@ describe("AudioService multispeaker generation", () => {
   });
 
   it("regenerateSpeech re-synthesizes only the target speech's chunk in multispeaker mode", async () => {
-    const synthesizeChunk = vi.fn().mockResolvedValue({ outputPath: "/audio/chunks/s2.mp3" });
+    // maxTurnsPerChunk: 1 would force every chunk to be single-speaker,
+    // which the single-speaker merge pass in chunkTurns always collapses
+    // back into one chunk — so this test uses maxTurnsPerChunk: 2 with 4
+    // alternating-speaker speeches, producing 2 genuinely independent
+    // 2-speaker chunks to verify only the target one is re-synthesized.
+    const synthesizeChunk = vi.fn().mockResolvedValue({ outputPath: "/audio/chunks/s3.mp3" });
     (MultispeakerVocalProviderFactory.getProvider as any).mockReturnValue({
-      maxTurnsPerChunk: 1,
+      maxTurnsPerChunk: 2,
       maxBytesPerChunk: null,
       synthesizeChunk,
     });
-    (splitChunkIntoTurns as any).mockResolvedValue([{ startSeconds: 0, endSeconds: 1 }]);
-    mockConcatenateAudio.mockResolvedValue({ offsetsSeconds: [0, 1.3], speechEndSeconds: [1, 1] });
+    (splitChunkIntoTurns as any).mockResolvedValue([
+      { startSeconds: 0, endSeconds: 1 },
+      { startSeconds: 1, endSeconds: 2 },
+    ]);
+    mockConcatenateAudio.mockResolvedValue({ offsetsSeconds: [0, 2.3], speechEndSeconds: [2, 2] });
 
     const voice = makeMultispeakerVoice();
     const speakerA = makeSpeaker("sp1", "Ada");
@@ -355,15 +363,20 @@ describe("AudioService multispeaker generation", () => {
     const speeches = [
       makeSpeech({ id: "s1", speaker: speakerA, voice, message: "Hi" }),
       makeSpeech({ id: "s2", speaker: speakerB, voice, message: "Hey" }),
+      makeSpeech({ id: "s3", speaker: speakerA, voice, message: "How are you" }),
+      makeSpeech({ id: "s4", speaker: speakerB, voice, message: "Great" }),
     ];
 
     const service = new AudioService();
-    await service.regenerateSpeech(speeches, "s2", "/audio/podcast.mp3", "abc123");
+    await service.regenerateSpeech(speeches, "s4", "/audio/podcast.mp3", "abc123");
 
     expect(synthesizeChunk).toHaveBeenCalledTimes(1);
     expect(synthesizeChunk).toHaveBeenCalledWith(
-      [{ speaker: speakerB, voice, text: "Hey" }],
-      "chunks/s2.mp3"
+      [
+        { speaker: speakerA, voice, text: "How are you" },
+        { speaker: speakerB, voice, text: "Great" },
+      ],
+      "chunks/s3.mp3"
     );
   });
 });
