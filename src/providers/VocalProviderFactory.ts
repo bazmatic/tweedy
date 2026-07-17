@@ -7,6 +7,7 @@ import { CartesiaProvider } from './CartesiaProvider';
 import { KokoroProvider } from './KokoroProvider';
 import { GrokProvider } from './GrokProvider';
 import { GoogleChirpProvider } from './GoogleChirpProvider';
+import { isMultispeakerCapable } from './MultispeakerVocalProviderFactory';
 import { logger } from '../utils/logger';
 
 export class VocalProviderFactory {
@@ -49,8 +50,9 @@ export class VocalProviderFactory {
 
   static async getAvailableProviders(): Promise<VocalProviderName[]> {
     const available: VocalProviderName[] = [];
-    
+
     for (const provider of Object.values(VocalProviderName)) {
+      if (isMultispeakerCapable(provider)) continue;
       try {
         const instance = this.getProvider(provider);
         await instance.getVoices();
@@ -59,7 +61,7 @@ export class VocalProviderFactory {
         logger.warn(`Provider ${provider} not available:`, error);
       }
     }
-    
+
     return available;
   }
 }
