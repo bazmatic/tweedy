@@ -22,6 +22,9 @@ export function loadConfig(): AppConfig {
       AiProviderName.Anthropic,
     defaultChunkSize: parseInt(process.env.DEFAULT_CHUNK_SIZE || "1000"),
     defaultChunkOverlap: parseInt(process.env.DEFAULT_CHUNK_OVERLAP || "200"),
+    multispeakerChunkSize: process.env.MULTISPEAKER_CHUNK_SIZE
+      ? parseInt(process.env.MULTISPEAKER_CHUNK_SIZE, 10)
+      : undefined,
   };
 }
 

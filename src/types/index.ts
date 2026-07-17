@@ -24,6 +24,7 @@ export enum VocalProviderName {
   Kokoro = "kokoro",
   Grok = "grok",
   GoogleChirp = "google_chirp",
+  GoogleGeminiMultispeaker = "google_gemini_multispeaker",
 }
 
 export enum AiProviderName {
@@ -408,6 +409,7 @@ export interface AppConfig {
   defaultAiProvider: AiProviderName;
   defaultChunkSize: number;
   defaultChunkOverlap: number;
+  multispeakerChunkSize?: number;
 }
 
 export interface GenerateScriptParams {
@@ -599,6 +601,19 @@ export interface VocalProviderTtsParams {
    * ElevenLabs' previous_text/next_text) so delivery reacts naturally to context. */
   previousText?: string;
   nextText?: string;
+}
+
+export interface MultispeakerTurn {
+  speaker: Speaker;
+  voice: Voice;
+  text: string;
+}
+
+export interface IMultispeakerVocalProvider {
+  /** Max turns per synthesizeChunk call. null = provider has no limit, whole script in one call. */
+  readonly maxTurnsPerChunk: number | null;
+  synthesizeChunk(turns: MultispeakerTurn[], outputFileName: string): Promise<TtsResult>;
+  getVoices(): Promise<Voice[]>;
 }
 
 export interface IDocumentProcessor {
