@@ -4,6 +4,7 @@ import * as fs from "fs-extra";
 import { GoogleGeminiMultispeakerProvider } from "./GoogleGeminiMultispeakerProvider";
 import { VocalProviderName } from "../types";
 import type { MultispeakerTurn } from "../types";
+import { AiModelFactory } from "./AiModelFactory";
 
 vi.mock("axios");
 vi.mock("fs-extra", () => ({
@@ -16,6 +17,10 @@ vi.mock("google-auth-library", () => ({
   GoogleAuth: vi.fn().mockImplementation(function (this: any) {
     this.getClient = vi.fn().mockResolvedValue({ getAccessToken: getAccessTokenMock });
   }),
+}));
+
+vi.mock("./AiModelFactory", () => ({
+  AiModelFactory: { getModel: vi.fn() },
 }));
 
 function makeTurn(speakerId: string, voiceProviderId: string, text: string): MultispeakerTurn {
@@ -40,6 +45,9 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     process.env.GOOGLE_APPLICATION_CREDENTIALS = "/tmp/fake-service-account.json";
     vi.clearAllMocks();
     getAccessTokenMock.mockResolvedValue({ token: "test-access-token" });
+    (AiModelFactory.getModel as any).mockReturnValue({
+      invoke: vi.fn().mockResolvedValue({ content: "" }),
+    });
   });
 
   afterEach(() => {
