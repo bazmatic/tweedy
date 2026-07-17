@@ -230,6 +230,56 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     );
   });
 
+  it("adds a per-line override in single-voice mode when one turn's voiceStyle differs from the speaker's usual style", async () => {
+    (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [
+      { ...makeTurn("sp1", "Puck", "First line."), voiceStyle: "insightful, dry wit" },
+      { ...makeTurn("sp1", "Puck", "Right, of course."), voiceStyle: "dry, sardonic humor" },
+      { ...makeTurn("sp1", "Puck", "Third line."), voiceStyle: "insightful, dry wit" },
+    ];
+
+    await provider.synthesizeChunk(turns, "chunks/override-solo.mp3");
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({
+        input: {
+          text: "First line.\nRight, of course.\nThird line.",
+          prompt:
+            'Speak with insightful, dry wit. For the line "Right, of course.", sound dry, sardonic humor instead.',
+        },
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it("adds a per-line override in multi-speaker mode when one turn's voiceStyle differs from that speaker's usual style", async () => {
+    (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [
+      { ...makeTurn("sp1", "Puck", "Hi."), voiceStyle: "insightful, dry wit" },
+      { ...makeTurn("sp2", "Kore", "Hey."), voiceStyle: "warm, enthusiastic, curious" },
+      { ...makeTurn("sp1", "Puck", "Right, of course."), voiceStyle: "dry, sardonic humor" },
+    ];
+
+    await provider.synthesizeChunk(turns, "chunks/override-multi.mp3");
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({
+        input: {
+          text: "Speaker1: Hi.\nSpeaker2: Hey.\nSpeaker1: Right, of course.",
+          prompt:
+            'Speaker1 sounds insightful, dry wit. For the line "Right, of course.", Speaker1 should sound dry, sardonic humor instead. Speaker2 sounds warm, enthusiastic, curious.',
+        },
+      }),
+      expect.any(Object)
+    );
+  });
+
   it("rejects an empty turn list", async () => {
     const provider = new GoogleGeminiMultispeakerProvider();
     await expect(provider.synthesizeChunk([], "chunks/empty.mp3")).rejects.toThrow(
