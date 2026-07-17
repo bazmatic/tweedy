@@ -198,6 +198,7 @@ export class AudioService implements IAudioService {
       speaker: s.speaker,
       voice: s.voice,
       text: s.message,
+      voiceStyle: s.voiceStyle,
     }));
     const chunks = chunkTurns(turns, provider.maxTurnsPerChunk, provider.maxBytesPerChunk);
     const chunkTurnCounts = chunks.map((c) => c.length);

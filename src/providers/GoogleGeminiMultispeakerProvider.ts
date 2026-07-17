@@ -113,6 +113,33 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
     });
   }
 
+  /** Builds the delivery-style direction sent via input.prompt (distinct
+   * from input.text, the spoken words) — Gemini TTS has no SSML/tag
+   * syntax like Chirp3-HD's <break>, only this natural-language style
+   * field. For a multi-speaker chunk, each distinct speaker's voiceStyle
+   * is attributed to its alias so direction doesn't blur across speakers.
+   * Returns undefined when no turn has a voiceStyle set, so the field is
+   * omitted entirely rather than sent empty. */
+  private buildStylePrompt(turns: MultispeakerTurn[]): string | undefined {
+    const distinctSpeakerIds = new Set(turns.map((turn) => turn.speaker.id));
+
+    if (distinctSpeakerIds.size === 1) {
+      const style = turns[0].voiceStyle?.trim();
+      return style ? style : undefined;
+    }
+
+    const aliasBySpeakerId = this.buildSpeakerAliases(turns);
+    const directions = [...aliasBySpeakerId.entries()]
+      .map(([speakerId, alias]) => {
+        const turn = turns.find((t) => t.speaker.id === speakerId)!;
+        const style = turn.voiceStyle?.trim();
+        return style ? `${alias} sounds ${style}.` : undefined;
+      })
+      .filter((direction): direction is string => Boolean(direction));
+
+    return directions.length > 0 ? directions.join(" ") : undefined;
+  }
+
   async synthesizeChunk(turns: MultispeakerTurn[], outputFileName: string): Promise<TtsResult> {
     if (turns.length === 0) {
       throw new Error("synthesizeChunk requires at least one turn");
@@ -153,11 +180,13 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
           ? turns.map((turn) => this.stripMarkdownEmphasis(turn.text)).join("\n")
           : this.buildAliasedText(turns);
 
+      const prompt = this.buildStylePrompt(turns);
+
       const authHeaders = await this.authHeaders();
       const response = await axios.post(
         `${this.baseUrl}/text:synthesize`,
         {
-          input: { text },
+          input: { text, ...(prompt ? { prompt } : {}) },
           voice: voiceConfig,
           audioConfig: { audioEncoding: "MP3" },
         },

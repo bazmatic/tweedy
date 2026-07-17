@@ -171,6 +171,65 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     expect(result.outputPath).toContain("chunks/solo.mp3");
   });
 
+  it("includes input.prompt with the speaker's voiceStyle in single-voice mode", async () => {
+    (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [
+      { ...makeTurn("sp1", "Puck", "Solo line."), voiceStyle: "insightful, dry wit" },
+    ];
+
+    await provider.synthesizeChunk(turns, "chunks/styled-solo.mp3");
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({
+        input: { text: "Solo line.", prompt: "insightful, dry wit" },
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it("attributes each speaker's voiceStyle to its own alias in input.prompt for multi-speaker mode", async () => {
+    (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [
+      { ...makeTurn("sp1", "Puck", "Hi."), voiceStyle: "insightful, dry wit" },
+      { ...makeTurn("sp2", "Kore", "Hey."), voiceStyle: "warm, enthusiastic, curious" },
+    ];
+
+    await provider.synthesizeChunk(turns, "chunks/styled-multi.mp3");
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({
+        input: {
+          text: "Speaker1: Hi.\nSpeaker2: Hey.",
+          prompt: "Speaker1 sounds insightful, dry wit. Speaker2 sounds warm, enthusiastic, curious.",
+        },
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it("omits input.prompt entirely when no turn has a voiceStyle set", async () => {
+    (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [makeTurn("sp1", "Puck", "Hi."), makeTurn("sp2", "Kore", "Hey.")];
+
+    await provider.synthesizeChunk(turns, "chunks/no-style.mp3");
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      expect.objectContaining({
+        input: { text: "Speaker1: Hi.\nSpeaker2: Hey." },
+      }),
+      expect.any(Object)
+    );
+  });
+
   it("rejects an empty turn list", async () => {
     const provider = new GoogleGeminiMultispeakerProvider();
     await expect(provider.synthesizeChunk([], "chunks/empty.mp3")).rejects.toThrow(

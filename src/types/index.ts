@@ -607,6 +607,10 @@ export interface MultispeakerTurn {
   speaker: Speaker;
   voice: Voice;
   text: string;
+  /** Delivery-style direction for this turn (e.g. "insightful, dry wit"),
+   * passed to providers that support a separate style-instruction field
+   * distinct from the spoken text (e.g. Gemini TTS's input.prompt). */
+  voiceStyle?: string;
 }
 
 export interface IMultispeakerVocalProvider {

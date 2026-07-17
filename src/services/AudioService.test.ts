@@ -305,8 +305,8 @@ describe("AudioService multispeaker generation", () => {
     expect(synthesizeChunk).toHaveBeenCalledTimes(1);
     expect(synthesizeChunk).toHaveBeenCalledWith(
       [
-        { speaker: speakerA, voice, text: "Hi" },
-        { speaker: speakerB, voice, text: "Hey" },
+        { speaker: speakerA, voice, text: "Hi", voiceStyle: "neutral" },
+        { speaker: speakerB, voice, text: "Hey", voiceStyle: "neutral" },
       ],
       "chunks/s1.mp3"
     );
@@ -373,8 +373,8 @@ describe("AudioService multispeaker generation", () => {
     expect(synthesizeChunk).toHaveBeenCalledTimes(1);
     expect(synthesizeChunk).toHaveBeenCalledWith(
       [
-        { speaker: speakerA, voice, text: "How are you" },
-        { speaker: speakerB, voice, text: "Great" },
+        { speaker: speakerA, voice, text: "How are you", voiceStyle: "neutral" },
+        { speaker: speakerB, voice, text: "Great", voiceStyle: "neutral" },
       ],
       "chunks/s3.mp3"
     );
