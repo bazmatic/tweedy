@@ -45,12 +45,12 @@ describe("splitChunkIntoTurns", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns the whole clip as one boundary when turnCount is 1", async () => {
-    const boundaries = await splitChunkIntoTurns("chunk.mp3", 1);
+  it("returns the whole clip as one boundary when there's only 1 turn", async () => {
+    const boundaries = await splitChunkIntoTurns("chunk.mp3", [10]);
     expect(boundaries).toEqual([{ startSeconds: 0, endSeconds: 9 }]);
   });
 
-  it("splits on detected silence gaps when the gap count matches turnCount - 1", async () => {
+  it("splits on detected silence gaps when the gap count matches turnTextLengths.length - 1", async () => {
     ffmpegState.stderrLines = [
       "silence_start: 3.000",
       "silence_end: 3.200",
@@ -58,7 +58,7 @@ describe("splitChunkIntoTurns", () => {
       "silence_end: 6.150",
     ];
 
-    const boundaries = await splitChunkIntoTurns("chunk.mp3", 3);
+    const boundaries = await splitChunkIntoTurns("chunk.mp3", [10, 10, 10]);
 
     expect(boundaries).toEqual([
       { startSeconds: 0, endSeconds: 3 },
@@ -67,15 +67,29 @@ describe("splitChunkIntoTurns", () => {
     ]);
   });
 
-  it("falls back to evenly dividing the clip when the detected gap count doesn't match", async () => {
+  it("falls back to dividing proportionally by text length when the detected gap count doesn't match", async () => {
     ffmpegState.stderrLines = ["silence_start: 3.000", "silence_end: 3.200"];
 
-    const boundaries = await splitChunkIntoTurns("chunk.mp3", 3);
+    // Equal-length turns should still divide the 9s clip evenly (3 turns -> 3s each).
+    const boundaries = await splitChunkIntoTurns("chunk.mp3", [10, 10, 10]);
 
     expect(boundaries).toEqual([
       { startSeconds: 0, endSeconds: 3 },
       { startSeconds: 3, endSeconds: 6 },
       { startSeconds: 6, endSeconds: 9 },
+    ]);
+  });
+
+  it("weights the proportional fallback by each turn's text length instead of splitting evenly", async () => {
+    ffmpegState.stderrLines = ["silence_start: 3.000", "silence_end: 3.200"];
+
+    // Turn lengths 10/20/70 (total 100) of a 9s clip -> 0.9s / 1.8s / 6.3s.
+    const boundaries = await splitChunkIntoTurns("chunk.mp3", [10, 20, 70]);
+
+    expect(boundaries).toEqual([
+      { startSeconds: 0, endSeconds: 0.9 },
+      { startSeconds: 0.9, endSeconds: 2.7 },
+      { startSeconds: 2.7, endSeconds: 9 },
     ]);
   });
 });

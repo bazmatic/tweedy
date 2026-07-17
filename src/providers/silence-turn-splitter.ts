@@ -11,12 +11,28 @@ function round3(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
 
-function evenlyDivide(duration: number, turnCount: number): TurnBoundary[] {
-  const step = duration / turnCount;
-  return Array.from({ length: turnCount }, (_, i) => ({
-    startSeconds: round3(i * step),
-    endSeconds: round3((i + 1) * step),
-  }));
+/**
+ * Divides duration across turns proportionally to each turn's text length,
+ * rather than splitting it evenly — an even split badly misrepresents
+ * turns of very different lengths (e.g. a 6-word reaction next to a
+ * 120-word explanation would otherwise get the same on-screen duration).
+ */
+function divideProportionally(duration: number, turnTextLengths: number[]): TurnBoundary[] {
+  const totalLength = turnTextLengths.reduce((sum, len) => sum + len, 0);
+  const boundaries: TurnBoundary[] = [];
+  let cursor = 0;
+
+  for (const length of turnTextLengths) {
+    const share = totalLength > 0 ? length / totalLength : 1 / turnTextLengths.length;
+    const end = cursor + duration * share;
+    boundaries.push({ startSeconds: round3(cursor), endSeconds: round3(end) });
+    cursor = end;
+  }
+
+  // Rounding can leave the last boundary a hair short of/past the real
+  // duration; snap it exactly so downstream offset math isn't thrown off.
+  boundaries[boundaries.length - 1].endSeconds = round3(duration);
+  return boundaries;
 }
 
 function detectSilenceStarts(
@@ -43,17 +59,19 @@ function detectSilenceStarts(
 
 /**
  * Approximates per-turn boundaries within a single multispeaker-synthesized
- * chunk by locating silence gaps between turns. Falls back to evenly
- * dividing the chunk's duration if the detected gap count doesn't match
- * turnCount - 1 (silencedetect is heuristic and can under/over-count).
+ * chunk by locating silence gaps between turns. Falls back to dividing the
+ * chunk's duration proportionally by each turn's text length if the
+ * detected gap count doesn't match turnTextLengths.length - 1
+ * (silencedetect is heuristic and can under/over-count).
  */
 export async function splitChunkIntoTurns(
   filePath: string,
-  turnCount: number,
+  turnTextLengths: number[],
   silenceThresholdDb = -40,
   minSilenceDuration = 0.15
 ): Promise<TurnBoundary[]> {
   const duration = await AudioProcessor.getAudioDuration(filePath);
+  const turnCount = turnTextLengths.length;
 
   if (turnCount <= 1) {
     return [{ startSeconds: 0, endSeconds: duration }];
@@ -63,9 +81,9 @@ export async function splitChunkIntoTurns(
 
   if (silenceStarts.length !== turnCount - 1) {
     logger.warn(
-      `Detected ${silenceStarts.length} silence gap(s) in ${filePath} but expected ${turnCount - 1} for ${turnCount} turns; falling back to even division`
+      `Detected ${silenceStarts.length} silence gap(s) in ${filePath} but expected ${turnCount - 1} for ${turnCount} turns; falling back to proportional-by-text-length division`
     );
-    return evenlyDivide(duration, turnCount);
+    return divideProportionally(duration, turnTextLengths);
   }
 
   const boundaries: TurnBoundary[] = [];

@@ -211,13 +211,14 @@ export class AudioService implements IAudioService {
 
   private async splitChunksIntoSpeechTimings(
     chunkFiles: string[],
-    chunkTurnCounts: number[],
+    chunks: MultispeakerTurn[][],
     chunkOffsetsSeconds: number[]
   ): Promise<{ startSeconds: number; endSeconds: number }[]> {
     const perSpeechTiming: { startSeconds: number; endSeconds: number }[] = [];
 
     for (let i = 0; i < chunkFiles.length; i++) {
-      const boundaries = await splitChunkIntoTurns(chunkFiles[i], chunkTurnCounts[i]);
+      const turnTextLengths = chunks[i].map((turn) => turn.text.length);
+      const boundaries = await splitChunkIntoTurns(chunkFiles[i], turnTextLengths);
       for (const boundary of boundaries) {
         perSpeechTiming.push({
           startSeconds: round3(chunkOffsetsSeconds[i] + boundary.startSeconds),
@@ -289,7 +290,7 @@ export class AudioService implements IAudioService {
 
       const perSpeechTiming = await this.splitChunksIntoSpeechTimings(
         chunkFiles,
-        chunkTurnCounts,
+        chunks,
         timing.offsetsSeconds
       );
 
@@ -341,7 +342,7 @@ export class AudioService implements IAudioService {
 
       const perSpeechTiming = await this.splitChunksIntoSpeechTimings(
         chunkFiles,
-        chunkTurnCounts,
+        chunks,
         timing.offsetsSeconds
       );
 
