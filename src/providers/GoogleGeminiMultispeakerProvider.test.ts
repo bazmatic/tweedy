@@ -179,7 +179,7 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     expect(result.outputPath).toContain("chunks/solo.mp3");
   });
 
-  it("includes input.prompt with the speaker's voiceStyle in single-voice mode", async () => {
+  it("never includes input.prompt, even when a turn has a voiceStyle set (delivery is via inline tags only)", async () => {
     (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
 
     const provider = new GoogleGeminiMultispeakerProvider();
@@ -192,30 +192,7 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     expect(axios.post).toHaveBeenCalledWith(
       "https://texttospeech.googleapis.com/v1/text:synthesize",
       expect.objectContaining({
-        input: { text: "Solo line.", prompt: "insightful, dry wit" },
-      }),
-      expect.any(Object)
-    );
-  });
-
-  it("attributes each speaker's voiceStyle to its own alias in input.prompt for multi-speaker mode", async () => {
-    (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
-
-    const provider = new GoogleGeminiMultispeakerProvider();
-    const turns = [
-      { ...makeTurn("sp1", "Puck", "Hi."), voiceStyle: "insightful, dry wit" },
-      { ...makeTurn("sp2", "Kore", "Hey."), voiceStyle: "warm, enthusiastic, curious" },
-    ];
-
-    await provider.synthesizeChunk(turns, "chunks/styled-multi.mp3");
-
-    expect(axios.post).toHaveBeenCalledWith(
-      "https://texttospeech.googleapis.com/v1/text:synthesize",
-      expect.objectContaining({
-        input: {
-          text: "Speaker1: Hi.\nSpeaker2: Hey.",
-          prompt: "Speaker1 sounds insightful, dry wit. Speaker2 sounds warm, enthusiastic, curious.",
-        },
+        input: { text: "Solo line." },
       }),
       expect.any(Object)
     );
@@ -335,7 +312,7 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     );
   });
 
-  it("keeps buildStylePrompt's per-line override quoting on the original untagged text even when tagging changes what's spoken", async () => {
+  it("tags each turn's text independently and never includes input.prompt, even with per-line voiceStyle overrides present", async () => {
     (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
     (AiModelFactory.getModel as any).mockReturnValue({
       invoke: vi.fn().mockResolvedValue({ content: "Right, [pause] of course." }),
@@ -354,8 +331,6 @@ describe("GoogleGeminiMultispeakerProvider", () => {
       expect.objectContaining({
         input: {
           text: "First line.\nRight, [pause] of course.",
-          prompt:
-            'Speak with insightful, dry wit. For the line "Right, of course.", sound dry, sardonic humor instead.',
         },
       }),
       expect.any(Object)
@@ -376,7 +351,7 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     expect(humanMessage.content).toBe("It's called Omphalotus nidiformis.");
   });
 
-  it("adds a per-line override in single-voice mode when one turn's voiceStyle differs from the speaker's usual style", async () => {
+  it("ignores per-line voiceStyle differences entirely in single-voice mode (no input.prompt is ever sent)", async () => {
     (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
 
     const provider = new GoogleGeminiMultispeakerProvider();
@@ -393,15 +368,13 @@ describe("GoogleGeminiMultispeakerProvider", () => {
       expect.objectContaining({
         input: {
           text: "First line.\nRight, of course.\nThird line.",
-          prompt:
-            'Speak with insightful, dry wit. For the line "Right, of course.", sound dry, sardonic humor instead.',
         },
       }),
       expect.any(Object)
     );
   });
 
-  it("adds a per-line override in multi-speaker mode when one turn's voiceStyle differs from that speaker's usual style", async () => {
+  it("ignores per-line voiceStyle differences entirely in multi-speaker mode (no input.prompt is ever sent)", async () => {
     (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
 
     const provider = new GoogleGeminiMultispeakerProvider();
@@ -418,8 +391,6 @@ describe("GoogleGeminiMultispeakerProvider", () => {
       expect.objectContaining({
         input: {
           text: "Speaker1: Hi.\nSpeaker2: Hey.\nSpeaker1: Right, of course.",
-          prompt:
-            'Speaker1 sounds insightful, dry wit. For the line "Right, of course.", Speaker1 should sound dry, sardonic humor instead. Speaker2 sounds warm, enthusiastic, curious.',
         },
       }),
       expect.any(Object)

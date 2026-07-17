@@ -168,78 +168,6 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
     });
   }
 
-  private countStyles(turns: MultispeakerTurn[]): Map<string, number> {
-    const counts = new Map<string, number>();
-    for (const turn of turns) {
-      const style = turn.voiceStyle?.trim();
-      if (style) counts.set(style, (counts.get(style) ?? 0) + 1);
-    }
-    return counts;
-  }
-
-  private mostCommonStyle(counts: Map<string, number>): string {
-    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
-  }
-
-  /** Builds the delivery-style direction sent via input.prompt (distinct
-   * from input.text, the spoken words) — Gemini TTS has no SSML/tag
-   * syntax like Chirp3-HD's <break>, only this natural-language style
-   * field. For a multi-speaker chunk, each distinct speaker's voiceStyle
-   * is attributed to its alias so direction doesn't blur across speakers.
-   * A turn whose voiceStyle differs from its speaker's usual (most common
-   * in this chunk) style becomes a targeted per-line override, quoting
-   * that turn's text — this is how a single line gets its own delivery
-   * direction (e.g. one sardonic aside) without changing the speaker's
-   * baseline style for the rest of the chunk. Returns undefined when no
-   * turn has a voiceStyle set, so the field is omitted entirely rather
-   * than sent empty. */
-  private buildStylePrompt(turns: MultispeakerTurn[]): string | undefined {
-    const distinctSpeakerIds = new Set(turns.map((turn) => turn.speaker.id));
-
-    if (distinctSpeakerIds.size === 1) {
-      const styleCounts = this.countStyles(turns);
-      if (styleCounts.size === 0) return undefined;
-
-      const baseStyle = this.mostCommonStyle(styleCounts);
-      const overrides = turns.filter((t) => {
-        const style = t.voiceStyle?.trim();
-        return style && style !== baseStyle;
-      });
-      if (overrides.length === 0) return baseStyle;
-
-      const sentences = [`Speak with ${baseStyle}.`];
-      for (const turn of overrides) {
-        sentences.push(
-          `For the line "${this.stripMarkdownEmphasis(turn.text)}", sound ${turn.voiceStyle!.trim()} instead.`
-        );
-      }
-      return sentences.join(" ");
-    }
-
-    const aliasBySpeakerId = this.buildSpeakerAliases(turns);
-    const directions: string[] = [];
-
-    for (const [speakerId, alias] of aliasBySpeakerId.entries()) {
-      const speakerTurns = turns.filter((t) => t.speaker.id === speakerId);
-      const styleCounts = this.countStyles(speakerTurns);
-      if (styleCounts.size === 0) continue;
-
-      const baseStyle = this.mostCommonStyle(styleCounts);
-      directions.push(`${alias} sounds ${baseStyle}.`);
-
-      for (const turn of speakerTurns) {
-        const style = turn.voiceStyle?.trim();
-        if (style && style !== baseStyle) {
-          directions.push(
-            `For the line "${this.stripMarkdownEmphasis(turn.text)}", ${alias} should sound ${style} instead.`
-          );
-        }
-      }
-    }
-
-    return directions.length > 0 ? directions.join(" ") : undefined;
-  }
-
   async synthesizeChunk(turns: MultispeakerTurn[], outputFileName: string): Promise<TtsResult> {
     if (turns.length === 0) {
       throw new Error("synthesizeChunk requires at least one turn");
@@ -275,8 +203,6 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
               multiSpeakerVoiceConfig: { speakerVoiceConfigs: this.buildSpeakerVoiceConfigs(turns) },
             };
 
-      const prompt = this.buildStylePrompt(turns);
-
       const taggedTurns = await Promise.all(
         turns.map(async (turn) => ({
           ...turn,
@@ -293,7 +219,7 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
       const response = await axios.post(
         `${this.baseUrl}/text:synthesize`,
         {
-          input: { text, ...(prompt ? { prompt } : {}) },
+          input: { text },
           voice: voiceConfig,
           audioConfig: { audioEncoding: "MP3" },
         },
