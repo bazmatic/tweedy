@@ -88,6 +88,21 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
     return aliasBySpeakerId;
   }
 
+  private buildAliasedText(turns: MultispeakerTurn[]): string {
+    const aliasBySpeakerId = this.buildSpeakerAliases(turns);
+    return turns.map((turn) => `${aliasBySpeakerId.get(turn.speaker.id)}: ${turn.text}`).join("\n");
+  }
+
+  private buildSpeakerVoiceConfigs(
+    turns: MultispeakerTurn[]
+  ): { speakerAlias: string; speakerId: string }[] {
+    const aliasBySpeakerId = this.buildSpeakerAliases(turns);
+    return [...aliasBySpeakerId.entries()].map(([speakerId, alias]) => {
+      const turn = turns.find((t) => t.speaker.id === speakerId)!;
+      return { speakerAlias: alias, speakerId: turn.voice.providerId };
+    });
+  }
+
   async synthesizeChunk(turns: MultispeakerTurn[], outputFileName: string): Promise<TtsResult> {
     if (turns.length === 0) {
       throw new Error("synthesizeChunk requires at least one turn");
@@ -96,16 +111,6 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
     try {
       const outputPath = path.join(appConfig.audioDir, outputFileName);
       await fs.ensureDir(path.dirname(outputPath));
-
-      const aliasBySpeakerId = this.buildSpeakerAliases(turns);
-      const text = turns
-        .map((turn) => `${aliasBySpeakerId.get(turn.speaker.id)}: ${turn.text}`)
-        .join("\n");
-
-      const speakerVoiceConfigs = [...aliasBySpeakerId.entries()].map(([speakerId, alias]) => {
-        const turn = turns.find((t) => t.speaker.id === speakerId)!;
-        return { speakerAlias: alias, speakerId: turn.voice.providerId };
-      });
 
       // Gemini TTS voices are locale-agnostic by name (unlike Chirp3-HD's
       // per-locale voice IDs) — the same voice name takes on an accent via
@@ -116,16 +121,34 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
       const languageCode =
         (turns[0].voice.settings.providerOptions?.languageCode as string) ?? DEFAULT_LANGUAGE_CODE;
 
+      const distinctSpeakerIds = new Set(turns.map((turn) => turn.speaker.id));
+
+      // Google's multi-speaker synthesis rejects any call with only one
+      // speaker ("Multi-speaker synthesis requires two distinct
+      // speakers."). A run of consecutive same-speaker turns (e.g. a long
+      // solo monologue) can land in a chunk on its own — route those
+      // through plain single-voice synthesis on the same voice instead of
+      // forcing a (rejected) multi-speaker call.
+      const voiceConfig =
+        distinctSpeakerIds.size === 1
+          ? { languageCode, modelName: MODEL_NAME, name: turns[0].voice.providerId }
+          : {
+              languageCode,
+              modelName: MODEL_NAME,
+              multiSpeakerVoiceConfig: { speakerVoiceConfigs: this.buildSpeakerVoiceConfigs(turns) },
+            };
+
+      const text =
+        distinctSpeakerIds.size === 1
+          ? turns.map((turn) => turn.text).join("\n")
+          : this.buildAliasedText(turns);
+
       const authHeaders = await this.authHeaders();
       const response = await axios.post(
         `${this.baseUrl}/text:synthesize`,
         {
           input: { text },
-          voice: {
-            languageCode,
-            modelName: MODEL_NAME,
-            multiSpeakerVoiceConfig: { speakerVoiceConfigs },
-          },
+          voice: voiceConfig,
           audioConfig: { audioEncoding: "MP3" },
         },
         { headers: { ...authHeaders, "Content-Type": "application/json" } }

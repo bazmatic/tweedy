@@ -6,9 +6,6 @@ function makeTurn(speakerId: string, text: string): MultispeakerTurn {
   return { speaker: { id: speakerId } as any, voice: {} as any, text };
 }
 
-// Cycling through 3 speakers means any 2+-turn chunk boundary lands on at
-// least 2 distinct speakers, so the single-speaker merge pass never
-// triggers — keeps these tests focused purely on count/byte splitting.
 const SPEAKER_CYCLE = ["spA", "spB", "spC"];
 function makeCyclingTurn(index: number, text: string): MultispeakerTurn {
   return makeTurn(SPEAKER_CYCLE[index % SPEAKER_CYCLE.length], text);
@@ -20,15 +17,13 @@ describe("chunkTurns", () => {
     expect(chunkTurns(turns, null)).toEqual([turns]);
   });
 
-  it("splits into fixed-size chunks, merging a single-speaker remainder into the preceding chunk", () => {
+  it("splits into fixed-size chunks with a smaller remainder chunk at the end", () => {
     const turns = [0, 1, 2, 3, 4].map((i) => makeCyclingTurn(i, "abcde"[i]));
     const chunks = chunkTurns(turns, 2);
-    // Turn-count splitting alone would leave turns[4] (speaker B) in its
-    // own trailing chunk; since that chunk would be single-speaker, it
-    // merges into the preceding [C, A] chunk instead.
     expect(chunks).toEqual([
       [turns[0], turns[1]],
-      [turns[2], turns[3], turns[4]],
+      [turns[2], turns[3]],
+      [turns[4]],
     ]);
   });
 
@@ -51,13 +46,7 @@ describe("chunkTurns", () => {
   it("never splits a turn's text even when it alone exceeds maxBytesPerChunk", () => {
     const turns = [makeCyclingTurn(0, "a".repeat(50)), makeCyclingTurn(1, "b".repeat(500)), makeCyclingTurn(2, "c")];
     const chunks = chunkTurns(turns, 8, 100);
-    // Byte-splitting alone would isolate each turn into its own chunk here,
-    // but every one of those chunks is single-speaker, so the merge pass
-    // (tested below) collapses them back into one — the key invariant this
-    // test protects is that turns[1]'s 500-char text appears whole and
-    // unmodified, never truncated or divided across chunks.
-    expect(chunks.flat()).toEqual(turns);
-    expect(chunks.flat().find((t) => t.text === turns[1].text)).toBeDefined();
+    expect(chunks).toEqual([[turns[0]], [turns[1]], [turns[2]]]);
   });
 
   it("still respects maxTurnsPerChunk when the byte budget alone would allow more turns", () => {
@@ -75,57 +64,31 @@ describe("chunkTurns", () => {
     expect(chunks).toEqual([turns]);
   });
 
-  describe("single-speaker chunk merging", () => {
-    it("merges a trailing single-speaker chunk (e.g. a long solo closing monologue) into the preceding chunk", () => {
-      // spA, spB fit in chunk 1 under maxTurnsPerChunk=2; a solo spB closer
-      // would otherwise land alone in its own chunk.
+  describe("single-speaker chunks (a run of consecutive same-speaker turns)", () => {
+    it("allows a chunk to end up single-speaker rather than forcing it to merge with a neighbor", () => {
+      // A run of same-speaker turns (e.g. a long solo monologue) is left as
+      // its own chunk when it hits the turn-count/byte limit — callers are
+      // responsible for synthesizing single-speaker chunks differently
+      // (see GoogleGeminiMultispeakerProvider.synthesizeChunk), not this
+      // function forcing artificial speaker diversity into every chunk.
       const turns = [makeTurn("spA", "hi"), makeTurn("spB", "hey"), makeTurn("spB", "closing thoughts...")];
       const chunks = chunkTurns(turns, 2);
-      expect(chunks).toEqual([turns]);
-      expect(chunks.every((chunk) => new Set(chunk.map((t) => t.speaker.id)).size >= 2)).toBe(true);
+      expect(chunks).toEqual([
+        [turns[0], turns[1]],
+        [turns[2]],
+      ]);
+      expect(new Set(chunks[1].map((t) => t.speaker.id)).size).toBe(1);
     });
 
-    it("merges a leading single-speaker chunk forward into the next chunk", () => {
-      const turns = [
-        makeTurn("spA", "cold open line one"),
-        makeTurn("spA", "cold open line two"),
-        makeTurn("spB", "hi back"),
-      ];
-      const chunks = chunkTurns(turns, 2);
-      expect(chunks).toEqual([turns]);
-    });
-
-    it("cascades merges across multiple consecutive single-speaker chunks until 2 distinct speakers are present", () => {
+    it("keeps consecutive same-speaker turns grouped by the byte budget like any other run", () => {
       const turns = [
         makeTurn("spA", "a".repeat(50)),
         makeTurn("spA", "b".repeat(50)),
         makeTurn("spB", "c".repeat(50)),
       ];
-      // Byte budget forces each turn into its own chunk before merging.
+      // 100-byte budget fits one 70-byte turn per chunk.
       const chunks = chunkTurns(turns, 8, 100);
-      expect(chunks).toEqual([turns]);
-    });
-
-    it("leaves already-multi-speaker chunks alone", () => {
-      const turns = [0, 1, 2, 3].map((i) => makeCyclingTurn(i, "abcd"[i]));
-      const chunks = chunkTurns(turns, 2);
-      expect(chunks).toEqual([
-        [turns[0], turns[1]],
-        [turns[2], turns[3]],
-      ]);
-    });
-
-    it("every chunk chunkTurns returns has at least 2 distinct speakers whenever the input as a whole does", () => {
-      const turns = [
-        makeTurn("spA", "x".repeat(30)),
-        makeTurn("spB", "y".repeat(30)),
-        makeTurn("spB", "z".repeat(30)),
-        makeTurn("spB", "very long closing monologue ".repeat(20)),
-      ];
-      const chunks = chunkTurns(turns, 2, 200);
-      for (const chunk of chunks) {
-        expect(new Set(chunk.map((t) => t.speaker.id)).size).toBeGreaterThanOrEqual(2);
-      }
+      expect(chunks).toEqual([[turns[0]], [turns[1]], [turns[2]]]);
     });
   });
 });

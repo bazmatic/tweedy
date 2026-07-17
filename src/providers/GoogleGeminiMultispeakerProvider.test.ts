@@ -102,6 +102,34 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     expect(result.outputPath).toContain("chunks/s1.mp3");
   });
 
+  it("synthesizes a single-speaker chunk (e.g. a solo monologue run) via plain single-voice mode, not multi-speaker", async () => {
+    const audioB64 = Buffer.from("audio-bytes").toString("base64");
+    (axios.post as any).mockResolvedValue({ data: { audioContent: audioB64 } });
+
+    const provider = new GoogleGeminiMultispeakerProvider();
+    const turns = [
+      makeTurn("sp1", "Puck", "Part one of a long solo monologue."),
+      makeTurn("sp1", "Puck", "Part two, still the same speaker."),
+    ];
+
+    const result = await provider.synthesizeChunk(turns, "chunks/solo.mp3");
+
+    expect(axios.post).toHaveBeenCalledWith(
+      "https://texttospeech.googleapis.com/v1/text:synthesize",
+      {
+        input: { text: "Part one of a long solo monologue.\nPart two, still the same speaker." },
+        voice: {
+          languageCode: "en-US",
+          modelName: "gemini-2.5-flash-tts",
+          name: "Puck",
+        },
+        audioConfig: { audioEncoding: "MP3" },
+      },
+      { headers: { Authorization: "Bearer test-access-token", "Content-Type": "application/json" } }
+    );
+    expect(result.outputPath).toContain("chunks/solo.mp3");
+  });
+
   it("rejects an empty turn list", async () => {
     const provider = new GoogleGeminiMultispeakerProvider();
     await expect(provider.synthesizeChunk([], "chunks/empty.mp3")).rejects.toThrow(
