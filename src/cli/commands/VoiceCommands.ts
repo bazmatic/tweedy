@@ -50,13 +50,17 @@ export function createVoiceCommands(): Command {
     .option("-d, --description <description>", "Voice description")
     .option(
       "-p, --provider <provider>",
-      "Voice provider (elevenlabs, elevenlabs_v3, openai, hume, cartesia)",
+      "Voice provider (elevenlabs, elevenlabs_v3, openai, hume, cartesia, voicegen)",
       "elevenlabs"
     )
     .option("--provider-id <id>", "Provider-specific voice ID")
     .option(
       "--accent <accent>",
       "Accent to pin via audio tags (ElevenLabs v3 only, e.g. \"American\")"
+    )
+    .option(
+      "--language-code <code>",
+      "Locale/accent code for the voice, e.g. \"en-AU\" (Google Chirp/Gemini providers)"
     )
     .action(async (options) => {
       try {
@@ -65,14 +69,16 @@ export function createVoiceCommands(): Command {
           return;
         }
 
+        const providerOptions: Record<string, unknown> = {};
+        if (options.accent) providerOptions.accent = options.accent;
+        if (options.languageCode) providerOptions.languageCode = options.languageCode;
+
         const voice = await voiceService.createVoice({
           name: options.name,
           description: options.description || options.name,
           provider: options.provider as VocalProviderName,
           providerId: options.providerId,
-          settings: options.accent
-            ? { providerOptions: { accent: options.accent } }
-            : {},
+          settings: Object.keys(providerOptions).length > 0 ? { providerOptions } : {},
         });
 
         logger.success(`Voice created: ${voice.name}`);
@@ -86,7 +92,7 @@ export function createVoiceCommands(): Command {
     .description("Import voices from a provider")
     .option(
       "-p, --provider <provider>",
-      "Provider to import from (elevenlabs, openai, hume, cartesia, google_gemini_multispeaker)",
+      "Provider to import from (elevenlabs, openai, hume, cartesia, google_gemini_multispeaker, voicegen)",
       "elevenlabs"
     )
     .action(async (options) => {

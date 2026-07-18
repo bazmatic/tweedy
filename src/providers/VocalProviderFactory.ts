@@ -7,6 +7,7 @@ import { CartesiaProvider } from './CartesiaProvider';
 import { KokoroProvider } from './KokoroProvider';
 import { GrokProvider } from './GrokProvider';
 import { GoogleChirpProvider } from './GoogleChirpProvider';
+import { VoiceGenProvider } from './VoiceGenProvider';
 import { isMultispeakerCapable } from './MultispeakerVocalProviderFactory';
 import { logger } from '../utils/logger';
 
@@ -39,6 +40,9 @@ export class VocalProviderFactory {
           break;
         case VocalProviderName.GoogleChirp:
           this.providers.set(provider, new GoogleChirpProvider());
+          break;
+        case VocalProviderName.VoiceGen:
+          this.providers.set(provider, new VoiceGenProvider());
           break;
         default:
           throw new Error(`Unknown vocal provider: ${provider}`);

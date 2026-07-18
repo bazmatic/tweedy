@@ -3,6 +3,7 @@ import { MultispeakerVocalProviderFactory } from "../providers/MultispeakerVocal
 import { chunkTurns } from "../providers/multispeaker-chunking";
 import { splitChunkIntoTurns } from "../providers/silence-turn-splitter";
 import { checkMultispeakerEligibility } from "./multispeaker-eligibility";
+import { stripMarkdownEmphasis } from "../providers/text-sanitization";
 import { Speech, TtsResult, WordTimestamp, MultispeakerTurn, VocalProviderName, IMultispeakerVocalProvider } from "../types";
 import { logger } from "../utils/logger";
 import { SpeakerAgentToolName } from "../agents/speaker-tools";
@@ -450,11 +451,13 @@ export class AudioService implements IAudioService {
     const outputFileName = path.join("speeches", `${speech.id}.mp3`);
 
     return provider.tts({
-      speech,
+      speech: { ...speech, message: stripMarkdownEmphasis(speech.message) },
       voice: speech.voice,
       outputFileName,
-      previousText,
-      nextText,
+      previousText: previousText
+        ? stripMarkdownEmphasis(previousText)
+        : previousText,
+      nextText: nextText ? stripMarkdownEmphasis(nextText) : nextText,
     });
   }
 }

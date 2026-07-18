@@ -25,6 +25,7 @@ export enum VocalProviderName {
   Grok = "grok",
   GoogleChirp = "google_chirp",
   GoogleGeminiMultispeaker = "google_gemini_multispeaker",
+  VoiceGen = "voicegen",
 }
 
 export enum AiProviderName {

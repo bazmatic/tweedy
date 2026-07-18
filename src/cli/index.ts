@@ -19,7 +19,7 @@ export function createCLI(): Command {
 
   // Global options
   program
-    .option("-v, --verbose", "Enable verbose logging")
+    .option("--verbose", "Enable verbose logging")
     .option("--debug", "Enable debug logging")
     .hook("preAction", (thisCommand) => {
       const options = thisCommand.opts();

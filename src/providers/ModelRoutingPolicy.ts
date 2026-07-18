@@ -9,6 +9,7 @@ export enum ModelTask {
   ConclusionCheck = "conclusion_check",
   Interjection = "interjection",
   SpeechEffectTagging = "speech_effect_tagging",
+  SpeechCondensing = "speech_condensing",
 }
 
 export enum ModelTier {
@@ -28,6 +29,7 @@ const DEFAULT_TIER_BY_TASK: Record<ModelTask, ModelTier> = {
   [ModelTask.ConclusionCheck]: ModelTier.Economy,
   [ModelTask.Interjection]: ModelTier.Economy,
   [ModelTask.SpeechEffectTagging]: ModelTier.Economy,
+  [ModelTask.SpeechCondensing]: ModelTier.Economy,
 };
 
 // Speech-facing tasks get a higher temperature for more varied, natural-
@@ -38,6 +40,7 @@ const TEMPERATURE_BY_TASK: Partial<Record<ModelTask, number>> = {
   [ModelTask.SpeechGeneration]: 1.275,
   [ModelTask.Interjection]: 1.2,
   [ModelTask.MaterialPreparation]: 1.2,
+  [ModelTask.SpeechCondensing]: 0.4,
 };
 
 /**

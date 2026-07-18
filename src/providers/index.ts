@@ -6,6 +6,7 @@ export { HumeProvider } from './HumeProvider';
 export { CartesiaProvider } from './CartesiaProvider';
 export { KokoroProvider } from './KokoroProvider';
 export { GrokProvider } from './GrokProvider';
+export { VoiceGenProvider } from './VoiceGenProvider';
 export { VocalProviderFactory } from './VocalProviderFactory';
 export { MultispeakerVocalProviderFactory, isMultispeakerCapable } from './MultispeakerVocalProviderFactory';
 export { AudioProcessor } from './AudioProcessor';

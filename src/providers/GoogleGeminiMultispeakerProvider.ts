@@ -14,10 +14,11 @@ import {
 } from "../types";
 import { appConfig } from "../utils/config";
 import { logger } from "../utils/logger";
+import { stripMarkdownEmphasis } from "./text-sanitization";
 
 const DEFAULT_LANGUAGE_CODE = "en-US";
 const AUTH_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
-const MODEL_NAME = "gemini-2.5-flash-tts";
+const MODEL_NAME = "gemini-3.1-flash-tts-preview";
 const DEFAULT_MAX_TURNS_PER_CHUNK = 8;
 // Google documents a hard 4000-byte limit on the `input.text` field for this
 // endpoint (confirmed live: a 4405-byte chunk was rejected with
@@ -95,14 +96,6 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
     return aliasBySpeakerId;
   }
 
-  /** Strips markdown emphasis markers (*word*, **word**) from turn text —
-   * Gemini TTS reads literal asterisks aloud as the word "asterisk" rather
-   * than treating them as emphasis, since this is plain text-to-speech
-   * input, not markdown-aware. */
-  private stripMarkdownEmphasis(text: string): string {
-    return text.replace(/\*+/g, "");
-  }
-
   /** Inserts Gemini-native bracketed delivery-direction tags (e.g. [pause],
    * [very slowly], [sarcastically, one word at a time]) into text via an
    * LLM call. Unlike Chirp3-HD's fixed tag vocabulary, Gemini's bracket
@@ -154,7 +147,7 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
   private buildAliasedText(turns: MultispeakerTurn[]): string {
     const aliasBySpeakerId = this.buildSpeakerAliases(turns);
     return turns
-      .map((turn) => `${aliasBySpeakerId.get(turn.speaker.id)}: ${this.stripMarkdownEmphasis(turn.text)}`)
+      .map((turn) => `${aliasBySpeakerId.get(turn.speaker.id)}: ${stripMarkdownEmphasis(turn.text)}`)
       .join("\n");
   }
 
@@ -206,7 +199,7 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
       const taggedTurns = await Promise.all(
         turns.map(async (turn) => ({
           ...turn,
-          text: await this.addDeliveryTags(this.stripMarkdownEmphasis(turn.text)),
+          text: await this.addDeliveryTags(stripMarkdownEmphasis(turn.text)),
         }))
       );
 
@@ -215,11 +208,18 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
           ? taggedTurns.map((turn) => turn.text).join("\n")
           : this.buildAliasedText(taggedTurns);
 
+      // input.prompt applies to the whole call, not per speaker, so this is
+      // a blunt instrument in a mixed-speaker chunk — every speaker in that
+      // call gets the same direction. Deliberately simple (first non-empty
+      // voiceStyle found, no per-speaker attribution or per-line overrides)
+      // rather than the earlier per-speaker prompt-building this replaced.
+      const prompt = turns.find((turn) => turn.voiceStyle?.trim())?.voiceStyle?.trim();
+
       const authHeaders = await this.authHeaders();
       const response = await axios.post(
         `${this.baseUrl}/text:synthesize`,
         {
-          input: { text },
+          input: { text, ...(prompt ? { prompt } : {}) },
           voice: voiceConfig,
           audioConfig: { audioEncoding: "MP3" },
         },

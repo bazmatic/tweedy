@@ -104,3 +104,17 @@ export const reviewTurnSchema = z
   .describe("An editorial and role-consistency review of one podcast turn.");
 
 export type ReviewTurnInput = z.infer<typeof reviewTurnSchema>;
+
+export const condenseSpeechSchema = z
+  .object({
+    message: z
+      .string()
+      .describe(
+        "The shortened spoken line: natural conversational dialogue that preserves the original's core meaning and voice, ends on a complete thought, and fits within the given word budget."
+      ),
+  })
+  .describe(
+    "A condensed rewrite of an overlong podcast line, fit to a hard word budget."
+  );
+
+export type CondenseSpeechInput = z.infer<typeof condenseSpeechSchema>;

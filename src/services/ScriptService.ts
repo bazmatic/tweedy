@@ -356,7 +356,17 @@ export class ScriptService implements IScriptService {
     const directorAgent = new DirectorAgent(
       script,
       {
-        maxTurns: Math.max(1, params.maxTurns - script.speakers.length),
+        // The opening sequence consumes speakers.length + 1 turns (one cold
+        // open, one welcome from the host, then one acknowledgement from
+        // each guest) before the director ever gets a turn — budget the
+        // director's own maxTurns off what's actually left, not off
+        // speakers.length alone, or the outer turn loop's hard ceiling cuts
+        // generation off before the director ever gets to declare a final
+        // turn and force a proper closing statement.
+        maxTurns: Math.max(
+          1,
+          params.maxTurns - (script.speakers.length + 1)
+        ),
         maxDuration: params.maxDuration,
       },
       params.guidance

@@ -91,7 +91,7 @@ describe("GoogleGeminiMultispeakerProvider", () => {
         input: { text: "Speaker1: Hello there.\nSpeaker2: Hi, Ada.\nSpeaker1: How are you?" },
         voice: {
           languageCode: "en-US",
-          modelName: "gemini-2.5-flash-tts",
+          modelName: "gemini-3.1-flash-tts-preview",
           multiSpeakerVoiceConfig: {
             speakerVoiceConfigs: [
               { speakerAlias: "Speaker1", speakerId: "Puck" },
@@ -169,7 +169,7 @@ describe("GoogleGeminiMultispeakerProvider", () => {
         input: { text: "Part one of a long solo monologue.\nPart two, still the same speaker." },
         voice: {
           languageCode: "en-US",
-          modelName: "gemini-2.5-flash-tts",
+          modelName: "gemini-3.1-flash-tts-preview",
           name: "Puck",
         },
         audioConfig: { audioEncoding: "MP3" },
@@ -179,7 +179,7 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     expect(result.outputPath).toContain("chunks/solo.mp3");
   });
 
-  it("never includes input.prompt, even when a turn has a voiceStyle set (delivery is via inline tags only)", async () => {
+  it("includes input.prompt (the first non-empty voiceStyle found) when a turn has one set", async () => {
     (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
 
     const provider = new GoogleGeminiMultispeakerProvider();
@@ -192,7 +192,7 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     expect(axios.post).toHaveBeenCalledWith(
       "https://texttospeech.googleapis.com/v1/text:synthesize",
       expect.objectContaining({
-        input: { text: "Solo line." },
+        input: { text: "Solo line.", prompt: "insightful, dry wit" },
       }),
       expect.any(Object)
     );
@@ -312,7 +312,7 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     );
   });
 
-  it("tags each turn's text independently and never includes input.prompt, even with per-line voiceStyle overrides present", async () => {
+  it("tags each turn's text independently, and includes the first non-empty voiceStyle as input.prompt", async () => {
     (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
     (AiModelFactory.getModel as any).mockReturnValue({
       invoke: vi.fn().mockResolvedValue({ content: "Right, [pause] of course." }),
@@ -331,6 +331,7 @@ describe("GoogleGeminiMultispeakerProvider", () => {
       expect.objectContaining({
         input: {
           text: "First line.\nRight, [pause] of course.",
+          prompt: "insightful, dry wit",
         },
       }),
       expect.any(Object)
@@ -351,7 +352,7 @@ describe("GoogleGeminiMultispeakerProvider", () => {
     expect(humanMessage.content).toBe("It's called Omphalotus nidiformis.");
   });
 
-  it("ignores per-line voiceStyle differences entirely in single-voice mode (no input.prompt is ever sent)", async () => {
+  it("uses the first turn's non-empty voiceStyle as input.prompt in single-voice mode, ignoring later per-line differences", async () => {
     (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
 
     const provider = new GoogleGeminiMultispeakerProvider();
@@ -368,13 +369,14 @@ describe("GoogleGeminiMultispeakerProvider", () => {
       expect.objectContaining({
         input: {
           text: "First line.\nRight, of course.\nThird line.",
+          prompt: "insightful, dry wit",
         },
       }),
       expect.any(Object)
     );
   });
 
-  it("ignores per-line voiceStyle differences entirely in multi-speaker mode (no input.prompt is ever sent)", async () => {
+  it("uses the first turn's non-empty voiceStyle as input.prompt in multi-speaker mode, applying to the whole call", async () => {
     (axios.post as any).mockResolvedValue({ data: { audioContent: Buffer.from("x").toString("base64") } });
 
     const provider = new GoogleGeminiMultispeakerProvider();
@@ -391,6 +393,7 @@ describe("GoogleGeminiMultispeakerProvider", () => {
       expect.objectContaining({
         input: {
           text: "Speaker1: Hi.\nSpeaker2: Hey.\nSpeaker1: Right, of course.",
+          prompt: "insightful, dry wit",
         },
       }),
       expect.any(Object)

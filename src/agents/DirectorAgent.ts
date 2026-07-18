@@ -326,7 +326,13 @@ Decide which speaker should talk next. Only give them direction if it's actually
         velocityAfterThisTurn.openCount >= 2;
       const turnBrief = this.toTurnBrief(result, direction);
 
-      const proposedSpeaker = this.resolveSpeakerReference(script, speakerId);
+      // With exactly two speakers there's only one sensible turn order —
+      // ping-pong deterministically rather than trusting the model's pick,
+      // which can otherwise let one speaker dominate several turns in a row.
+      const proposedSpeaker =
+        script.speakers.length === 2
+          ? this.pingPongSpeaker(script)
+          : this.resolveSpeakerReference(script, speakerId);
       const fallback = proposedSpeaker ?? this.fallbackSpeaker(script);
       if (!proposedSpeaker) {
         logger.warn(
@@ -748,6 +754,17 @@ Return only the ids of points that were genuinely, substantively covered.`,
       `Discussion points: ${velocity.coveredCount}/${this.points.length} covered · ${velocity.elapsedMinutes.toFixed(
         1
       )}/${(this.maxDuration / 60).toFixed(1)} min elapsed · pace: ${velocity.paceStatus}`
+    );
+  }
+
+  private pingPongSpeaker(script: PodcastScript): Speaker {
+    const lastSpeaker = script.speeches[script.speeches.length - 1]?.speaker;
+    if (!lastSpeaker) {
+      return script.speakers[0];
+    }
+    return (
+      script.speakers.find((speaker) => speaker.id !== lastSpeaker.id) ??
+      script.speakers[0]
     );
   }
 
