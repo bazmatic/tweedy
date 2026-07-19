@@ -81,4 +81,24 @@ describe("AudioProcessor.concatenateAudio", () => {
 
     expect(timing.offsetsSeconds).toEqual([0, 4]);
   });
+
+  it("normalizes each clip's loudness before delaying/mixing, and still loudnorms the final mix", async () => {
+    vi.spyOn(AudioProcessor, "getSpeechEndSeconds")
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(3);
+
+    await AudioProcessor.concatenateAudio(["clip1.mp3", "clip2.mp3"], "out.mp3", [false, false]);
+
+    const filterGraph = commandMock.complexFilter.mock.calls[0][0] as string;
+
+    expect(filterGraph).toContain("[0:a]loudnorm=I=-16:LRA=11:TP=-1.5[n0]");
+    expect(filterGraph).toContain("[1:a]loudnorm=I=-16:LRA=11:TP=-1.5[n1]");
+    expect(filterGraph).toContain("[n0]adelay=");
+    expect(filterGraph).toContain("[n1]adelay=");
+    expect(filterGraph.indexOf("[n0]adelay=")).toBeGreaterThan(
+      filterGraph.indexOf("[0:a]loudnorm=")
+    );
+    expect(filterGraph).toContain("amix=inputs=2:dropout_transition=0:normalize=0[mixed]");
+    expect(filterGraph).toContain("[mixed]loudnorm=I=-16:LRA=11:TP=-1.5,silenceremove=1:0:-50dB:1:0:-50dB[out]");
+  });
 });

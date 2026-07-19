@@ -69,13 +69,23 @@ export class AudioProcessor {
 
         const delayedLabels = offsets.map((offsetSeconds, i) => {
           const offsetMs = Math.round(offsetSeconds * 1000);
+          const normalizedLabel = `n${i}`;
           const label = `a${i}`;
-          return { filter: `[${i}:a]adelay=${offsetMs}|${offsetMs}[${label}]`, label };
+          return {
+            // Normalize each clip individually before mixing so one
+            // speaker's voice isn't consistently louder/quieter than
+            // another's — the final loudnorm pass only corrects the
+            // mixed stream's overall level, not per-speaker imbalance.
+            normalizeFilter: `[${i}:a]loudnorm=I=-16:LRA=11:TP=-1.5[${normalizedLabel}]`,
+            delayFilter: `[${normalizedLabel}]adelay=${offsetMs}|${offsetMs}[${label}]`,
+            label,
+          };
         });
 
         const mixInputs = delayedLabels.map(({ label }) => `[${label}]`).join("");
         const filterGraph = [
-          ...delayedLabels.map(({ filter }) => filter),
+          ...delayedLabels.map(({ normalizeFilter }) => normalizeFilter),
+          ...delayedLabels.map(({ delayFilter }) => delayFilter),
           // normalize=0: amix defaults to dividing volume by input count, which
           // would quietly attenuate every clip, not just overlapping ones.
           // loudnorm below re-normalizes levels anyway, so skip amix's own scaling.
