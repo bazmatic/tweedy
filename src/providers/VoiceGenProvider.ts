@@ -1,13 +1,39 @@
 import axios from 'axios';
 import * as fs from 'fs-extra';
 import * as path from 'path';
+import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { BaseVocalProvider } from './BaseVocalProvider';
+import { AiModelFactory } from './AiModelFactory';
+import { ModelTask } from './ModelRoutingPolicy';
 import { VocalProviderTtsParams, TtsResult, Voice, VocalProviderName } from '../types';
 import { appConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 
 const MAX_TTS_ATTEMPTS = 6;
 const BASE_RETRY_DELAY_MS = 3000;
+
+const ALLOWED_TAGS = [
+  'laughs',
+  'sighs',
+  'gasps',
+  'whispering',
+  'exhales',
+  'happy',
+  'angry',
+  'singing',
+  'excited',
+];
+
+const ANY_TAG_PATTERN = /\([^)]*\)/g;
+const ALLOWED_TAG_TEST = new RegExp(`^\\((${ALLOWED_TAGS.join('|')})\\)$`, 'i');
+
+function normalizeWhitespace(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function stripDisallowedTags(text: string): string {
+  return text.replace(ANY_TAG_PATTERN, (match) => (ALLOWED_TAG_TEST.test(match) ? match : ''));
+}
 
 function backoffDelayMs(attempt: number): number {
   return BASE_RETRY_DELAY_MS * 2 ** (attempt - 1);
@@ -37,6 +63,51 @@ export class VoiceGenProvider extends BaseVocalProvider {
     return 'VoiceGen';
   }
 
+  private async addDeliveryTags(text: string): Promise<string> {
+    try {
+      const model = AiModelFactory.getModel(
+        appConfig.defaultAiProvider,
+        ModelTask.SpeechEffectTagging,
+        500
+      );
+      const response = await model.invoke([
+        new SystemMessage(
+          'You add delivery-direction tags to text for a text-to-speech engine. ' +
+            'You may ONLY use these exact parenthetical tags, verbatim, nothing else: ' +
+            ALLOWED_TAGS.map((t) => `(${t})`).join(', ') +
+            '. Do not invent new tags or wording — any tag outside this list will be discarded. ' +
+            'Use them sparingly: most lines should come back completely unchanged, with zero tags added — ' +
+            'only add one where it clearly improves delivery. Never add more than one tag to a short line. ' +
+            'Do not change, add, or remove a single word, letter, or punctuation mark of the original text — ' +
+            'the only thing you may add is parenthetical tags from the list above. ' +
+            'Respond with only the tagged text, nothing else — no commentary, no markdown fences.'
+        ),
+        new HumanMessage(text),
+      ]);
+
+      const rawTagged = typeof response.content === 'string' ? response.content.trim() : '';
+      if (!rawTagged) return text;
+
+      const tagged = stripDisallowedTags(rawTagged);
+
+      const strippedOfTags = tagged.replace(ANY_TAG_PATTERN, '');
+      if (normalizeWhitespace(strippedOfTags) !== normalizeWhitespace(text)) {
+        logger.warn(
+          'VoiceGen delivery-tagged text failed validation (altered wording), using plain text'
+        );
+        return text;
+      }
+
+      if (tagged !== text) {
+        logger.info(`VoiceGen delivery tags applied: "${tagged}"`);
+      }
+      return tagged;
+    } catch (error) {
+      logger.warn('Failed to add VoiceGen delivery tags, using plain text:', error);
+      return text;
+    }
+  }
+
   async tts(params: VocalProviderTtsParams): Promise<TtsResult> {
     this.validateParams(params);
     this.logTtsRequest(params);
@@ -44,12 +115,14 @@ export class VoiceGenProvider extends BaseVocalProvider {
     const outputPath = path.join(appConfig.audioDir, params.outputFileName);
     await fs.ensureDir(path.dirname(outputPath));
 
+    const text = await this.addDeliveryTags(params.speech.message);
+
     for (let attempt = 1; attempt <= MAX_TTS_ATTEMPTS; attempt++) {
       try {
         const response = await axios.post(
           `${this.baseUrl}/voices/${params.voice.providerId}/tts`,
           {
-            text: params.speech.message,
+            text,
             params: {
               ...params.voice.settings.providerOptions,
             },

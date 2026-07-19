@@ -288,9 +288,13 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
     const closingPromptAddendum = isFinalTurn
       ? `\n\nThis is the final turn of the episode. Use the closing_statement tool to deliver a warm, authentic closing that wraps up the podcast and signs off naturally.${unansweredQuestion}${
           coHostNames
-            ? ` Just as the opening introduced everyone, thank and name your co-host${coHosts.length > 1 ? "s" : ""} (${coHostNames}) by name as part of the sign-off.`
+            ? ` Just as the opening introduced everyone, thank and name your co-host${coHosts.length > 1 ? "s" : ""} — ${coHostNames}, NOT yourself (you are ${this.speaker.name}) — by name as part of the sign-off.`
             : ""
-        } Name the episode exactly "${title}" if you name it at all. Do not invent a different programme name, release schedule or future episode details. Take enough time to complete the thought and finish the final sentence cleanly; do not trail off.`
+        } Name the episode exactly "${title}" if you name it at all. Do not invent a different programme name, release schedule or future episode details. Take enough time to complete the thought and finish the final sentence cleanly; do not trail off.${
+          previousSpeech?.tool === SpeakerAgentToolName.NEARLY_OUT_OF_TIME
+            ? ` The previous turn already delivered a reflective wrap-up ("${previousSpeech.message.slice(0, 160)}") — do not repeat its anecdote, callback or phrasing; write a distinct closing thought of your own.`
+            : ""
+        }`
       : "";
 
     const toolSet = this.responseModePolicy.selectTools({
@@ -377,7 +381,7 @@ ${direction ? `Director's guidance: ${direction}` : "No specific director's guid
 
 Respond naturally as ${
           this.speaker.name
-        }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getExpertiseNudge(isSolo, roleProfile.epistemicRole, turnBrief)} ${this.audienceAccessibilityPolicy.buildSpeakerGuidance(audienceProfile, terminologyLedger)} ${lengthGuidanceWithProviderCap} Serve the assigned audience value without forcing analysis, jokes or profundity where they do not belong. When the material offers an everyday comparison (a pet, a common habit, something the audience has personally experienced), take that as an opening for a quip, a personal anecdote or a bit of humour — don't just restate its analytical point again in your own words. Trust your co-host to ask a follow-up; don't pre-empt their next question. Don't reuse a striking phrase, metaphor or turn of phrase a co-host already said in the conversation history above — say the same idea in your own words instead of echoing theirs. Use Australian/British spelling. Be authentic to your personality and epistemic role. ${this.naturalSpeechStylePolicy.buildGuidance(roleProfile)} Don't include stage directions, emotes, or sound effects — those belong in the style argument only. For a spoken pause or interruption, use an em dash (—), never a bare hyphen (-) — reserve the hyphen strictly for compound words.`,
+        }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getExpertiseNudge(isSolo, roleProfile.epistemicRole, turnBrief)} ${this.audienceAccessibilityPolicy.buildSpeakerGuidance(audienceProfile, terminologyLedger)} ${lengthGuidanceWithProviderCap} Serve the assigned audience value without forcing analysis, jokes or profundity where they do not belong. When the material offers an everyday comparison (a pet, a common habit, something the audience has personally experienced), take that as an opening for a quip, a personal anecdote or a bit of humour — don't just restate its analytical point again in your own words. Trust your co-host to ask a follow-up; don't pre-empt their next question. Don't reuse a striking phrase, metaphor or turn of phrase a co-host already said in the conversation history above — say the same idea in your own words instead of echoing theirs. Before speaking, scan the full conversation history above for any fact, comparison, analogy or illustrative example (e.g. "we still can't decode a cat's meow", "entropy is flat across species but complexity varies") that has already been raised, even if it was phrased differently — if you find one, don't re-explain or re-derive it from scratch; either build on it explicitly, reference it briefly as something already established ("like we said about the cat's meow..."), or drop it and bring a genuinely new point instead. Use Australian/British spelling. Be authentic to your personality and epistemic role. ${this.naturalSpeechStylePolicy.buildGuidance(roleProfile)} Don't include stage directions, emotes, or sound effects — those belong in the style argument only. For a spoken pause or interruption, use an em dash (—), never a bare hyphen (-) — reserve the hyphen strictly for compound words. Write the message as plain spoken text only — never use markdown emphasis (*word*) or HTML tags (<em>word</em>) to mark emphasis; convey emphasis through word choice and the style argument instead, since a TTS engine reads literal markup characters aloud.`,
       },
     ];
 
@@ -403,11 +407,18 @@ Respond naturally as ${
         result.message,
         providerMaxWords
       );
+      // A condensed/mechanically-trimmed message that ends cleanly at a
+      // sentence boundary is a complete utterance regardless of whether the
+      // original generation was itself cut off by the token limit — report
+      // it as such, or a final turn's "must not be truncated" check would
+      // keep rejecting a perfectly good, already-repaired closing statement
+      // and fall back to a generic sign-off instead.
+      const endsCleanly = /[.!?]$/.test(condensed.trim());
       return {
         toolName: result.toolName as SpeakerAgentToolName,
         message: condensed,
         style: result.style,
-        stopReason: result.stopReason,
+        stopReason: endsCleanly ? "tool_use" : result.stopReason,
       };
     }
 
@@ -492,7 +503,6 @@ Respond naturally as ${
 
   private getConversationHistory(speeches: Speech[]): string {
     return speeches
-      .slice(-10) // Last 10 speeches
       .map(
         (speech) =>
           `${speech.speaker.name}${
