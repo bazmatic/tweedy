@@ -211,6 +211,18 @@ export class AudioService implements IAudioService {
     return path.join("chunks", `${speeches[chunkStartIndex].id}.mp3`);
   }
 
+  /** A script is synthesized across many independent per-chunk provider
+   * calls, each of which samples voice delivery fresh with no shared state.
+   * Deriving the style-direction prompt from whichever speech in *that*
+   * chunk happens to have a voiceStyle set (as opposed to the whole script)
+   * would hand the model a different prompt per chunk and compound the
+   * inter-chunk voice drift that's otherwise inherent to the pipeline. This
+   * picks one script-wide value up front so every chunk gets the same
+   * direction. */
+  private computeScriptStylePrompt(speeches: Speech[]): string | undefined {
+    return speeches.find((s) => s.voiceStyle?.trim())?.voiceStyle?.trim();
+  }
+
   private async splitChunksIntoSpeechTimings(
     chunkFiles: string[],
     chunks: MultispeakerTurn[][],
@@ -276,11 +288,12 @@ export class AudioService implements IAudioService {
 
       const provider = MultispeakerVocalProviderFactory.getProvider(providerName);
       const { chunks, chunkTurnCounts, chunkStartIndices } = this.buildChunkPlan(speeches, provider);
+      const scriptStylePrompt = this.computeScriptStylePrompt(speeches);
 
       const chunkFiles: string[] = [];
       for (let i = 0; i < chunks.length; i++) {
         const fileName = this.chunkFileName(speeches, chunkStartIndices[i]);
-        const result = await provider.synthesizeChunk(chunks[i], fileName);
+        const result = await provider.synthesizeChunk(chunks[i], fileName, scriptStylePrompt);
         chunkFiles.push(result.outputPath);
       }
 
@@ -324,12 +337,13 @@ export class AudioService implements IAudioService {
       const targetChunkIndex = chunkStartIndices.findIndex(
         (start, i) => targetIndex >= start && targetIndex < start + chunkTurnCounts[i]
       );
+      const scriptStylePrompt = this.computeScriptStylePrompt(speeches);
 
       const chunkFiles: string[] = [];
       for (let i = 0; i < chunks.length; i++) {
         const fileName = this.chunkFileName(speeches, chunkStartIndices[i]);
         if (i === targetChunkIndex) {
-          const fresh = await provider.synthesizeChunk(chunks[i], fileName);
+          const fresh = await provider.synthesizeChunk(chunks[i], fileName, scriptStylePrompt);
           chunkFiles.push(fresh.outputPath);
         } else {
           chunkFiles.push(path.join(appConfig.audioDir, fileName));

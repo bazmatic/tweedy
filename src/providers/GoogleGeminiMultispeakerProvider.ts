@@ -161,7 +161,11 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
     });
   }
 
-  async synthesizeChunk(turns: MultispeakerTurn[], outputFileName: string): Promise<TtsResult> {
+  async synthesizeChunk(
+    turns: MultispeakerTurn[],
+    outputFileName: string,
+    scriptStylePrompt?: string
+  ): Promise<TtsResult> {
     if (turns.length === 0) {
       throw new Error("synthesizeChunk requires at least one turn");
     }
@@ -210,10 +214,17 @@ export class GoogleGeminiMultispeakerProvider implements IMultispeakerVocalProvi
 
       // input.prompt applies to the whole call, not per speaker, so this is
       // a blunt instrument in a mixed-speaker chunk — every speaker in that
-      // call gets the same direction. Deliberately simple (first non-empty
-      // voiceStyle found, no per-speaker attribution or per-line overrides)
-      // rather than the earlier per-speaker prompt-building this replaced.
-      const prompt = turns.find((turn) => turn.voiceStyle?.trim())?.voiceStyle?.trim();
+      // call gets the same direction. A script is split across many
+      // independent synthesize calls (one per chunk), and each call samples
+      // voice timbre/prosody fresh with no shared state — so if the prompt
+      // text differs between chunks (e.g. derived from whichever turn in
+      // *that* chunk happens to have a voiceStyle), the model has an extra
+      // reason to render each speaker differently from chunk to chunk. The
+      // caller is expected to pass one stable prompt for the whole script;
+      // falling back to a per-chunk derivation only when it isn't supplied
+      // (e.g. a chunk synthesized in isolation, or a test).
+      const prompt =
+        scriptStylePrompt?.trim() || turns.find((turn) => turn.voiceStyle?.trim())?.voiceStyle?.trim();
 
       const authHeaders = await this.authHeaders();
       const response = await axios.post(

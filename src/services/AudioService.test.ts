@@ -308,7 +308,8 @@ describe("AudioService multispeaker generation", () => {
         { speaker: speakerA, voice, text: "Hi", voiceStyle: "neutral" },
         { speaker: speakerB, voice, text: "Hey", voiceStyle: "neutral" },
       ],
-      "chunks/s1.mp3"
+      "chunks/s1.mp3",
+      "neutral"
     );
 
     const [, payload] = mockWriteJson.mock.calls[0];
@@ -376,7 +377,8 @@ describe("AudioService multispeaker generation", () => {
         { speaker: speakerA, voice, text: "How are you", voiceStyle: "neutral" },
         { speaker: speakerB, voice, text: "Great", voiceStyle: "neutral" },
       ],
-      "chunks/s3.mp3"
+      "chunks/s3.mp3",
+      "neutral"
     );
   });
 });
