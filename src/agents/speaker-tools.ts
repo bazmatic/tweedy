@@ -117,7 +117,7 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
     toolDescription:
       "Open the episode cold, before any welcome or introductions — a short, vivid tease of the subject in 1-2 sentences. Use a striking image, surprising fact, or provocative question drawn from the material. Do not say 'welcome', name the show, greet listeners, or introduce yourself or your co-host — this is a teaser, not an introduction. Address the listener directly in the second person where it fits (\"Imagine you're…\", \"If you're listening to this, you already…\").",
     styleDescription:
-      "How to deliver the cold open. Include pacing and tone — often a slower, more dramatic delivery than normal chat. Example: 'Slow, dramatic pacing, with great gravitas and a sense of deep significance. Let the image land before continuing'",
+      "How to deliver the cold open. Include pacing and tone, natural and conversational — not overly dramatic or theatrical. Example: 'Natural, unhurried pace, letting the image land before continuing'",
     maxTokens: 100,
   },
   {

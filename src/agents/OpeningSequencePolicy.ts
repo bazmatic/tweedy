@@ -76,7 +76,7 @@ export class OpeningSequencePolicy {
       const guests = orderedSpeakers.slice(1);
       const introductions = guests.map((speaker) => speaker.name).join(", ");
       const handover = guests.length > 0
-        ? `End immediately after inviting ${introductions} to say hello. Do not introduce the subject, use a hook, mention source material or ask a substantive question.`
+        ? `You must say ${introductions}'s name out loud before you stop — do not trail off with an ellipsis or a vague "and..." as a substitute for actually naming them. End immediately once you've said their name and invited them to say hello. Do not introduce the subject, use a hook, mention source material or ask a substantive question.`
         : "End immediately after the welcome. Do not introduce the subject, use a hook, mention source material or ask a substantive question.";
       const goal = `Welcome listeners, name the episode \"${script.title}\", introduce yourself as ${host.name}${
         introductions ? ` and introduce ${introductions}` : ""

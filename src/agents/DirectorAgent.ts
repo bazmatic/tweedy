@@ -292,7 +292,7 @@ ${speakerDescriptions}
 Conversation so far (each line tagged with the tool used to deliver it — "speak" is substantive content; "interject", "filler_comment", "one_liner", and "short_question" are brief reactions, not real answers or new points):
 ${history || '(nothing said yet — this is the opening of the episode)'}
 
-Decide which speaker should talk next. Only give them direction if it's actually needed — a brief goal or topic, not a script. If the conversation is flowing well and the next speaker can naturally carry it forward, leave direction empty rather than inventing something for them to say. When you do give direction, tell them what to address, not what to say; leave the wording, phrasing and specific angle to the speaker so they sound like themselves rather than reciting your lines. Also choose a subject-neutral editorial move, the primary audience value, desired energy, relevant beat and prepared card ids. Every turn should help the listener understand, entertain them, reveal something meaningful, create connection, or move the conversation forwards; it need not do all of these. Don't force analysis onto a story or humour onto an explanation. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. A challenge creates a right of reply: direct the speaker who was challenged to respond before the challenger speaks again. A good challenge can open a short segment: after the challenged speaker's first answer, it is fine to let the exchange continue for another turn or two until the objection is genuinely resolved, rather than moving straight to a new point. Respect the chronological order shown above; a remark made before a challenge cannot be described as a response to that challenge. The episode's welcome and speaker introductions are already handled before you are ever consulted — never direct anyone to (re)welcome listeners or (re)introduce themselves or a co-host, no matter how far into the episode this is. Mark genuinely completed beat ids in coveredBeatIds. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack). Use Australian/British spelling.${this.getPacingNote(
+Decide which speaker should talk next. Only give them direction if it's actually needed — a brief goal or topic, not a script. If the conversation is flowing well and the next speaker can naturally carry it forward, leave direction empty rather than inventing something for them to say. When you do give direction, tell them what to address, not what to say; leave the wording, phrasing and specific angle to the speaker so they sound like themselves rather than reciting your lines. Also choose a subject-neutral editorial move, the primary audience value, desired energy, relevant beat and prepared card ids. Every turn should help the listener understand, entertain them, reveal something meaningful, create connection, or move the conversation forwards; it need not do all of these. Don't force analysis onto a story or humour onto an explanation. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. A challenge creates a right of reply: direct the speaker who was challenged to respond before the challenger speaks again. A good challenge can open a short segment: after the challenged speaker's first answer, it is fine to let the exchange continue for another turn or two until the objection is genuinely resolved, rather than moving straight to a new point. Respect the chronological order shown above; a remark made before a challenge cannot be described as a response to that challenge. The episode's welcome and speaker introductions are already handled before you are ever consulted — never direct anyone to (re)welcome listeners or (re)introduce themselves or a co-host, no matter how far into the episode this is. Before assigning a goal or direction, check the conversation so far for any fact, comparison, analogy or illustrative example already used — even if worded differently than you'd phrase it — and never direct a speaker to re-explain or re-derive it from scratch; point them toward new ground instead. Mark genuinely completed beat ids in coveredBeatIds. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack). Use Australian/British spelling.${this.getPacingNote(
             script
           )}${wrapUpNote}${velocityNote}${balanceNote}${rhythmNote}${signpostNote}${guidanceNote}${this.speakerRolePolicy.buildDirectorGuidance(script)}${this.audienceAccessibilityPolicy.buildDirectorGuidance(script.audienceProfile ?? AudienceProfile.General)} Occasionally — at most once every several turns, mid-explanation — assign the trail_off device so a speaker hands an unfinished sentence to their co-host to complete; never assign it on a closing or summary turn.`
         }
@@ -326,7 +326,13 @@ Decide which speaker should talk next. Only give them direction if it's actually
         velocityAfterThisTurn.openCount >= 2;
       const turnBrief = this.toTurnBrief(result, direction);
 
-      const proposedSpeaker = this.resolveSpeakerReference(script, speakerId);
+      // With exactly two speakers there's only one sensible turn order —
+      // ping-pong deterministically rather than trusting the model's pick,
+      // which can otherwise let one speaker dominate several turns in a row.
+      const proposedSpeaker =
+        script.speakers.length === 2
+          ? this.pingPongSpeaker(script)
+          : this.resolveSpeakerReference(script, speakerId);
       const fallback = proposedSpeaker ?? this.fallbackSpeaker(script);
       if (!proposedSpeaker) {
         logger.warn(
@@ -393,7 +399,7 @@ Decide which speaker should talk next. Only give them direction if it's actually
         role: 'user' as const,
         content: `All discussion points for this podcast episode have been covered. Judge whether the conversation below has reached a natural, satisfying conclusion — farewells exchanged, an explicit sense of wrap-up or closure — versus the discussion merely having covered its required points while still feeling mid-thought or open-ended.
 
-Recent speech(es):
+Full conversation so far:
 ${history || '(nothing said yet)'}
 
 Return isComplete: true only if the conversation has genuinely wrapped up naturally.`,
@@ -475,7 +481,10 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
         // clears the usability bar (not empty/truncated/degenerate).
         !review.accepted &&
         review.revisedMessage &&
-        this.speechRevisionPolicy.isUsable(review.revisedMessage)
+        this.speechRevisionPolicy.isUsable(
+          review.revisedMessage,
+          speech.tool === SpeakerAgentToolName.CLOSING_STATEMENT
+        )
       ) {
         // Step 3: build a candidate speech using the reviewer's revision.
         const revisedSpeech = {
@@ -483,6 +492,19 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
           message: review.revisedMessage,
           turnBrief,
         };
+        // Closing statements are the one case where re-reviewing the fix
+        // against the same strict farewell/second-person bar tends to reject
+        // the revision again on an increasingly nitpicky reading of its own
+        // suggested wording, which would leave the episode's final words
+        // without a sign-off forever. The first review already targeted this
+        // one narrow requirement when producing revisedMessage, so trust it
+        // directly instead of risking an infinite rejection loop.
+        if (speech.tool === SpeakerAgentToolName.CLOSING_STATEMENT) {
+          logger.warn(
+            `Turn reviewer revised ${speech.speaker.name}'s closing statement to add a sign-off`
+          );
+          return { ...revisedSpeech, review };
+        }
         // Step 4: re-review the revision itself — the reviewer's fix isn't
         // trusted blindly, it must independently pass the same review.
         const revisedReview = await this.turnReviewer.review(
@@ -492,7 +514,8 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
           recentSpeeches,
           this.script.knowledgeLedger,
           this.script.audienceProfile,
-          this.script.terminologyLedger
+          this.script.terminologyLedger,
+          this.script.speakers
         );
         if (!revisedReview.accepted) {
           // Step 5a: the revision failed review too, so fall back to the
@@ -528,8 +551,8 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
    * the next speaker, and can hallucinate coverage from a merely
    * topically-adjacent mention (e.g. an oxygen tank explosion "covering" a
    * CO2 scrubber duct-tape hack point). Re-check each claim in a dedicated
-   * structured verification against the actual, already-persisted recent speech
-   * text before ever marking a point covered.
+   * structured verification against the actual, already-persisted full speech
+   * transcript before ever marking a point covered.
    */
   private async verifyCoveredPoints(
     coveredPointIds: string[] | undefined,
@@ -554,9 +577,9 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
     const messages = [
       {
         role: 'user' as const,
-        content: `The director claimed the following discussion points were covered by the most recent speech(es) below. Verify each one strictly against the actual text — a point only counts as covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention. For example, if a point is "CO2 scrubber duct-tape hack" and the speech only mentions an oxygen tank explosion, that point is NOT covered.
+        content: `The director claimed the following discussion points were covered somewhere in the conversation below. Verify each one strictly against the actual text — a point only counts as covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention. For example, if a point is "CO2 scrubber duct-tape hack" and the speech only mentions an oxygen tank explosion, that point is NOT covered.
 
-Recent speech(es):
+Full conversation so far:
 ${recentHistory || '(nothing said yet)'}
 
 Candidate points claimed as covered:
@@ -748,6 +771,17 @@ Return only the ids of points that were genuinely, substantively covered.`,
       `Discussion points: ${velocity.coveredCount}/${this.points.length} covered · ${velocity.elapsedMinutes.toFixed(
         1
       )}/${(this.maxDuration / 60).toFixed(1)} min elapsed · pace: ${velocity.paceStatus}`
+    );
+  }
+
+  private pingPongSpeaker(script: PodcastScript): Speaker {
+    const lastSpeaker = script.speeches[script.speeches.length - 1]?.speaker;
+    if (!lastSpeaker) {
+      return script.speakers[0];
+    }
+    return (
+      script.speakers.find((speaker) => speaker.id !== lastSpeaker.id) ??
+      script.speakers[0]
     );
   }
 
@@ -955,7 +989,6 @@ Return only the ids of points that were genuinely, substantively covered.`,
 
   private getConversationHistory(script: PodcastScript): string {
     return script.speeches
-      .slice(-5) // Last 5 speeches
       .map(speech => `${speech.speaker.name}: ${speech.message} [${speech.tool ?? 'unknown'}]`)
       .join('\n');
   }

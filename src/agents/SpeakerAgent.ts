@@ -13,7 +13,7 @@ import {
   TerminologyLedger,
   TurnBrief,
 } from "../types";
-import { BaseAgent } from "./BaseAgent";
+import { BaseAgent, appendTruncationFiller } from "./BaseAgent";
 import { logger } from "../utils/logger";
 import { RAGService } from "../rag";
 import {
@@ -27,7 +27,16 @@ import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
 import { ResponseModePolicy } from "./ResponseModePolicy";
 import { AudienceAccessibilityPolicy } from "./AudienceAccessibilityPolicy";
 import { SpeechIntegrityPolicy } from "./SpeechIntegrityPolicy";
+import {
+  CondenseSpeechInput,
+  condenseSpeechSchema,
+} from "./editorial-schemas";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
+import {
+  getProviderMaxTokens,
+  getProviderMaxWords,
+  truncateToWordBudget,
+} from "../providers/vocal-provider-limits";
 
 const EMPTY_TERMINOLOGY_LEDGER: TerminologyLedger = { explainedTerms: [] };
 
@@ -279,9 +288,13 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
     const closingPromptAddendum = isFinalTurn
       ? `\n\nThis is the final turn of the episode. Use the closing_statement tool to deliver a warm, authentic closing that wraps up the podcast and signs off naturally.${unansweredQuestion}${
           coHostNames
-            ? ` Just as the opening introduced everyone, thank and name your co-host${coHosts.length > 1 ? "s" : ""} (${coHostNames}) by name as part of the sign-off.`
+            ? ` Just as the opening introduced everyone, thank and name your co-host${coHosts.length > 1 ? "s" : ""} — ${coHostNames}, NOT yourself (you are ${this.speaker.name}) — by name as part of the sign-off.`
             : ""
-        } Name the episode exactly "${title}" if you name it at all. Do not invent a different programme name, release schedule or future episode details. Take enough time to complete the thought and finish the final sentence cleanly; do not trail off.`
+        } Name the episode exactly "${title}" if you name it at all. Do not invent a different programme name, release schedule or future episode details. Take enough time to complete the thought and finish the final sentence cleanly; do not trail off.${
+          previousSpeech?.tool === SpeakerAgentToolName.NEARLY_OUT_OF_TIME
+            ? ` The previous turn already delivered a reflective wrap-up ("${previousSpeech.message.slice(0, 160)}") — do not repeat its anecdote, callback or phrasing; write a distinct closing thought of your own.`
+            : ""
+        }`
       : "";
 
     const toolSet = this.responseModePolicy.selectTools({
@@ -295,6 +308,36 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
       turnBrief,
     });
 
+    // Closing statements and catch-up summaries are deliberately exempt from
+    // the normal per-turn length limit — they need room to land a proper
+    // sign-off or cover several points. Don't choke their initial generation
+    // down to the tight provider cap, or a closing statement never has
+    // enough room to even attempt naming the co-host and episode before
+    // hitting the token limit, repeatedly failing and falling back to a
+    // generic sign-off. Let it generate at full length, then the post-
+    // generation word-budget check below condenses it down to fit the
+    // provider's real duration limit while keeping it complete and coherent.
+    const isExemptFromLengthLimit =
+      isFinalTurn ||
+      (requestSummary &&
+        !forceNearlyOutOfTime &&
+        toolSet.includes(SpeakerAgentToolName.SUMMARIZE));
+
+    const toolMaxTokens = Math.max(
+      ...toolSet.map((tool) => getToolMaxTokens(tool))
+    );
+    const providerMaxTokens = getProviderMaxTokens(this.speaker.voice.provider);
+    const maxTokens =
+      providerMaxTokens === undefined || isExemptFromLengthLimit
+        ? toolMaxTokens
+        : Math.min(toolMaxTokens, providerMaxTokens);
+    const providerCapNote =
+      !isExemptFromLengthLimit &&
+      providerMaxTokens !== undefined &&
+      providerMaxTokens < toolMaxTokens
+        ? " Your voice provider can only generate about 30 seconds of audio per turn, so keep this turn well within that regardless of any other length allowance."
+        : "";
+
     const summaryCatchUpNote =
       requestSummary && !forceNearlyOutOfTime && toolSet.includes(SpeakerAgentToolName.SUMMARIZE)
         ? " The episode is running behind on covering its points, so the summarize tool is also on the table if you'd rather catch up several at once — that's exempt from the normal length limit and should still be spoken in full, natural sentences, not clipped notes."
@@ -307,6 +350,7 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
         : requestSummary && !forceNearlyOutOfTime
           ? "This recap is exempt from the normal 50-word turn limit since it covers several points. Still speak it in full, natural conversational sentences — not clipped notes or a list read aloud — just give it the extra room it needs to land each point properly."
           : `**CRITICAL: Keep this to 1-2 sentences max (under 50 words).** Get ONE idea or conversational beat out and then stop.${summaryCatchUpNote}`;
+    const lengthGuidanceWithProviderCap = `${lengthGuidance}${providerCapNote}`;
 
     const messages: LlmMessage[] = [
       {
@@ -320,6 +364,11 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
 - Source Access: ${roleProfile.sourceAccess}
 - Uncertainty Style: ${roleProfile.uncertaintyStyle}
 - Audience Profile: ${audienceProfile}${this.mannerismsLine()}
+- You are speaking as ${this.speaker.name} ONLY — never refer to yourself in the second person or address yourself by your own name.${
+          coHostNames
+            ? ` Your co-host${coHosts.length > 1 ? "s are" : " is"} ${coHostNames} — that is who "you" refers to whenever you address, question, or hand off to a co-host by name.`
+            : ""
+        }
 
 Podcast Context:
 - Title: ${title}${recapSection}
@@ -337,15 +386,11 @@ ${direction ? `Director's guidance: ${direction}` : "No specific director's guid
 
 Respond naturally as ${
           this.speaker.name
-        }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getExpertiseNudge(isSolo, roleProfile.epistemicRole, turnBrief)} ${this.audienceAccessibilityPolicy.buildSpeakerGuidance(audienceProfile, terminologyLedger)} ${lengthGuidance} Serve the assigned audience value without forcing analysis, jokes or profundity where they do not belong. When the material offers an everyday comparison (a pet, a common habit, something the audience has personally experienced), take that as an opening for a quip, a personal anecdote or a bit of humour — don't just restate its analytical point again in your own words. Trust your co-host to ask a follow-up; don't pre-empt their next question. Don't reuse a striking phrase, metaphor or turn of phrase a co-host already said in the conversation history above — say the same idea in your own words instead of echoing theirs. Use Australian/British spelling. Be authentic to your personality and epistemic role. ${this.naturalSpeechStylePolicy.buildGuidance(roleProfile)} Don't include stage directions, emotes, or sound effects — those belong in the style argument only. For a spoken pause or interruption, use an em dash (—), never a bare hyphen (-) — reserve the hyphen strictly for compound words.`,
+        }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getExpertiseNudge(isSolo, roleProfile.epistemicRole, turnBrief)} ${this.audienceAccessibilityPolicy.buildSpeakerGuidance(audienceProfile, terminologyLedger)} ${lengthGuidanceWithProviderCap} Serve the assigned audience value without forcing analysis, jokes or profundity where they do not belong. When the material offers an everyday comparison (a pet, a common habit, something the audience has personally experienced), take that as an opening for a quip, a personal anecdote or a bit of humour — don't just restate its analytical point again in your own words. Trust your co-host to ask a follow-up; don't pre-empt their next question. Don't reuse a striking phrase, metaphor or turn of phrase a co-host already said in the conversation history above — say the same idea in your own words instead of echoing theirs. Before speaking, scan the full conversation history above for any fact, comparison, analogy or illustrative example (e.g. "we still can't decode a cat's meow", "entropy is flat across species but complexity varies") that has already been raised, even if it was phrased differently — if you find one, don't re-explain or re-derive it from scratch; either build on it explicitly, reference it briefly as something already established ("like we said about the cat's meow..."), or drop it and bring a genuinely new point instead. Use Australian/British spelling. Be authentic to your personality and epistemic role. ${this.naturalSpeechStylePolicy.buildGuidance(roleProfile)} Don't include stage directions, emotes, or sound effects — those belong in the style argument only. For a spoken pause or interruption, use an em dash (—), never a bare hyphen (-) — reserve the hyphen strictly for compound words. Write the message as plain spoken text only — never use markdown emphasis (*word*) or HTML tags (<em>word</em>) to mark emphasis; convey emphasis through word choice and the style argument instead, since a TTS engine reads literal markup characters aloud.`,
       },
     ];
 
     const tools = toLlmTools(toolSet);
-
-    const maxTokens = Math.max(
-      ...toolSet.map((tool) => getToolMaxTokens(tool))
-    );
 
     const result = await this.callModelWithTools(
       ModelTask.SpeechGeneration,
@@ -353,6 +398,34 @@ Respond naturally as ${
       tools,
       maxTokens
     );
+
+    // maxTokens is only a soft guide to the model — some AI providers pad it
+    // with their own overhead buffer, so it isn't a hard guarantee. Enforce
+    // the provider's real audio-duration limit here regardless of how much
+    // the model actually produced.
+    const providerMaxWords = getProviderMaxWords(this.speaker.voice.provider);
+    if (
+      providerMaxWords !== undefined &&
+      result.message.trim().split(/\s+/).length > providerMaxWords
+    ) {
+      const condensed = await this.condenseToWordBudget(
+        result.message,
+        providerMaxWords
+      );
+      // A condensed/mechanically-trimmed message that ends cleanly at a
+      // sentence boundary is a complete utterance regardless of whether the
+      // original generation was itself cut off by the token limit — report
+      // it as such, or a final turn's "must not be truncated" check would
+      // keep rejecting a perfectly good, already-repaired closing statement
+      // and fall back to a generic sign-off instead.
+      const endsCleanly = /[.!?]$/.test(condensed.trim());
+      return {
+        toolName: result.toolName as SpeakerAgentToolName,
+        message: condensed,
+        style: result.style,
+        stopReason: endsCleanly ? "tool_use" : result.stopReason,
+      };
+    }
 
     return {
       toolName: result.toolName as SpeakerAgentToolName,
@@ -362,6 +435,72 @@ Respond naturally as ${
     };
   }
 
+  private async condenseToWordBudget(
+    message: string,
+    maxWords: number
+  ): Promise<string> {
+    const maxAttempts = 2;
+    let current = message;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const isRetry = attempt > 1;
+        const result = await this.callModelForStructuredOutput<CondenseSpeechInput>(
+          ModelTask.SpeechCondensing,
+          [
+            {
+              role: "user",
+              content: `Shorten the following spoken podcast line to at most ${maxWords} words, said as ${this.speaker.name}. Preserve its core meaning, tone, and voice — do not add new facts or ideas, and do not add stage directions. End on a complete sentence; never trail off or use an ellipsis. Return only the condensed line.${
+                isRetry
+                  ? ` Your previous attempt was still too long (${
+                      current.trim().split(/\s+/).length
+                    } words) — this time cut harder: drop a clause, a qualifier, or an example rather than trying to preserve everything.`
+                  : ""
+              }\n\nOriginal line:\n"${current}"`,
+            },
+          ],
+          condenseSpeechSchema,
+          Math.max(80, Math.ceil(maxWords * 1.6))
+        );
+        const condensed = result.message.trim();
+        const condensedWordCount = condensed.split(/\s+/).length;
+        if (condensedWordCount <= maxWords) {
+          return condensed;
+        }
+        logger.warn(
+          `Condensed speech still exceeds word budget (${condensedWordCount}/${maxWords}) on attempt ${attempt}/${maxAttempts}`
+        );
+        current = condensed;
+      } catch (error) {
+        logger.warn(
+          `Failed to condense overlong speech via LLM on attempt ${attempt}/${maxAttempts}`,
+          error
+        );
+      }
+    }
+
+    // Both LLM passes failed to land within budget — this is the only
+    // guardrail standing between the script and the provider's real audio
+    // duration limit, so a hard mechanical trim backstops it here rather
+    // than letting a still-overlong turn through.
+    logger.warn(
+      "LLM condensing could not fit the word budget after retrying; applying mechanical truncation as a last-resort backstop"
+    );
+    return this.mechanicallyTrim(current, maxWords);
+  }
+
+  /**
+   * A trim ending mid-sentence reads badly with a bare cut, so it gets the
+   * same trailing filler as a genuine token-limit truncation. A trim that
+   * already landed on a real sentence boundary doesn't need one — appending
+   * "...um" after a complete sentence would look worse than the truncation
+   * it's meant to soften.
+   */
+  private mechanicallyTrim(message: string, maxWords: number): string {
+    const { text } = truncateToWordBudget(message, maxWords);
+    return /[.!?]$/.test(text.trim()) ? text : appendTruncationFiller(text);
+  }
+
   private formatNameList(names: string[]): string {
     if (names.length <= 1) return names.join("");
     return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
@@ -369,12 +508,11 @@ Respond naturally as ${
 
   private getConversationHistory(speeches: Speech[]): string {
     return speeches
-      .slice(-10) // Last 10 speeches
       .map(
         (speech) =>
-          `${speech.speaker.name}: ${speech.message} [${
-            speech.tool ?? "unknown"
-          }]`
+          `${speech.speaker.name}${
+            speech.speaker.id === this.speaker.id ? " (you)" : ""
+          }: ${speech.message} [${speech.tool ?? "unknown"}]`
       )
       .join("\n");
   }

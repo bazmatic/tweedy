@@ -1,5 +1,10 @@
 import { VocalProviderFactory, AudioProcessor } from "../providers";
-import { Speech, TtsResult, WordTimestamp } from "../types";
+import { MultispeakerVocalProviderFactory } from "../providers/MultispeakerVocalProviderFactory";
+import { chunkTurns } from "../providers/multispeaker-chunking";
+import { splitChunkIntoTurns } from "../providers/silence-turn-splitter";
+import { checkMultispeakerEligibility } from "./multispeaker-eligibility";
+import { stripMarkdownEmphasis } from "../providers/text-sanitization";
+import { Speech, TtsResult, WordTimestamp, MultispeakerTurn, VocalProviderName, IMultispeakerVocalProvider } from "../types";
 import { logger } from "../utils/logger";
 import { SpeakerAgentToolName } from "../agents/speaker-tools";
 import { appConfig } from "../utils/config";
@@ -50,6 +55,14 @@ export class AudioService implements IAudioService {
     outputPath: string,
     scriptId?: string
   ): Promise<string> {
+    const eligibility = checkMultispeakerEligibility(speeches);
+    if (eligibility.warning) {
+      logger.warn(eligibility.warning);
+    }
+    if (eligibility.eligible && eligibility.provider) {
+      return this.generateMultispeakerAudio(speeches, outputPath, eligibility.provider, scriptId);
+    }
+
     try {
       logger.info(`Generating audio for ${speeches.length} speeches`);
 
@@ -108,6 +121,14 @@ export class AudioService implements IAudioService {
     outputPath: string,
     scriptId?: string
   ): Promise<string> {
+    const eligibility = checkMultispeakerEligibility(speeches);
+    if (eligibility.warning) {
+      logger.warn(eligibility.warning);
+    }
+    if (eligibility.eligible && eligibility.provider) {
+      return this.regenerateMultispeakerChunk(speeches, speechId, outputPath, eligibility.provider, scriptId);
+    }
+
     try {
       const index = speeches.findIndex((s) => s.id === speechId);
       if (index === -1) {
@@ -156,6 +177,183 @@ export class AudioService implements IAudioService {
       return outputPath;
     } catch (error) {
       logger.error("Failed to regenerate speech audio:", error);
+      throw error;
+    }
+  }
+
+  private computeChunkStartIndices(chunkTurnCounts: number[]): number[] {
+    const starts: number[] = [];
+    let cursor = 0;
+    for (const count of chunkTurnCounts) {
+      starts.push(cursor);
+      cursor += count;
+    }
+    return starts;
+  }
+
+  private buildChunkPlan(
+    speeches: Speech[],
+    provider: IMultispeakerVocalProvider
+  ): { chunks: MultispeakerTurn[][]; chunkTurnCounts: number[]; chunkStartIndices: number[] } {
+    const turns: MultispeakerTurn[] = speeches.map((s) => ({
+      speaker: s.speaker,
+      voice: s.voice,
+      text: s.message,
+      voiceStyle: s.voiceStyle,
+    }));
+    const chunks = chunkTurns(turns, provider.maxTurnsPerChunk, provider.maxBytesPerChunk);
+    const chunkTurnCounts = chunks.map((c) => c.length);
+    const chunkStartIndices = this.computeChunkStartIndices(chunkTurnCounts);
+    return { chunks, chunkTurnCounts, chunkStartIndices };
+  }
+
+  private chunkFileName(speeches: Speech[], chunkStartIndex: number): string {
+    return path.join("chunks", `${speeches[chunkStartIndex].id}.mp3`);
+  }
+
+  private async splitChunksIntoSpeechTimings(
+    chunkFiles: string[],
+    chunks: MultispeakerTurn[][],
+    chunkOffsetsSeconds: number[]
+  ): Promise<{ startSeconds: number; endSeconds: number }[]> {
+    const perSpeechTiming: { startSeconds: number; endSeconds: number }[] = [];
+
+    for (let i = 0; i < chunkFiles.length; i++) {
+      const turnTextLengths = chunks[i].map((turn) => turn.text.length);
+      const boundaries = await splitChunkIntoTurns(chunkFiles[i], turnTextLengths);
+      for (const boundary of boundaries) {
+        perSpeechTiming.push({
+          startSeconds: round3(chunkOffsetsSeconds[i] + boundary.startSeconds),
+          endSeconds: round3(chunkOffsetsSeconds[i] + boundary.endSeconds),
+        });
+      }
+    }
+
+    return perSpeechTiming;
+  }
+
+  private async writeMultispeakerTimeline(
+    speeches: Speech[],
+    timing: { startSeconds: number; endSeconds: number }[],
+    outputPath: string,
+    scriptId?: string
+  ): Promise<void> {
+    const entries: TimelineEntry[] = speeches.map((speech, i) => ({
+      speechId: speech.id,
+      speakerId: speech.speaker.id,
+      speakerName: speech.speaker.name,
+      ...(speech.speaker.physicalAppearance
+        ? { speakerAppearance: speech.speaker.physicalAppearance }
+        : {}),
+      message: speech.message,
+      tool: speech.tool,
+      isInterjection: false,
+      startSeconds: timing[i].startSeconds,
+      endSeconds: timing[i].endSeconds,
+    }));
+
+    const timelinePath = timelinePathFor(outputPath);
+    await fs.writeJson(
+      timelinePath,
+      {
+        ...(scriptId !== undefined ? { scriptId } : {}),
+        audioFile: outputPath,
+        entries,
+      },
+      { spaces: 2 }
+    );
+    logger.info(`Multispeaker audio timeline written: ${timelinePath}`);
+  }
+
+  private async generateMultispeakerAudio(
+    speeches: Speech[],
+    outputPath: string,
+    providerName: VocalProviderName,
+    scriptId?: string
+  ): Promise<string> {
+    try {
+      logger.info(`Generating multispeaker audio for ${speeches.length} speeches`);
+
+      const provider = MultispeakerVocalProviderFactory.getProvider(providerName);
+      const { chunks, chunkTurnCounts, chunkStartIndices } = this.buildChunkPlan(speeches, provider);
+
+      const chunkFiles: string[] = [];
+      for (let i = 0; i < chunks.length; i++) {
+        const fileName = this.chunkFileName(speeches, chunkStartIndices[i]);
+        const result = await provider.synthesizeChunk(chunks[i], fileName);
+        chunkFiles.push(result.outputPath);
+      }
+
+      const timing = await AudioProcessor.concatenateAudio(
+        chunkFiles,
+        outputPath,
+        chunkFiles.map(() => false)
+      );
+
+      const perSpeechTiming = await this.splitChunksIntoSpeechTimings(
+        chunkFiles,
+        chunks,
+        timing.offsetsSeconds
+      );
+
+      await this.writeMultispeakerTimeline(speeches, perSpeechTiming, outputPath, scriptId);
+
+      logger.success(`Multispeaker audio generated: ${outputPath}`);
+      return outputPath;
+    } catch (error) {
+      logger.error("Failed to generate multispeaker audio:", error);
+      throw error;
+    }
+  }
+
+  private async regenerateMultispeakerChunk(
+    speeches: Speech[],
+    speechId: string,
+    outputPath: string,
+    providerName: VocalProviderName,
+    scriptId?: string
+  ): Promise<string> {
+    try {
+      const targetIndex = speeches.findIndex((s) => s.id === speechId);
+      if (targetIndex === -1) {
+        throw new Error(`Speech ${speechId} not found in script`);
+      }
+
+      const provider = MultispeakerVocalProviderFactory.getProvider(providerName);
+      const { chunks, chunkTurnCounts, chunkStartIndices } = this.buildChunkPlan(speeches, provider);
+      const targetChunkIndex = chunkStartIndices.findIndex(
+        (start, i) => targetIndex >= start && targetIndex < start + chunkTurnCounts[i]
+      );
+
+      const chunkFiles: string[] = [];
+      for (let i = 0; i < chunks.length; i++) {
+        const fileName = this.chunkFileName(speeches, chunkStartIndices[i]);
+        if (i === targetChunkIndex) {
+          const fresh = await provider.synthesizeChunk(chunks[i], fileName);
+          chunkFiles.push(fresh.outputPath);
+        } else {
+          chunkFiles.push(path.join(appConfig.audioDir, fileName));
+        }
+      }
+
+      const timing = await AudioProcessor.concatenateAudio(
+        chunkFiles,
+        outputPath,
+        chunkFiles.map(() => false)
+      );
+
+      const perSpeechTiming = await this.splitChunksIntoSpeechTimings(
+        chunkFiles,
+        chunks,
+        timing.offsetsSeconds
+      );
+
+      await this.writeMultispeakerTimeline(speeches, perSpeechTiming, outputPath, scriptId);
+
+      logger.success(`Multispeaker chunk regenerated: ${outputPath}`);
+      return outputPath;
+    } catch (error) {
+      logger.error("Failed to regenerate multispeaker chunk audio:", error);
       throw error;
     }
   }
@@ -253,11 +451,13 @@ export class AudioService implements IAudioService {
     const outputFileName = path.join("speeches", `${speech.id}.mp3`);
 
     return provider.tts({
-      speech,
+      speech: { ...speech, message: stripMarkdownEmphasis(speech.message) },
       voice: speech.voice,
       outputFileName,
-      previousText,
-      nextText,
+      previousText: previousText
+        ? stripMarkdownEmphasis(previousText)
+        : previousText,
+      nextText: nextText ? stripMarkdownEmphasis(nextText) : nextText,
     });
   }
 }

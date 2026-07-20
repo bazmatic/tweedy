@@ -75,8 +75,14 @@ export class DialogueCadencePolicy {
       };
     }
 
-    const previousSpeech = script.speeches.at(-1);
-    const challengedSpeech = script.speeches.at(-2);
+    // A forced interjection (backchannel) can land between a question/
+    // challenge and the Director's next call, shifting speeches.at(-1) away
+    // from the turn these checks actually care about. Skip past a trailing
+    // backchannel turn so it doesn't hide an unanswered question/challenge.
+    const previousIndex = this.lastNonBackchannelIndex(script);
+    const previousSpeech = previousIndex >= 0 ? script.speeches[previousIndex] : undefined;
+    const challengedSpeech =
+      previousIndex >= 1 ? script.speeches[previousIndex - 1] : undefined;
     if (
       previousSpeech?.tool === SpeakerAgentToolName.CHALLENGE &&
       challengedSpeech &&
@@ -140,14 +146,19 @@ export class DialogueCadencePolicy {
       }
     }
 
+    // Deliberately uses the raw last speech (not the backchannel-skipping
+    // lookback above): a director resuming the same expert right after their
+    // own backchannel reaction is one continuous turn, not a second
+    // consecutive substantive turn, so it should not trigger this repair.
+    const rawPreviousSpeech = script.speeches.at(-1);
     const assignedProfile = this.roleProfileResolver.resolve(
       assignment.speaker
     );
     const repeatsSubstantiveExpert =
-      previousSpeech?.speaker.id === assignment.speaker.id &&
+      rawPreviousSpeech?.speaker.id === assignment.speaker.id &&
       assignedProfile.epistemicRole === EpistemicRole.Expert &&
-      previousSpeech.tool !== undefined &&
-      SUBSTANTIVE_TOOLS.includes(previousSpeech.tool);
+      rawPreviousSpeech.tool !== undefined &&
+      SUBSTANTIVE_TOOLS.includes(rawPreviousSpeech.tool);
     if (!repeatsSubstantiveExpert) return assignment;
 
     const audienceGuide = script.speakers.find(
@@ -173,5 +184,14 @@ export class DialogueCadencePolicy {
       repaired: true,
       cadenceRepairReason: CadenceRepairReason.ConsecutiveExpertExplanation,
     };
+  }
+
+  private lastNonBackchannelIndex(script: PodcastScript): number {
+    for (let i = script.speeches.length - 1; i >= 0; i--) {
+      const tool = script.speeches[i].tool;
+      if (tool !== undefined && BACKCHANNEL_TOOLS.includes(tool)) continue;
+      return i;
+    }
+    return -1;
   }
 }

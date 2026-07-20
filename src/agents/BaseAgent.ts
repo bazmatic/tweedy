@@ -281,7 +281,7 @@ const TRUNCATION_FILLER_WORDS = [
   "so",
 ];
 
-function appendTruncationFiller(message: string): string {
+export function appendTruncationFiller(message: string): string {
   const filler =
     TRUNCATION_FILLER_WORDS[
       Math.floor(Math.random() * TRUNCATION_FILLER_WORDS.length)
