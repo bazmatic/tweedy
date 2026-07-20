@@ -364,6 +364,11 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
 - Source Access: ${roleProfile.sourceAccess}
 - Uncertainty Style: ${roleProfile.uncertaintyStyle}
 - Audience Profile: ${audienceProfile}${this.mannerismsLine()}
+- You are speaking as ${this.speaker.name} ONLY — never refer to yourself in the second person or address yourself by your own name.${
+          coHostNames
+            ? ` Your co-host${coHosts.length > 1 ? "s are" : " is"} ${coHostNames} — that is who "you" refers to whenever you address, question, or hand off to a co-host by name.`
+            : ""
+        }
 
 Podcast Context:
 - Title: ${title}${recapSection}
