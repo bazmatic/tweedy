@@ -1,6 +1,6 @@
 import * as path from "path";
 import { Command } from "commander";
-import { AudioService } from "../../services";
+import { AudioService, timelinePathFor } from "../../services";
 import { ScriptService } from "../../services";
 import {
   ScriptRepository,
@@ -133,10 +133,7 @@ export function createAudioCommands(): Command {
     });
 
   async function refineTimelineForOutput(outputPath: string): Promise<void> {
-    const timelinePath = path.join(
-      path.dirname(outputPath),
-      `${path.basename(outputPath, path.extname(outputPath))}.timeline.json`
-    );
+    const timelinePath = timelinePathFor(outputPath);
 
     if (!(await fs.pathExists(timelinePath))) {
       logger.error(`No timeline found at ${timelinePath} — generate audio first.`);

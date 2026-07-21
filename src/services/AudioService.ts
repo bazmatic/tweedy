@@ -49,7 +49,7 @@ function round3(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
 
-function timelinePathFor(outputPath: string): string {
+export function timelinePathFor(outputPath: string): string {
   const dir = path.dirname(outputPath);
   const base = path.basename(outputPath, path.extname(outputPath));
   return path.join(dir, `${base}.timeline.json`);
