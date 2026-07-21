@@ -649,6 +649,14 @@ export interface IResearchProvider {
   research(query: string): Promise<ResearchMaterial[]>;
 }
 
+export enum TranscriptionProviderName {
+  OpenAIWhisper = "openai_whisper",
+}
+
+export interface IWhisperTranscriptionProvider {
+  transcribe(audioFilePath: string): Promise<{ words: WordTimestamp[] }>;
+}
+
 // Agent Interfaces
 export interface ISpeakerAgent {
   speak(

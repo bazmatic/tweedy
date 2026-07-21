@@ -19,3 +19,5 @@ export {
 } from './StructuredOutputMethodPolicy';
 export { PerplexityProvider } from "./PerplexityProvider";
 export { ResearchProviderFactory } from "./ResearchProviderFactory";
+export { OpenAIWhisperProvider } from "./OpenAIWhisperProvider";
+export { TranscriptionProviderFactory } from "./TranscriptionProviderFactory";
