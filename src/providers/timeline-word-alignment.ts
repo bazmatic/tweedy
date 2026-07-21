@@ -52,6 +52,28 @@ export function alignWordsToEntries(
         }
       }
 
+      // If the match required skipping over transcribed words (rather than
+      // matching immediately at searchStart), guard against a repeated word
+      // "stealing" a later occurrence that actually belongs to a nearby
+      // upcoming expected word (e.g. expected "the cat the", transcribed
+      // "cat the" with the first "the" dropped: the lone "the" belongs to
+      // the second expected "the", not the first). If a skipped transcribed
+      // word matches an upcoming expected word instead, treat the current
+      // expected word as dropped rather than binding it to the wrong spot.
+      if (found > searchStart) {
+        const upcomingExpected = expected.slice(
+          expectedIndex + 1,
+          expectedIndex + 1 + LOOKAHEAD_TOLERANCE
+        );
+        const skippedMatchesUpcoming = transcribedWords
+          .slice(searchStart, found)
+          .some((w) => upcomingExpected.includes(normalize(w.word)));
+
+        if (skippedMatchesUpcoming) {
+          found = -1;
+        }
+      }
+
       if (found === -1) {
         // Couldn't find this expected word nearby; skip it (treat as a
         // dropped/misheard word) and keep going with the rest of the entry.

@@ -80,6 +80,26 @@ describe("alignWordsToEntries", () => {
     expect(result[1].wordTimestamps?.map((w) => w.word)).toEqual(["five", "six"]);
   });
 
+  it("does not shift a repeated word's timing earlier when one occurrence is dropped", () => {
+    // Expected: "the cat the dog". Transcription dropped the first "the"
+    // entirely (mis-heard as silence), so the transcript is: cat, the, dog.
+    // The second "the" (at index 1) must not be stolen by the first
+    // expected "the" (at index 0) -- doing so would drop "cat" from the
+    // match and give the entry a wrong (too-late) start time.
+    const entries: TimelineEntry[] = [entry({ speechId: "s1", message: "the cat the dog" })];
+    const words: WordTimestamp[] = [
+      word("cat", 0.0, 0.3),
+      word("the", 0.3, 0.5),
+      word("dog", 0.5, 0.8),
+    ];
+
+    const result = alignWordsToEntries(entries, words);
+
+    expect(result[0].wordTimestamps?.map((w) => w.word)).toEqual(["cat", "the", "dog"]);
+    expect(result[0].startSeconds).toBeCloseTo(0.0);
+    expect(result[0].endSeconds).toBeCloseTo(0.8);
+  });
+
   it("leaves an entry untouched if zero words can be matched to it", () => {
     const original = entry({
       speechId: "s1",
