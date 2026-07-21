@@ -177,4 +177,26 @@ export class AudioProcessor {
         .run();
     });
   }
+
+  static async extractAudioChunk(
+    inputPath: string,
+    startSeconds: number,
+    endSeconds: number,
+    outputPath: string
+  ): Promise<void> {
+    await fs.ensureDir(path.dirname(outputPath));
+
+    return new Promise((resolve, reject) => {
+      ffmpeg(inputPath)
+        .setStartTime(startSeconds)
+        .setDuration(endSeconds - startSeconds)
+        .output(outputPath)
+        .on("end", () => resolve())
+        .on("error", (error: Error) => {
+          logger.error("Audio chunk extraction failed:", error);
+          reject(error);
+        })
+        .run();
+    });
+  }
 }

@@ -14,6 +14,8 @@ const { ffmpegState, commandMock, ffmpegFn } = vi.hoisted(() => {
     audioFilters: vi.fn().mockReturnThis(),
     format: vi.fn().mockReturnThis(),
     outputOptions: vi.fn().mockReturnThis(),
+    setStartTime: vi.fn().mockReturnThis(),
+    setDuration: vi.fn().mockReturnThis(),
     on: vi.fn().mockImplementation(function (this: any, event: string, cb: (...args: any[]) => void) {
       ffmpegState.handlers[event] = cb;
       return this;
@@ -100,5 +102,25 @@ describe("AudioProcessor.concatenateAudio", () => {
     );
     expect(filterGraph).toContain("amix=inputs=2:dropout_transition=0:normalize=0[mixed]");
     expect(filterGraph).toContain("[mixed]loudnorm=I=-16:LRA=11:TP=-1.5,silenceremove=1:0:-50dB:1:0:-50dB[out]");
+  });
+});
+
+describe("AudioProcessor.extractAudioChunk", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ffmpegState.handlers = {};
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sets ffmpeg start time and duration from the given chunk boundaries", async () => {
+    await AudioProcessor.extractAudioChunk("/in.mp3", 8.3, 24, "/out/chunk-1.mp3");
+
+    expect(commandMock.setStartTime).toHaveBeenCalledWith(8.3);
+    expect(commandMock.setDuration).toHaveBeenCalledWith(24 - 8.3);
+    expect(commandMock.output).toHaveBeenCalledWith("/out/chunk-1.mp3");
+    expect(commandMock.run).toHaveBeenCalled();
   });
 });
