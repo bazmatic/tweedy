@@ -13,10 +13,12 @@ export class TimelineRefinementService {
   /**
    * Refines a timeline's entry boundaries and word timestamps by
    * transcribing the episode audio with Whisper and sequentially aligning
-   * the result back onto each entry's known text. Never throws: any
-   * transcription failure logs a warning and returns the original timeline
-   * unchanged, so refinement is a pure enhancement, never a point of
-   * failure for a generate/refine-timeline run.
+   * the result back onto each entry's known text. Never throws on a
+   * *runtime* transcription/extraction failure: those log a warning and
+   * return the original timeline unchanged, so refinement is a pure
+   * enhancement, never a point of failure for a generate/refine-timeline
+   * run. A missing OPENAI_API_KEY is a config error, not a runtime
+   * failure, and propagates so the caller can surface it clearly.
    */
   static async refineTimeline(
     audioFile: string,
