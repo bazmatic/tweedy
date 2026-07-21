@@ -31,7 +31,8 @@ describe("computeChunkBoundaries", () => {
 
     expect(chunks).toEqual([
       { startSeconds: 0, endSeconds: 8, entryIndices: [0] },
-      { startSeconds: 8.3, endSeconds: 24, entryIndices: [1, 2] },
+      { startSeconds: 8.3, endSeconds: 16, entryIndices: [1] },
+      { startSeconds: 16.3, endSeconds: 24, entryIndices: [2] },
     ]);
   });
 

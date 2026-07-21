@@ -24,30 +24,20 @@ export function computeChunkBoundaries(
   let chunkStart = entries[0].startSeconds;
   let chunkEnd = entries[0].endSeconds;
   let chunkIndices: number[] = [0];
-  let justStartedChunk = false;
 
   for (let i = 1; i < entries.length; i++) {
     const entry = entries[i];
     const wouldBeDuration = entry.endSeconds - chunkStart;
 
     if (wouldBeDuration > maxChunkSeconds) {
-      if (justStartedChunk) {
-        // We just started this chunk, so give it a free pass for this entry
-        chunkEnd = entry.endSeconds;
-        chunkIndices.push(i);
-        justStartedChunk = false;
-      } else {
-        // End current chunk and start a new one
-        chunks.push({ startSeconds: chunkStart, endSeconds: chunkEnd, entryIndices: chunkIndices });
-        chunkStart = entry.startSeconds;
-        chunkEnd = entry.endSeconds;
-        chunkIndices = [i];
-        justStartedChunk = true;
-      }
+      // End current chunk and start a new one
+      chunks.push({ startSeconds: chunkStart, endSeconds: chunkEnd, entryIndices: chunkIndices });
+      chunkStart = entry.startSeconds;
+      chunkEnd = entry.endSeconds;
+      chunkIndices = [i];
     } else {
       chunkEnd = entry.endSeconds;
       chunkIndices.push(i);
-      justStartedChunk = false;
     }
   }
 
