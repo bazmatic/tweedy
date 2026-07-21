@@ -1,4 +1,0 @@
-allowBuilds:
-  ffmpeg-static: true
-  protobufjs: true
-  sharp: true
