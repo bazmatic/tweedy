@@ -5,6 +5,7 @@ export { ScriptService } from "./ScriptService";
 export { AudioService, IAudioService } from "./AudioService";
 export { DocumentService, IDocumentService } from "./DocumentService";
 export { ResearchService } from "./ResearchService";
+export { TimelineRefinementService } from "./TimelineRefinementService";
 export {
   formatScriptForEditing,
   parseEditableScript,
