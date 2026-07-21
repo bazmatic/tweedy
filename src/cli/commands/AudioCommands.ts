@@ -64,7 +64,11 @@ export function createAudioCommands(): Command {
         logger.success(`Audio generated: ${outputPath}`);
 
         if (options.refineTimeline) {
-          await refineTimelineForOutput(outputPath);
+          try {
+            await refineTimelineForOutput(outputPath);
+          } catch (error) {
+            reportRefineTimelineError(error);
+          }
         }
       } catch (error) {
         logger.error("Failed to generate audio:", error);
@@ -128,9 +132,19 @@ export function createAudioCommands(): Command {
 
         await refineTimelineForOutput(outputPath);
       } catch (error) {
-        logger.error("Failed to refine timeline:", error);
+        reportRefineTimelineError(error);
       }
     });
+
+  function reportRefineTimelineError(error: unknown): void {
+    if (error instanceof Error && error.message.includes("OPENAI_API_KEY")) {
+      logger.error(
+        "Timeline refinement requires the OPENAI_API_KEY environment variable to be set — set it and re-run."
+      );
+      return;
+    }
+    logger.error("Failed to refine timeline:", error);
+  }
 
   async function refineTimelineForOutput(outputPath: string): Promise<void> {
     const timelinePath = timelinePathFor(outputPath);

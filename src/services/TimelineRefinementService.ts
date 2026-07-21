@@ -26,14 +26,21 @@ export class TimelineRefinementService {
     const boundaries = computeChunkBoundaries(timeline.entries, maxChunkSeconds);
     if (boundaries.length === 0) return timeline;
 
-    const tempDir = path.join(os.tmpdir(), `tweedy-whisper-${path.basename(audioFile)}`);
+    // Resolve the provider before entering the try/catch below: a missing
+    // OPENAI_API_KEY throws synchronously here and is a config problem, not
+    // a runtime transcription failure, so it must propagate out of this
+    // method rather than being swallowed into the generic fallback path.
+    const provider = TranscriptionProviderFactory.getProvider(
+      TranscriptionProviderName.OpenAIWhisper
+    );
+
+    const tempDir = path.join(
+      os.tmpdir(),
+      `tweedy-whisper-${path.basename(audioFile)}-${process.pid}-${Math.random().toString(36).slice(2)}`
+    );
     await fs.ensureDir(tempDir);
 
     try {
-      const provider = TranscriptionProviderFactory.getProvider(
-        TranscriptionProviderName.OpenAIWhisper
-      );
-
       const allWords: WordTimestamp[] = [];
 
       for (let i = 0; i < boundaries.length; i++) {

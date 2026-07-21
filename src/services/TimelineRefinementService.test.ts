@@ -132,5 +132,6 @@ describe("TimelineRefinementService.refineTimeline", () => {
     );
 
     expect(result).toEqual(original);
+    expect(mockRemove).toHaveBeenCalled();
   });
 });
