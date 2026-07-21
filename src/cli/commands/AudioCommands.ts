@@ -13,6 +13,8 @@ import { RAGService } from "../../rag";
 import { VocalProviderName } from "../../types";
 import { logger } from "../../utils/logger";
 import { appConfig } from "../../utils/config";
+import { TimelineRefinementService } from "../../services/TimelineRefinementService";
+import * as fs from "fs-extra";
 
 export function createAudioCommands(): Command {
   const audioCommand = new Command("audio");
@@ -44,6 +46,10 @@ export function createAudioCommands(): Command {
       "Voice provider (elevenlabs, openai)",
       "elevenlabs"
     )
+    .option(
+      "--refine-timeline",
+      "Refine timeline.json entry boundaries and word timestamps using the OpenAI Whisper API after generation"
+    )
     .action(async (scriptId, options) => {
       try {
         logger.progress(`Generating audio for script ${scriptId}...`);
@@ -56,6 +62,10 @@ export function createAudioCommands(): Command {
         await audioService.generateAudio(script.speeches, outputPath, scriptId);
 
         logger.success(`Audio generated: ${outputPath}`);
+
+        if (options.refineTimeline) {
+          await refineTimelineForOutput(outputPath);
+        }
       } catch (error) {
         logger.error("Failed to generate audio:", error);
       }
@@ -103,6 +113,42 @@ export function createAudioCommands(): Command {
         logger.error("Failed to process audio:", error);
       }
     });
+
+  audioCommand
+    .command("refine-timeline <scriptId>")
+    .description(
+      "Refine an existing episode's timeline.json entry boundaries and word timestamps using the OpenAI Whisper API"
+    )
+    .option("-o, --output <path>", "Audio file path (defaults to the standard generated path for this script)")
+    .action(async (scriptId, options) => {
+      try {
+        const outputPath =
+          options.output ||
+          path.join(appConfig.audioDir, `podcast-${scriptId}.mp3`);
+
+        await refineTimelineForOutput(outputPath);
+      } catch (error) {
+        logger.error("Failed to refine timeline:", error);
+      }
+    });
+
+  async function refineTimelineForOutput(outputPath: string): Promise<void> {
+    const timelinePath = path.join(
+      path.dirname(outputPath),
+      `${path.basename(outputPath, path.extname(outputPath))}.timeline.json`
+    );
+
+    if (!(await fs.pathExists(timelinePath))) {
+      logger.error(`No timeline found at ${timelinePath} — generate audio first.`);
+      return;
+    }
+
+    logger.progress(`Refining timeline via Whisper: ${timelinePath}...`);
+    const timeline = await fs.readJson(timelinePath);
+    const refined = await TimelineRefinementService.refineTimeline(outputPath, timeline);
+    await fs.writeJson(timelinePath, refined, { spaces: 2 });
+    logger.success(`Timeline refined: ${timelinePath}`);
+  }
 
   return audioCommand;
 }
