@@ -26,7 +26,7 @@ export interface IAudioService {
   processAudioFile(inputPath: string, outputPath: string): Promise<void>;
 }
 
-interface TimelineEntry {
+export interface TimelineEntry {
   speechId: string;
   speakerId: string;
   speakerName: string;
@@ -37,6 +37,12 @@ interface TimelineEntry {
   startSeconds: number;
   endSeconds: number;
   wordTimestamps?: WordTimestamp[];
+}
+
+export interface Timeline {
+  scriptId?: string;
+  audioFile: string;
+  entries: TimelineEntry[];
 }
 
 function round3(value: number): number {
