@@ -34,7 +34,7 @@ function makeRecord(isExpert: boolean) {
 }
 
 describe("SpeakerService role-profile migration", () => {
-  it("loads a legacy expert record with an explicit resolved profile", async () => {
+  it("loads a legacy expert record without role profile fields", async () => {
     const speakerRepository = {
       getById: vi.fn().mockResolvedValue(makeRecord(true)),
     };
@@ -48,11 +48,8 @@ describe("SpeakerService role-profile migration", () => {
 
     const speaker = await service.getSpeaker("speaker-1");
 
-    expect(speaker.roleProfile).toEqual({
-      epistemicRole: EpistemicRole.Expert,
-      sourceAccess: SourceAccess.Full,
-      uncertaintyStyle: UncertaintyStyle.Precise,
-    });
+    expect(speaker).not.toHaveProperty("roleProfile");
+    expect(speaker).not.toHaveProperty("isExpert");
   });
 });
 
