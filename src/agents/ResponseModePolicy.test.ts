@@ -3,9 +3,12 @@ import {
   AudienceValue,
   EditorialMove,
   EnergyLevel,
+  EpistemicRole,
+  SourceAccess,
   Speaker,
   Speech,
   TurnBrief,
+  UncertaintyStyle,
   VocalProviderName,
 } from "../types";
 import { ResponseModePolicy } from "./ResponseModePolicy";
@@ -26,7 +29,17 @@ function makeSpeaker(id: string, isExpert: boolean): Speaker {
       settings: {},
     },
     voiceStyle: "natural",
-    isExpert,
+    roleProfile: isExpert
+      ? {
+          epistemicRole: EpistemicRole.Expert,
+          sourceAccess: SourceAccess.Full,
+          uncertaintyStyle: UncertaintyStyle.Precise,
+        }
+      : {
+          epistemicRole: EpistemicRole.AudienceGuide,
+          sourceAccess: SourceAccess.HeardOnly,
+          uncertaintyStyle: UncertaintyStyle.ListenerSurrogate,
+        },
   };
 }
 

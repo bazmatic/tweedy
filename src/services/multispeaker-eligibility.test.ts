@@ -8,7 +8,7 @@ function makeVoice(provider: VocalProviderName): Voice {
 }
 
 function makeSpeaker(id: string, name: string, voice: Voice): Speaker {
-  return { id, slug: id, name, personality: "curious", voice, voiceStyle: "neutral", isExpert: false };
+  return { id, slug: id, name, personality: "curious", voice, voiceStyle: "neutral" };
 }
 
 function makeSpeech(speaker: Speaker, message: string): Speech {

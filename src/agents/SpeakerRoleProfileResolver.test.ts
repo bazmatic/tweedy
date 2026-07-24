@@ -9,31 +9,35 @@ import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
 describe("SpeakerRoleProfileResolver", () => {
   const resolver = new SpeakerRoleProfileResolver();
 
-  it("maps a legacy expert to the default expert profile", () => {
-    expect(resolver.resolve({ isExpert: true })).toEqual({
-      epistemicRole: EpistemicRole.Expert,
-      sourceAccess: SourceAccess.Full,
-      uncertaintyStyle: UncertaintyStyle.Precise,
-    });
-  });
-
-  it("maps a legacy non-expert to the audience-guide profile", () => {
-    expect(resolver.resolve({ isExpert: false })).toEqual({
+  it("defaults to the audience-guide profile when no role has been assigned", () => {
+    expect(resolver.resolve({})).toEqual({
       epistemicRole: EpistemicRole.AudienceGuide,
       sourceAccess: SourceAccess.HeardOnly,
       uncertaintyStyle: UncertaintyStyle.ListenerSurrogate,
     });
   });
 
-  it("preserves an explicit role profile", () => {
+  it("preserves an explicit, runtime-assigned role profile", () => {
     const explicitProfile = {
       epistemicRole: EpistemicRole.InformedHost,
       sourceAccess: SourceAccess.PreparedCards,
       uncertaintyStyle: UncertaintyStyle.Exploratory,
     };
 
-    expect(
-      resolver.resolve({ isExpert: false, roleProfile: explicitProfile })
-    ).toEqual(explicitProfile);
+    expect(resolver.resolve({ roleProfile: explicitProfile })).toEqual(
+      explicitProfile
+    );
+  });
+
+  it("preserves an explicit expert profile", () => {
+    const expertProfile = {
+      epistemicRole: EpistemicRole.Expert,
+      sourceAccess: SourceAccess.Full,
+      uncertaintyStyle: UncertaintyStyle.Precise,
+    };
+
+    expect(resolver.resolve({ roleProfile: expertProfile })).toEqual(
+      expertProfile
+    );
   });
 });

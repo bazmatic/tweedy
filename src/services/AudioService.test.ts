@@ -54,7 +54,6 @@ function makeSpeaker(id: string, name: string): Speaker {
     personality: "curious",
     voice: makeVoice(),
     voiceStyle: "neutral",
-    isExpert: false,
   };
 }
 

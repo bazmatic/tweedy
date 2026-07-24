@@ -1,11 +1,8 @@
 import { z } from "zod";
 import {
   AudienceProfile,
-  EpistemicRole,
-  SourceAccess,
   SpeakerAllocation,
   SourceType,
-  UncertaintyStyle,
   VocalProviderName,
 } from "../types";
 
@@ -38,14 +35,6 @@ export const speakerSchema = z.object({
   personality: z.string().min(1, "Speaker personality is required"),
   voiceId: z.string().min(1, "Voice ID is required"),
   voiceStyle: z.string().optional(),
-  isExpert: z.boolean().optional(),
-  roleProfile: z
-    .object({
-      epistemicRole: z.nativeEnum(EpistemicRole),
-      sourceAccess: z.nativeEnum(SourceAccess),
-      uncertaintyStyle: z.nativeEnum(UncertaintyStyle),
-    })
-    .optional(),
 });
 
 // Material validation schema

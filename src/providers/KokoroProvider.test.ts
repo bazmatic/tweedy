@@ -40,7 +40,6 @@ function buildSpeech(voice: Voice): Speech {
     personality: 'curious',
     voice,
     voiceStyle: 'neutral',
-    isExpert: false,
   };
   return {
     id: 'speech-1',

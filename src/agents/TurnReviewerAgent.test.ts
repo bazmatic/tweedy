@@ -24,7 +24,6 @@ const speaker = {
     settings: {},
   },
   voiceStyle: "natural",
-  isExpert: false,
 };
 
 const speech: Speech = {

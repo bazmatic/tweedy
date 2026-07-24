@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   checkConversationCompleteSchema,
+  createAssignSpeakerRolesSchema,
   createPodcastPlanSchema,
   createSelectNextSpeakerSchema,
   verifyCoveredPointsSchema,
 } from "./director-schemas";
-import { Speaker, VocalProviderName } from "../types";
+import { EpistemicRole, Speaker, VocalProviderName } from "../types";
 
 function makeSpeaker(id: string): Speaker {
   return {
@@ -22,7 +23,6 @@ function makeSpeaker(id: string): Speaker {
       settings: {},
     },
     voiceStyle: "neutral",
-    isExpert: false,
   };
 }
 
@@ -69,6 +69,34 @@ describe("director structured-output schemas", () => {
     ).toEqual({ confirmedPointIds: ["p1"] });
     expect(checkConversationCompleteSchema.parse({ isComplete: true })).toEqual(
       { isComplete: true }
+    );
+  });
+});
+
+describe("createAssignSpeakerRolesSchema", () => {
+  const speakers = [
+    { id: "s1", name: "Aida" } as Speaker,
+    { id: "s2", name: "Miles" } as Speaker,
+  ];
+
+  it("accepts a valid role assignment for each speaker", () => {
+    const schema = createAssignSpeakerRolesSchema(speakers);
+    const result = schema.parse({
+      assignments: [
+        { speakerId: "s1", epistemicRole: EpistemicRole.InformedHost },
+        { speakerId: "s2", epistemicRole: EpistemicRole.AudienceGuide },
+      ],
+    });
+    expect(result.assignments).toHaveLength(2);
+  });
+
+  it("falls back to audience_guide for an unrecognised role value", () => {
+    const schema = createAssignSpeakerRolesSchema(speakers);
+    const result = schema.parse({
+      assignments: [{ speakerId: "s1", epistemicRole: "narrator" }],
+    });
+    expect(result.assignments[0].epistemicRole).toBe(
+      EpistemicRole.AudienceGuide
     );
   });
 });

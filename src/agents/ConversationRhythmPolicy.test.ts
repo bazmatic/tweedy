@@ -17,7 +17,6 @@ const speaker = {
     settings: {},
   },
   voiceStyle: "natural",
-  isExpert: false,
 };
 
 function speech(tool: SpeakerAgentToolName): Speech {

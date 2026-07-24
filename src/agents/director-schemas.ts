@@ -5,6 +5,7 @@ import {
   ConversationalDevice,
   EditorialMove,
   EnergyLevel,
+  EpistemicRole,
   Speaker,
 } from "../types";
 import { logger } from "../utils/logger";
@@ -160,6 +161,40 @@ export function createSelectNextSpeakerSchema(speakers: Speaker[]) {
 
 export type SelectNextSpeakerInput = z.infer<
   ReturnType<typeof createSelectNextSpeakerSchema>
+>;
+
+export function createAssignSpeakerRolesSchema(speakers: Speaker[]) {
+  const availableSpeakers = speakers
+    .map((speaker) => `${speaker.name} (${speaker.id})`)
+    .join(", ");
+
+  return z
+    .object({
+      assignments: z
+        .array(
+          z.object({
+            speakerId: z
+              .string()
+              .describe(
+                `The id of the speaker being assigned a role. Available speakers: ${availableSpeakers}.`
+              ),
+            epistemicRole: z
+              .nativeEnum(EpistemicRole)
+              .catch(fallbackWithWarning("epistemicRole", EpistemicRole.AudienceGuide))
+              .describe(
+                "This speaker's knowledge role for this specific episode, based on their personality and the source material below — not a fixed trait of the speaker."
+              ),
+          })
+        )
+        .describe("One role assignment per speaker, for this episode only."),
+    })
+    .describe(
+      "Runtime epistemic role assignment for each speaker, decided fresh for this episode's material."
+    );
+}
+
+export type AssignSpeakerRolesInput = z.infer<
+  ReturnType<typeof createAssignSpeakerRolesSchema>
 >;
 
 export const verifyCoveredPointsSchema = z

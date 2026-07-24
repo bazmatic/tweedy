@@ -9,9 +9,12 @@ import {
   EditorialCardKind,
   EditorialMove,
   EnergyLevel,
+  EpistemicRole,
   PodcastScript,
+  SourceAccess,
   Speaker,
   SourceType,
+  UncertaintyStyle,
   VocalProviderName,
 } from "../types";
 
@@ -30,7 +33,17 @@ function makeSpeaker(id: string, isExpert = false): Speaker {
       settings: {},
     },
     voiceStyle: "neutral",
-    isExpert,
+    roleProfile: isExpert
+      ? {
+          epistemicRole: EpistemicRole.Expert,
+          sourceAccess: SourceAccess.Full,
+          uncertaintyStyle: UncertaintyStyle.Precise,
+        }
+      : {
+          epistemicRole: EpistemicRole.AudienceGuide,
+          sourceAccess: SourceAccess.HeardOnly,
+          uncertaintyStyle: UncertaintyStyle.ListenerSurrogate,
+        },
   };
 }
 
