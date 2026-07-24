@@ -81,8 +81,7 @@ export interface Speaker {
   personality: string;
   voice: Voice;
   voiceStyle: string;
-  /** The speaker's epistemic role for the current episode, assigned at runtime by
-   * DirectorAgent.assignSpeakerRoles — not a durable property of this speaker's persona. */
+  isExpert: boolean;
   roleProfile?: SpeakerRoleProfile;
   /** Example filler phrases/verbal tics this speaker reaches for (e.g. "Oh, wow"; "Huh, interesting"). */
   mannerisms?: string;
@@ -356,9 +355,6 @@ export interface PodcastScript {
   knowledgeLedger?: KnowledgeLedger;
   audienceProfile?: AudienceProfile;
   terminologyLedger?: TerminologyLedger;
-  /** Per-episode epistemic role assignment, keyed by speaker id. Assigned once by
-   * DirectorAgent.assignSpeakerRoles and persisted alongside the other episode ledgers. */
-  speakerRoleAssignments?: Record<string, SpeakerRoleProfile>;
   centralAnalogy?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -448,6 +444,8 @@ export interface SpeakerRecord {
   personality: string;
   voiceId: string;
   voiceStyle: string;
+  isExpert: boolean;
+  roleProfile?: SpeakerRoleProfile;
   mannerisms?: string;
   physicalAppearance?: string;
   createdAt: Date;
@@ -468,7 +466,6 @@ export interface ScriptRecord {
   knowledgeLedger?: KnowledgeLedger;
   audienceProfile?: AudienceProfile;
   terminologyLedger?: TerminologyLedger;
-  speakerRoleAssignments?: Record<string, SpeakerRoleProfile>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -648,13 +645,8 @@ export interface ResearchMaterial {
   metadata: Record<string, any>;
 }
 
-export interface ResearchOptions {
-  /** Number of related follow-up queries to also research, for deeper coverage. Default 0. */
-  followUpQueries?: number;
-}
-
 export interface IResearchProvider {
-  research(query: string, options?: ResearchOptions): Promise<ResearchMaterial[]>;
+  research(query: string): Promise<ResearchMaterial[]>;
 }
 
 export enum TranscriptionProviderName {
