@@ -31,7 +31,6 @@ function makeSpeaker(id: string): Speaker {
       settings: {},
     },
     voiceStyle: "neutral",
-    isExpert: false,
   };
 }
 
@@ -234,6 +233,34 @@ describe("DirectorAgent.createPodcastPlan", () => {
       "flat-card",
     ]);
   });
+
+  it("assigns at least one non-audience_guide role even when the model assigns none", async () => {
+    const speakerA = makeSpeaker("a");
+    const speakerB = makeSpeaker("b");
+    const script = makeScript({ speakers: [speakerA, speakerB] });
+    const director = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    vi.spyOn(director as any, "callModelForStructuredOutput").mockImplementation(
+      (async (_task: unknown, _messages: unknown, schema: { description?: string }) => {
+        if (schema?.description?.includes("Runtime epistemic role assignment")) {
+          return {
+            assignments: [
+              { speakerId: "a", epistemicRole: "audience_guide" },
+              { speakerId: "b", epistemicRole: "audience_guide" },
+            ],
+          };
+        }
+        return { points: ["p1"], narrative: "narrative", beats: [] };
+      }) as any
+    );
+
+    await director.createPodcastPlan();
+
+    const roles = script.speakers.map((speaker) => speaker.roleProfile?.epistemicRole);
+    expect(roles).not.toEqual(["audience_guide", "audience_guide"]);
+    expect(script.speakerRoleAssignments?.["a"]).toBeDefined();
+    expect(script.speakerRoleAssignments?.["b"]).toBeDefined();
+  });
 });
 
 describe("DirectorAgent editorial turn briefs", () => {
@@ -241,6 +268,7 @@ describe("DirectorAgent editorial turn briefs", () => {
     const script = makeScript();
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
     const call = vi.spyOn(agent as any, "callModelForStructuredOutput");
+    call.mockResolvedValueOnce({ assignments: [] });
     call.mockResolvedValueOnce({ narrative: "plan", points: [] });
     await agent.createPodcastPlan();
     call.mockResolvedValueOnce({
@@ -271,6 +299,7 @@ describe("DirectorAgent editorial turn briefs", () => {
     const script = makeScript();
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
     const call = vi.spyOn(agent as any, "callModelForStructuredOutput");
+    call.mockResolvedValueOnce({ assignments: [] });
     call.mockResolvedValueOnce({ narrative: "plan", points: [] });
     await agent.createPodcastPlan();
 
@@ -301,7 +330,7 @@ describe("DirectorAgent editorial turn briefs", () => {
 
     await agent.chooseNextSpeaker(script);
 
-    const promptContent = (call.mock.calls[1][1] as any)[0].content as string;
+    const promptContent = (call.mock.calls[2][1] as any)[0].content as string;
     const cardIdOrder = [...promptContent.matchAll(/- (card-\d+) \[/g)].map(
       (match) => match[1]
     );
@@ -318,6 +347,7 @@ describe("DirectorAgent editorial turn briefs", () => {
     const script = makeScript();
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
     const call = vi.spyOn(agent as any, "callModelForStructuredOutput");
+    call.mockResolvedValueOnce({ assignments: [] });
     call.mockResolvedValueOnce({
       narrative: "plan",
       points: ["The main topic"],
@@ -394,6 +424,9 @@ describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
 
     vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
+      assignments: [],
+    });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
       narrative: "plan",
       points: ["Point A", "Point B"],
     });
@@ -421,7 +454,7 @@ describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
 
     await agent.chooseNextSpeaker(script);
 
-    const prompt = (chooseSpy.mock.calls[3][1] as any)[0].content as string;
+    const prompt = (chooseSpy.mock.calls[4][1] as any)[0].content as string;
     expect(prompt).toContain("p2: Point B");
     expect(prompt).not.toContain("p1: Point A");
   });
@@ -447,6 +480,9 @@ describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
     });
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
 
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
+      assignments: [],
+    });
     vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
       narrative: "plan",
       points: ["CO2 scrubber duct-tape hack"],
@@ -474,6 +510,12 @@ describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
 
     vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
+      assignments: [],
+    });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
+      assignments: [],
+    });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
       narrative: "plan",
       points: ["Point A"],
     });
@@ -488,9 +530,10 @@ describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
 
     await agent.chooseNextSpeaker(script);
 
-    // Only createPodcastPlan's call plus chooseNextSpeaker's call should have
-    // happened — no verification call, since there were no claimed points.
-    expect(chooseSpy).toHaveBeenCalledTimes(2);
+    // createPodcastPlan's two calls (assignSpeakerRoles + plan creation) plus
+    // chooseNextSpeaker's call should have happened — no verification call,
+    // since there were no claimed points.
+    expect(chooseSpy).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -514,6 +557,9 @@ describe("DirectorAgent progress / wrap-up pacing", () => {
     });
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 140 });
 
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
+      assignments: [],
+    });
     vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
       narrative: "plan",
       points: [],
@@ -601,6 +647,9 @@ describe("DirectorAgent.isConversationComplete", () => {
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
 
     vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
+      assignments: [],
+    });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
       narrative: "plan",
       points: ["Point A", "Point B"],
     });
@@ -619,6 +668,9 @@ describe("DirectorAgent.isConversationComplete", () => {
     const script = makeScript();
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
 
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
+      assignments: [],
+    });
     vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
       narrative: "plan",
       points: ["Point A"],
@@ -647,6 +699,9 @@ describe("DirectorAgent.isConversationComplete", () => {
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
 
     vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
+      assignments: [],
+    });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
       narrative: "plan",
       points: ["Point A"],
     });
@@ -674,6 +729,9 @@ describe("DirectorAgent.isConversationComplete", () => {
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
 
     vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
+      assignments: [],
+    });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
       narrative: "plan",
       points: ["Point A"],
     });
@@ -700,6 +758,9 @@ describe("DirectorAgent.isConversationComplete", () => {
     const script = makeScript();
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
 
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
+      assignments: [],
+    });
     vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
       narrative: "plan",
       points: ["Point A"],
@@ -759,6 +820,7 @@ describe("DirectorAgent balance note", () => {
 
     const chooseSpy = vi
       .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValueOnce({ assignments: [] })
       .mockResolvedValueOnce({ narrative: "plan", points: [] });
     await agent.createPodcastPlan();
 
@@ -769,7 +831,7 @@ describe("DirectorAgent balance note", () => {
     });
     await agent.chooseNextSpeaker(script);
 
-    const prompt = (chooseSpy.mock.calls[1][1] as any)[0].content as string;
+    const prompt = (chooseSpy.mock.calls[2][1] as any)[0].content as string;
     expect(prompt).not.toContain("dominated the conversation");
   });
 
@@ -788,6 +850,7 @@ describe("DirectorAgent balance note", () => {
 
     const chooseSpy = vi
       .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValueOnce({ assignments: [] })
       .mockResolvedValueOnce({ narrative: "plan", points: [] });
     await agent.createPodcastPlan();
 
@@ -798,7 +861,7 @@ describe("DirectorAgent balance note", () => {
     });
     await agent.chooseNextSpeaker(script);
 
-    const prompt = (chooseSpy.mock.calls[1][1] as any)[0].content as string;
+    const prompt = (chooseSpy.mock.calls[2][1] as any)[0].content as string;
     expect(prompt).toContain(`${s1.name} has dominated the conversation`);
   });
 
@@ -817,6 +880,7 @@ describe("DirectorAgent balance note", () => {
 
     const chooseSpy = vi
       .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValueOnce({ assignments: [] })
       .mockResolvedValueOnce({ narrative: "plan", points: [] });
     await agent.createPodcastPlan();
 
@@ -827,7 +891,7 @@ describe("DirectorAgent balance note", () => {
     });
     await agent.chooseNextSpeaker(script);
 
-    const prompt = (chooseSpy.mock.calls[1][1] as any)[0].content as string;
+    const prompt = (chooseSpy.mock.calls[2][1] as any)[0].content as string;
     expect(prompt).not.toContain("dominated the conversation");
   });
 });
@@ -978,6 +1042,9 @@ describe("DirectorAgent velocity / pacing", () => {
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 120 });
 
     vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
+      assignments: [],
+    });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
       narrative: "plan",
       points: ["Point A", "Point B", "Point C"],
     });
@@ -998,6 +1065,9 @@ describe("DirectorAgent velocity / pacing", () => {
     const script = makeScript();
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 6000 });
 
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
+      assignments: [],
+    });
     vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
       narrative: "plan",
       points: ["Point A"],
@@ -1030,7 +1100,7 @@ describe("DirectorAgent guidance", () => {
 
     await agent.createPodcastPlan();
 
-    const promptContent = (callModelForStructuredOutputSpy.mock.calls[0][1] as any)[0]
+    const promptContent = (callModelForStructuredOutputSpy.mock.calls[1][1] as any)[0]
       .content as string;
     expect(promptContent).toContain("Keep it skeptical of the marketing claims.");
   });
@@ -1044,7 +1114,7 @@ describe("DirectorAgent guidance", () => {
 
     await agent.createPodcastPlan();
 
-    const promptContent = (callModelForStructuredOutputSpy.mock.calls[0][1] as any)[0]
+    const promptContent = (callModelForStructuredOutputSpy.mock.calls[1][1] as any)[0]
       .content as string;
     expect(promptContent).not.toContain("producer");
   });

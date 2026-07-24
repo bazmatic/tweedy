@@ -22,11 +22,13 @@ import { ConversationRhythmPolicy } from './ConversationRhythmPolicy';
 import { TurnReviewerAgent } from './TurnReviewerAgent';
 import { logger } from '../utils/logger';
 import {
+  AssignSpeakerRolesInput,
   CheckConversationCompleteInput,
   CreatePodcastPlanInput,
   SelectNextSpeakerInput,
   VerifyCoveredPointsInput,
   checkConversationCompleteSchema,
+  createAssignSpeakerRolesSchema,
   createPodcastPlanSchema,
   createSelectNextSpeakerSchema,
   verifyCoveredPointsSchema,
@@ -35,6 +37,7 @@ import {
 import { SpeakerRolePolicy } from './SpeakerRolePolicy';
 import { SpeechRevisionPolicy } from './SpeechRevisionPolicy';
 import { SpeakerRoleProfileResolver } from './SpeakerRoleProfileResolver';
+import { SpeakerRoleProfileFactory } from './SpeakerRoleProfileFactory';
 import { DialogueCadencePolicy } from './DialogueCadencePolicy';
 import { AudienceAccessibilityPolicy } from './AudienceAccessibilityPolicy';
 import { EpisodeConclusionPolicy } from './EpisodeConclusionPolicy';
@@ -136,6 +139,8 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
         })
         .join('\n\n');
 
+      await this.assignSpeakerRoles(materialText);
+
       const durationMinutes = this.maxDuration / 60;
       const minDiscussionPoints = Math.max(
         3,
@@ -209,6 +214,75 @@ Also nominate one central analogy — a concrete, physical, everyday comparison 
       logger.error('Failed to create podcast plan:', error);
       throw error;
     }
+  }
+
+  /**
+   * Casts each speaker's epistemic role fresh for this specific episode,
+   * based on their personality and this episode's material — a runtime
+   * decision, not a stored property of the speaker. Guarantees at least one
+   * speaker is not audience_guide, so an unfamiliar term always has someone
+   * eligible to explain it on air.
+   */
+  private async assignSpeakerRoles(materialText: string): Promise<void> {
+    const roleProfileFactory = new SpeakerRoleProfileFactory();
+    const speakerDescriptions = this.script.speakers
+      .map((speaker) => `- ${speaker.name} (id: ${speaker.id}): ${speaker.personality}`)
+      .join('\n');
+
+    let resolvedRoles: EpistemicRole[];
+    try {
+      const messages = [
+        {
+          role: 'user' as const,
+          content: `You are casting roles for a single podcast episode, not describing a permanent trait of these speakers. For this episode only, decide each speaker's epistemic role based on their personality and the material below.
+
+Speakers:
+${speakerDescriptions}
+
+Material:
+${materialText || '(No source materials were supplied.)'}
+
+Epistemic roles:
+- expert: has full access to the source material and can introduce and explain any technical term or fact directly.
+- informed_host: can explain prepared editorial cards handed to them, but not raw source material outright.
+- audience_guide: represents the listener — asks questions and reacts, but must not perform specialist explanations.
+
+At least one speaker must be "expert" or "informed_host" so unfamiliar terms in the material can actually be explained on air; do not assign every speaker "audience_guide".`,
+        },
+      ];
+
+      const { assignments } =
+        await this.callModelForStructuredOutput<AssignSpeakerRolesInput>(
+          ModelTask.EpisodePlanning,
+          messages,
+          createAssignSpeakerRolesSchema(this.script.speakers),
+          1000
+        );
+
+      const roleBySpeakerId = new Map(
+        assignments.map((assignment) => [assignment.speakerId, assignment.epistemicRole])
+      );
+      resolvedRoles = this.script.speakers.map(
+        (speaker) => roleBySpeakerId.get(speaker.id) ?? EpistemicRole.AudienceGuide
+      );
+    } catch (error) {
+      logger.error(
+        'Failed to assign speaker roles; defaulting the first speaker to informed_host:',
+        error
+      );
+      resolvedRoles = this.script.speakers.map(() => EpistemicRole.AudienceGuide);
+    }
+
+    if (!resolvedRoles.some((role) => role !== EpistemicRole.AudienceGuide)) {
+      resolvedRoles[0] = EpistemicRole.InformedHost;
+    }
+
+    this.script.speakerRoleAssignments = {};
+    this.script.speakers.forEach((speaker, index) => {
+      const profile = roleProfileFactory.create(resolvedRoles[index]);
+      speaker.roleProfile = profile;
+      this.script.speakerRoleAssignments![speaker.id] = profile;
+    });
   }
 
   async chooseNextSpeaker(script: PodcastScript): Promise<{
