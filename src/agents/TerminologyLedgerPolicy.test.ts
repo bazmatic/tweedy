@@ -22,7 +22,6 @@ function makeSpeaker(): Speaker {
       settings: {},
     },
     voiceStyle: "natural",
-    isExpert: true,
   };
 }
 

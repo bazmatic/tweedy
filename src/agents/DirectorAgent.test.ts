@@ -8,6 +8,7 @@ import {
   BeatPurpose,
   EditorialMove,
   EnergyLevel,
+  EpistemicRole,
   PodcastMaterial,
   PodcastScript,
   SourceType,
@@ -866,7 +867,7 @@ describe("DirectorAgent balance note", () => {
   });
 
   it("does not flag an expert speaker even with a dominant word share", async () => {
-    const s1: Speaker = { ...makeSpeaker("s1"), isExpert: true };
+    const s1 = makeSpeaker("s1");
     const s2 = makeSpeaker("s2");
     const script = makeScript({
       speakers: [s1, s2],
@@ -880,7 +881,9 @@ describe("DirectorAgent balance note", () => {
 
     const chooseSpy = vi
       .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValueOnce({ assignments: [] })
+      .mockResolvedValueOnce({
+        assignments: [{ speakerId: "s1", epistemicRole: EpistemicRole.Expert }],
+      })
       .mockResolvedValueOnce({ narrative: "plan", points: [] });
     await agent.createPodcastPlan();
 

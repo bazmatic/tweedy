@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   EditorialCard,
   EditorialCardKind,
+  EpistemicRole,
   KnowledgeSource,
   PodcastScript,
+  SourceAccess,
   Speaker,
   Speech,
+  UncertaintyStyle,
   VocalProviderName,
 } from "../types";
 import { OpeningSequencePolicy, OpeningStage } from "./OpeningSequencePolicy";
@@ -25,7 +28,17 @@ function makeSpeaker(id: string, isExpert: boolean): Speaker {
       settings: {},
     },
     voiceStyle: "neutral",
-    isExpert,
+    roleProfile: isExpert
+      ? {
+          epistemicRole: EpistemicRole.Expert,
+          sourceAccess: SourceAccess.Full,
+          uncertaintyStyle: UncertaintyStyle.Precise,
+        }
+      : {
+          epistemicRole: EpistemicRole.AudienceGuide,
+          sourceAccess: SourceAccess.HeardOnly,
+          uncertaintyStyle: UncertaintyStyle.ListenerSurrogate,
+        },
   };
 }
 
@@ -120,7 +133,7 @@ describe("OpeningSequencePolicy", () => {
   it("moves to Welcome only after the hook turn has been spoken", () => {
     const policy = new OpeningSequencePolicy();
     const script = makeScript();
-    const host = script.speakers.find((speaker) => !speaker.isExpert)!;
+    const host = script.speakers.find((speaker) => speaker.roleProfile?.epistemicRole !== EpistemicRole.Expert)!;
     script.speeches.push(makeSpeech(host)); // hook turn spoken
 
     expect(policy.getStage(script)).toBe(OpeningStage.Welcome);
@@ -134,7 +147,7 @@ describe("OpeningSequencePolicy", () => {
   it("applies the hook stage to solo episodes too", () => {
     const policy = new OpeningSequencePolicy();
     const script = makeScript();
-    script.speakers = [script.speakers.find((speaker) => !speaker.isExpert)!];
+    script.speakers = [script.speakers.find((speaker) => speaker.roleProfile?.epistemicRole !== EpistemicRole.Expert)!];
 
     expect(policy.getStage(script)).toBe(OpeningStage.Hook);
     expect(policy.nextTurn(script)?.forceColdOpen).toBe(true);
@@ -143,7 +156,7 @@ describe("OpeningSequencePolicy", () => {
   it("forces the interviewer to welcome, introduce and stop after the hook", () => {
     const policy = new OpeningSequencePolicy();
     const script = makeScript();
-    const host = script.speakers.find((speaker) => !speaker.isExpert)!;
+    const host = script.speakers.find((speaker) => speaker.roleProfile?.epistemicRole !== EpistemicRole.Expert)!;
     script.speeches.push(makeSpeech(host)); // hook turn spoken
 
     const turn = policy.nextTurn(script);
@@ -158,7 +171,7 @@ describe("OpeningSequencePolicy", () => {
   it("forces the introduced co-host to acknowledge the greeting next", () => {
     const policy = new OpeningSequencePolicy();
     const script = makeScript();
-    const host = script.speakers.find((speaker) => !speaker.isExpert)!;
+    const host = script.speakers.find((speaker) => speaker.roleProfile?.epistemicRole !== EpistemicRole.Expert)!;
     script.speeches.push(makeSpeech(host), makeSpeech(host)); // hook + welcome spoken
 
     const turn = policy.nextTurn(script);
@@ -173,8 +186,8 @@ describe("OpeningSequencePolicy", () => {
   it("hands control to the editorial director after every speaker has greeted", () => {
     const policy = new OpeningSequencePolicy();
     const script = makeScript();
-    const host = script.speakers.find((speaker) => !speaker.isExpert)!;
-    const expert = script.speakers.find((speaker) => speaker.isExpert)!;
+    const host = script.speakers.find((speaker) => speaker.roleProfile?.epistemicRole !== EpistemicRole.Expert)!;
+    const expert = script.speakers.find((speaker) => speaker.roleProfile?.epistemicRole === EpistemicRole.Expert)!;
     script.speeches.push(makeSpeech(host), makeSpeech(host), makeSpeech(expert)); // hook + welcome + ack
 
     expect(policy.getStage(script)).toBe(OpeningStage.Complete);

@@ -51,11 +51,12 @@ vi.mock("../agents", () => ({
   }),
   SpeakerRoleProfileResolver: vi.fn().mockImplementation(function () {
     return {
-      resolve: (speaker: any) => ({
-        epistemicRole: speaker.isExpert ? "expert" : "audience_guide",
-        sourceAccess: speaker.isExpert ? "full" : "heard_only",
-        uncertaintyStyle: speaker.isExpert ? "precise" : "listener_surrogate",
-      }),
+      resolve: (speaker: any) =>
+        speaker.roleProfile ?? {
+          epistemicRole: "audience_guide",
+          sourceAccess: "heard_only",
+          uncertaintyStyle: "listener_surrogate",
+        },
     };
   }),
 }));
@@ -122,7 +123,6 @@ describe("ScriptService stopReason persistence", () => {
           settings: {},
         },
         voiceStyle: "neutral",
-        isExpert: false,
       },
       message: "hi",
       instructions: "calm",
@@ -170,7 +170,6 @@ describe("ScriptService stopReason persistence", () => {
         personality: "",
         voiceId: "voice-1",
         voiceStyle: "neutral",
-        isExpert: false,
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
@@ -300,7 +299,6 @@ describe("ScriptService RAG wiring", () => {
         settings: {},
       },
       voiceStyle: "neutral",
-      isExpert: true,
     };
     chooseNextSpeakerMock.mockResolvedValue({
       speaker,
@@ -368,7 +366,6 @@ describe("ScriptService RAG wiring", () => {
         settings: {},
       },
       voiceStyle: "neutral",
-      isExpert: true,
     };
     chooseNextSpeakerMock.mockResolvedValue({
       speaker,
@@ -438,7 +435,11 @@ describe("ScriptService opening sequence", () => {
         settings: {},
       },
       voiceStyle: "neutral",
-      isExpert: false,
+      roleProfile: {
+        epistemicRole: EpistemicRole.AudienceGuide,
+        sourceAccess: SourceAccess.HeardOnly,
+        uncertaintyStyle: UncertaintyStyle.ListenerSurrogate,
+      },
     };
     const expert = {
       ...host,
@@ -446,7 +447,11 @@ describe("ScriptService opening sequence", () => {
       slug: "miles",
       name: "Miles",
       voice: { ...host.voice, id: "voice-expert" },
-      isExpert: true,
+      roleProfile: {
+        epistemicRole: EpistemicRole.Expert,
+        sourceAccess: SourceAccess.Full,
+        uncertaintyStyle: UncertaintyStyle.Precise,
+      },
     };
     const script = makeScript();
     script.speakers = [expert, host];
@@ -537,7 +542,11 @@ describe("ScriptService opening sequence", () => {
           settings: {},
         },
         voiceStyle: "natural",
-        isExpert: false,
+        roleProfile: {
+          epistemicRole: EpistemicRole.AudienceGuide,
+          sourceAccess: SourceAccess.HeardOnly,
+          uncertaintyStyle: UncertaintyStyle.ListenerSurrogate,
+        },
       },
       {
         id: "expert",
@@ -553,7 +562,11 @@ describe("ScriptService opening sequence", () => {
           settings: {},
         },
         voiceStyle: "natural",
-        isExpert: true,
+        roleProfile: {
+          epistemicRole: EpistemicRole.Expert,
+          sourceAccess: SourceAccess.Full,
+          uncertaintyStyle: UncertaintyStyle.Precise,
+        },
       },
     ];
 
@@ -616,7 +629,11 @@ describe("ScriptService forced interjection eligibility", () => {
       personality: "curious",
       voice: makeVoice("voice-guide"),
       voiceStyle: "natural",
-      isExpert: false,
+      roleProfile: {
+        epistemicRole: EpistemicRole.AudienceGuide,
+        sourceAccess: SourceAccess.HeardOnly,
+        uncertaintyStyle: UncertaintyStyle.ListenerSurrogate,
+      },
     };
     const expert = {
       id: "expert",
@@ -625,7 +642,11 @@ describe("ScriptService forced interjection eligibility", () => {
       personality: "precise",
       voice: makeVoice("voice-expert"),
       voiceStyle: "natural",
-      isExpert: true,
+      roleProfile: {
+        epistemicRole: EpistemicRole.Expert,
+        sourceAccess: SourceAccess.Full,
+        uncertaintyStyle: UncertaintyStyle.Precise,
+      },
     };
     const script = makeScript();
     script.speakers = [guide, expert];
@@ -684,7 +705,11 @@ describe("ScriptService forced interjection eligibility", () => {
       personality: "curious",
       voice: makeVoice("voice-guide1"),
       voiceStyle: "natural",
-      isExpert: false,
+      roleProfile: {
+        epistemicRole: EpistemicRole.AudienceGuide,
+        sourceAccess: SourceAccess.HeardOnly,
+        uncertaintyStyle: UncertaintyStyle.ListenerSurrogate,
+      },
     };
     const expert = {
       id: "expert",
@@ -693,7 +718,11 @@ describe("ScriptService forced interjection eligibility", () => {
       personality: "precise",
       voice: makeVoice("voice-expert"),
       voiceStyle: "natural",
-      isExpert: true,
+      roleProfile: {
+        epistemicRole: EpistemicRole.Expert,
+        sourceAccess: SourceAccess.Full,
+        uncertaintyStyle: UncertaintyStyle.Precise,
+      },
     };
     const guide2 = {
       id: "guide2",
@@ -702,7 +731,11 @@ describe("ScriptService forced interjection eligibility", () => {
       personality: "warm",
       voice: makeVoice("voice-guide2"),
       voiceStyle: "natural",
-      isExpert: false,
+      roleProfile: {
+        epistemicRole: EpistemicRole.AudienceGuide,
+        sourceAccess: SourceAccess.HeardOnly,
+        uncertaintyStyle: UncertaintyStyle.ListenerSurrogate,
+      },
     };
     const script = makeScript();
     script.speakers = [guide1, expert, guide2];
@@ -956,7 +989,6 @@ describe("ScriptService guidance", () => {
         settings: {},
       },
       voiceStyle: "neutral",
-      isExpert: false,
     };
 
     chooseNextSpeakerMock.mockResolvedValueOnce({
@@ -996,7 +1028,6 @@ describe("ScriptService guidance", () => {
         personality: "curious",
         voiceId: "v1",
         voiceStyle: "neutral",
-        isExpert: false,
       }),
     };
     const voiceRepository = {

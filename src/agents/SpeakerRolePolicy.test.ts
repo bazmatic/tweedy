@@ -4,10 +4,13 @@ import {
   EditorialCardKind,
   EditorialMove,
   EnergyLevel,
+  EpistemicRole,
   KnowledgeSource,
   PodcastScript,
+  SourceAccess,
   Speaker,
   TurnBrief,
+  UncertaintyStyle,
   VocalProviderName,
 } from "../types";
 import { RoleRepairReason, SpeakerRolePolicy } from "./SpeakerRolePolicy";
@@ -27,7 +30,17 @@ function makeSpeaker(id: string, isExpert: boolean): Speaker {
       settings: {},
     },
     voiceStyle: "natural",
-    isExpert,
+    roleProfile: isExpert
+      ? {
+          epistemicRole: EpistemicRole.Expert,
+          sourceAccess: SourceAccess.Full,
+          uncertaintyStyle: UncertaintyStyle.Precise,
+        }
+      : {
+          epistemicRole: EpistemicRole.AudienceGuide,
+          sourceAccess: SourceAccess.HeardOnly,
+          uncertaintyStyle: UncertaintyStyle.ListenerSurrogate,
+        },
   };
 }
 

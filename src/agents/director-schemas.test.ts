@@ -23,7 +23,6 @@ function makeSpeaker(id: string): Speaker {
       settings: {},
     },
     voiceStyle: "neutral",
-    isExpert: false,
   };
 }
 

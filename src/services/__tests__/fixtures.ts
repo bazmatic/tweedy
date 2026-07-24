@@ -23,7 +23,6 @@ export function makeScriptFixture(
       settings: {},
     },
     voiceStyle: "natural",
-    isExpert: false,
   };
   const messages = options.messages ?? ["First line.\nStill the first turn."];
   const speeches = messages.map((message, index) => ({
