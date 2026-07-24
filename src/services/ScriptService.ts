@@ -11,6 +11,7 @@ import {
   ScriptEditPlan,
   ScriptEditSummary,
   ScriptEditTurnAction,
+  SpeakerRoleProfile,
   TurnBrief,
 } from "../types";
 import {
@@ -316,8 +317,6 @@ export class ScriptService implements IScriptService {
           settings: voiceRecord.settings,
         },
         voiceStyle: speakerRecord.voiceStyle,
-        isExpert: speakerRecord.isExpert,
-        roleProfile: speakerRecord.roleProfile,
       });
     }
 
@@ -597,6 +596,15 @@ export class ScriptService implements IScriptService {
       record.materialIds.map((id: string) => ({ id }))
     );
 
+    const speakerRoleAssignments: Record<string, SpeakerRoleProfile> =
+      record.speakerRoleAssignments ?? {};
+    for (const speaker of speakers) {
+      const assignedProfile = speakerRoleAssignments[speaker.id];
+      if (assignedProfile) {
+        speaker.roleProfile = assignedProfile;
+      }
+    }
+
     // Load speeches
     const speeches: any[] = [];
     for (const speechId of record.speechIds) {
@@ -638,6 +646,7 @@ export class ScriptService implements IScriptService {
       audienceProfile: record.audienceProfile ?? AudienceProfile.General,
       terminologyLedger:
         record.terminologyLedger ?? this.terminologyLedgerPolicy.createLedger(),
+      speakerRoleAssignments: record.speakerRoleAssignments,
       centralAnalogy: record.centralAnalogy,
       createdAt: new Date(record.createdAt),
       updatedAt: new Date(record.updatedAt),
@@ -660,6 +669,7 @@ export class ScriptService implements IScriptService {
       audienceProfile: script.audienceProfile ?? AudienceProfile.General,
       terminologyLedger:
         script.terminologyLedger ?? this.terminologyLedgerPolicy.createLedger(),
+      speakerRoleAssignments: script.speakerRoleAssignments,
       centralAnalogy: script.centralAnalogy,
     };
 

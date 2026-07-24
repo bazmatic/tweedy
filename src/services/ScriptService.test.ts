@@ -8,7 +8,10 @@ import {
   EditorialCardKind,
   EditorialMove,
   EnergyLevel,
+  EpistemicRole,
   KnowledgeSource,
+  SourceAccess,
+  UncertaintyStyle,
   VocalProviderName,
   PodcastScript,
   SourceType,
@@ -214,6 +217,63 @@ describe("ScriptService stopReason persistence", () => {
     });
 
     expect(script.speeches[0].stopReason).toBe("max_tokens");
+  });
+
+  it("restores each speaker's role profile from the script's own speakerRoleAssignments, not the speaker record", async () => {
+    const speakerRepository = {
+      findBySlug: vi.fn().mockResolvedValue(null),
+      getById: vi.fn().mockResolvedValue({
+        id: "speaker-1",
+        slug: "speaker-1",
+        name: "Speaker One",
+        personality: "",
+        voiceId: "voice-1",
+        voiceStyle: "neutral",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    };
+    const voiceRepository = {
+      getById: vi.fn().mockResolvedValue({
+        id: "voice-1",
+        name: "Voice",
+        description: "",
+        provider: VocalProviderName.ElevenLabs,
+        providerId: "p",
+        settings: {},
+      }),
+    };
+    const materialRepository = { getById: vi.fn() };
+    const speechRepository = { getById: vi.fn().mockResolvedValue(null) };
+    const service = makeService({
+      speakerRepository,
+      voiceRepository,
+      materialRepository,
+      speechRepository,
+    });
+
+    const script = await (service as any).loadScriptFromRecord({
+      id: "script-1",
+      title: "Test",
+      description: "Test",
+      speakerIds: ["speaker-1"],
+      speechIds: [],
+      materialIds: [],
+      speakerRoleAssignments: {
+        "speaker-1": {
+          epistemicRole: EpistemicRole.Expert,
+          sourceAccess: SourceAccess.Full,
+          uncertaintyStyle: UncertaintyStyle.Precise,
+        },
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    expect(
+      script.speakers.find((s: { id: string }) => s.id === "speaker-1")
+        ?.roleProfile?.epistemicRole
+    ).toBe(EpistemicRole.Expert);
   });
 });
 
