@@ -267,7 +267,7 @@ At least one speaker must be "expert" or "informed_host" so unfamiliar terms in 
       );
     } catch (error) {
       logger.error(
-        'Failed to assign speaker roles; defaulting the first speaker to informed_host:',
+        'Failed to assign speaker roles; defaulting all speakers to audience_guide (the guarantee below will promote one to informed_host):',
         error
       );
       resolvedRoles = this.script.speakers.map(() => EpistemicRole.AudienceGuide);
