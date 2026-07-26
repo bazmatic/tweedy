@@ -17,6 +17,8 @@ export enum ConversationalObligation {
   AnswerChallenge = "answer_challenge",
   AnswerQuestion = "answer_question",
   ExecuteBrief = "execute_brief",
+  InviteContinuation = "invite_continuation",
+  ElaborateAfterInvite = "elaborate_after_invite",
 }
 
 export interface ResponseModeContext {
@@ -43,6 +45,7 @@ const EXPERT_DEFAULT_TOOLS = Object.freeze([
   SpeakerAgentToolName.QUOTE,
   SpeakerAgentToolName.CHALLENGE,
   SpeakerAgentToolName.ONE_LINER,
+  SpeakerAgentToolName.AGREE,
 ]);
 
 const EXPERT_ANSWER_TOOLS = Object.freeze([
@@ -71,6 +74,14 @@ const CHALLENGE_RESPONSE_TOOLS = Object.freeze([
   SpeakerAgentToolName.CHALLENGE,
 ]);
 
+const INVITE_CONTINUATION_TOOLS = Object.freeze([
+  SpeakerAgentToolName.INVITE,
+]);
+
+const ELABORATE_AFTER_INVITE_TOOLS = Object.freeze([
+  SpeakerAgentToolName.EXPLAIN,
+]);
+
 const MOVE_TO_TOOLS: Readonly<
   Partial<Record<EditorialMove, readonly SpeakerAgentToolName[]>>
 > = Object.freeze({
@@ -93,6 +104,7 @@ const MOVE_TO_TOOLS: Readonly<
   [EditorialMove.Summarise]: Object.freeze([
     SpeakerAgentToolName.SUMMARIZE,
   ]),
+  [EditorialMove.Tease]: Object.freeze([SpeakerAgentToolName.TEASE]),
 });
 
 /** Chooses response tools from role and conversational obligation, not turn length. */
@@ -123,16 +135,17 @@ export class ResponseModePolicy {
     }
 
     const profile = this.roleProfileResolver.resolve(context.speaker);
+    const obligation = this.getObligation(context.speeches, context.speaker);
     let selected: SpeakerAgentToolName[];
-    if (
-      this.getObligation(context.speeches, context.speaker) ===
-      ConversationalObligation.AnswerChallenge
-    ) {
+    if (obligation === ConversationalObligation.InviteContinuation) {
+      selected = [...INVITE_CONTINUATION_TOOLS];
+    } else if (obligation === ConversationalObligation.ElaborateAfterInvite) {
+      selected = [...ELABORATE_AFTER_INVITE_TOOLS];
+    } else if (obligation === ConversationalObligation.AnswerChallenge) {
       selected = [...CHALLENGE_RESPONSE_TOOLS];
     } else if (
       profile.epistemicRole === EpistemicRole.Expert &&
-      this.getObligation(context.speeches, context.speaker) ===
-        ConversationalObligation.AnswerQuestion
+      obligation === ConversationalObligation.AnswerQuestion
     ) {
       selected = [...EXPERT_ANSWER_TOOLS];
     } else if (
@@ -167,6 +180,18 @@ export class ResponseModePolicy {
     speaker: Speaker
   ): ConversationalObligation {
     const previousSpeech = speeches.at(-1);
+    if (
+      previousSpeech?.tool === SpeakerAgentToolName.TEASE &&
+      previousSpeech.speaker.id !== speaker.id
+    ) {
+      return ConversationalObligation.InviteContinuation;
+    }
+    if (
+      previousSpeech?.tool === SpeakerAgentToolName.INVITE &&
+      previousSpeech.speaker.id !== speaker.id
+    ) {
+      return ConversationalObligation.ElaborateAfterInvite;
+    }
     if (
       previousSpeech?.tool === SpeakerAgentToolName.CHALLENGE &&
       previousSpeech.speaker.id !== speaker.id

@@ -289,6 +289,7 @@ export enum EditorialMove {
   FindMeaning = "find_meaning",
   Summarise = "summarise",
   Transition = "transition",
+  Tease = "tease",
 }
 
 export enum AudienceValue {

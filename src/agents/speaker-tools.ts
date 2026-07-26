@@ -14,6 +14,9 @@ export enum SpeakerAgentToolName {
   CLOSING_STATEMENT = "closing_statement",
   COLD_OPEN = "cold_open",
   PARAPHRASE = "paraphrase",
+  AGREE = "agree",
+  TEASE = "tease",
+  INVITE = "invite",
 }
 
 export interface SpeakerToolDefinition {
@@ -128,6 +131,30 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
       "How to deliver the paraphrase. Usually a rising, checking tone, as if asking 'have I got that right?'. Example: 'Working it out in real time, slight upward inflection at the end'",
     maxTokens: 100,
   },
+  {
+    name: SpeakerAgentToolName.AGREE,
+    toolDescription:
+      "Affirm and build on what the previous speaker just said — 1-2 sentences of genuine agreement plus a small additional point, example, or enthusiastic detail. Unlike PARAPHRASE, this adds something rather than neutrally restating; it's you saying 'yes, and' rather than 'let me check I understood'. Example: 'Yeah, exactly — and it's not just the cost, it's the time it saves too.'",
+    styleDescription:
+      "How to deliver the agreement. Include tone and warmth. Example: 'Warm, enthusiastic, building energy'",
+    maxTokens: 100,
+  },
+  {
+    name: SpeakerAgentToolName.TEASE,
+    toolDescription:
+      "Introduce an upcoming point with a short, intriguing hook — 1-2 sentences that flag something interesting is coming without giving away the substance yet. Use when opening a new beat or topic you're about to elaborate on. Example: 'Okay, but here's where it gets interesting.'",
+    styleDescription:
+      "How to deliver the tease. Include pacing and tone — inviting curiosity without over-dramatising. Example: 'Slight pause before speaking, playful, building anticipation'",
+    maxTokens: 100,
+  },
+  {
+    name: SpeakerAgentToolName.INVITE,
+    toolDescription:
+      "Prompt your co-host to continue after their tease, in an interesting or provocative way — one short line, not a real question needing research (that's SHORT_QUESTION). This is a handoff nudge: 'go on', 'how so', 'okay, I'll bite'. Example: 'Okay, now I'm curious — how so?'",
+    styleDescription:
+      "How to deliver the invitation. Include tone and energy. Example: 'Genuinely curious, leaning in, upbeat'",
+    maxTokens: 100,
+  },
 ];
 
 export const SHORT_REACTION_TOOLS: SpeakerAgentToolName[] = [
@@ -136,6 +163,7 @@ export const SHORT_REACTION_TOOLS: SpeakerAgentToolName[] = [
   SpeakerAgentToolName.SHORT_QUESTION,
   SpeakerAgentToolName.ONE_LINER,
   SpeakerAgentToolName.PARAPHRASE,
+  SpeakerAgentToolName.AGREE,
 ];
 
 export const SOLO_TOOLS: SpeakerAgentToolName[] = [
@@ -149,6 +177,7 @@ export const INTERJECTION_TOOLS: SpeakerAgentToolName[] = [
   SpeakerAgentToolName.FILLER_COMMENT,
   SpeakerAgentToolName.CHALLENGE,
   SpeakerAgentToolName.PARAPHRASE,
+  SpeakerAgentToolName.AGREE,
 ];
 
 /**
@@ -163,6 +192,7 @@ export const INTERVIEWER_TOOLS: SpeakerAgentToolName[] = [
   SpeakerAgentToolName.ONE_LINER,
   SpeakerAgentToolName.CHALLENGE,
   SpeakerAgentToolName.PARAPHRASE,
+  SpeakerAgentToolName.AGREE,
 ];
 
 export function getToolDefinition(name: SpeakerAgentToolName): SpeakerToolDefinition | undefined {

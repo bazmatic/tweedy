@@ -56,6 +56,19 @@ function makeQuestion(speaker: Speaker): Speech {
   };
 }
 
+function makeToolSpeech(speaker: Speaker, tool: SpeakerAgentToolName): Speech {
+  return {
+    id: "speech-1",
+    speaker,
+    message: "Okay, but here's where it gets interesting.",
+    instructions: "curious",
+    voice: speaker.voice,
+    voiceStyle: speaker.voiceStyle,
+    timestamp: new Date(),
+    tool,
+  };
+}
+
 function buildTurnBrief(overrides?: Partial<TurnBrief>): TurnBrief {
   const speaker = makeSpeaker("expert", true);
   return {
@@ -225,5 +238,48 @@ describe("ResponseModePolicy", () => {
       })
     );
     expect(tools).toContain(SpeakerAgentToolName.PARAPHRASE);
+  });
+
+  it("restricts to TEASE when the turn brief's move is Tease", () => {
+    const tools = policy.selectTools(
+      buildContext({
+        turnBrief: buildTurnBrief({ move: EditorialMove.Tease }),
+      })
+    );
+
+    expect(tools).toEqual([SpeakerAgentToolName.TEASE]);
+  });
+
+  it("restricts to INVITE when the previous speaker teased", () => {
+    const tools = policy.selectTools(
+      buildContext({
+        speaker: guide,
+        speeches: [makeToolSpeech(expert, SpeakerAgentToolName.TEASE)],
+      })
+    );
+
+    expect(tools).toEqual([SpeakerAgentToolName.INVITE]);
+  });
+
+  it("restricts to EXPLAIN when the previous speaker invited", () => {
+    const tools = policy.selectTools(
+      buildContext({
+        speaker: expert,
+        speeches: [makeToolSpeech(guide, SpeakerAgentToolName.INVITE)],
+      })
+    );
+
+    expect(tools).toEqual([SpeakerAgentToolName.EXPLAIN]);
+  });
+
+  it("does not force INVITE when the same speaker teased and is talking again", () => {
+    const tools = policy.selectTools(
+      buildContext({
+        speaker: expert,
+        speeches: [makeToolSpeech(expert, SpeakerAgentToolName.TEASE)],
+      })
+    );
+
+    expect(tools).not.toEqual([SpeakerAgentToolName.INVITE]);
   });
 });
