@@ -213,4 +213,14 @@ describe("ResponseModePolicy", () => {
     );
     expect(tools).toContain(SpeakerAgentToolName.PARAPHRASE);
   });
+
+  it("restricts to TEASE when the turn brief's move is Tease", () => {
+    const tools = policy.selectTools(
+      buildContext({
+        turnBrief: buildTurnBrief({ move: EditorialMove.Tease }),
+      })
+    );
+
+    expect(tools).toEqual([SpeakerAgentToolName.TEASE]);
+  });
 });

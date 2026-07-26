@@ -93,6 +93,7 @@ const MOVE_TO_TOOLS: Readonly<
   [EditorialMove.Summarise]: Object.freeze([
     SpeakerAgentToolName.SUMMARIZE,
   ]),
+  [EditorialMove.Tease]: Object.freeze([SpeakerAgentToolName.TEASE]),
 });
 
 /** Chooses response tools from role and conversational obligation, not turn length. */
