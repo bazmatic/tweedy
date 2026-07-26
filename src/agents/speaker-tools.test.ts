@@ -32,7 +32,7 @@ describe("speaker-tools", () => {
     expect(typeof style.description).toBe("string");
   });
 
-  it("INTERJECTION_TOOLS resolves to INTERJECT, FILLER_COMMENT, CHALLENGE, PARAPHRASE in order", () => {
+  it("INTERJECTION_TOOLS resolves to INTERJECT, FILLER_COMMENT, CHALLENGE, PARAPHRASE, AGREE in order", () => {
     const tools = toLlmTools(INTERJECTION_TOOLS);
 
     expect(tools.map((tool) => tool.name)).toEqual([
@@ -40,6 +40,7 @@ describe("speaker-tools", () => {
       SpeakerAgentToolName.FILLER_COMMENT,
       SpeakerAgentToolName.CHALLENGE,
       SpeakerAgentToolName.PARAPHRASE,
+      SpeakerAgentToolName.AGREE,
     ]);
   });
 
@@ -95,5 +96,31 @@ describe("PARAPHRASE tool", () => {
     expect(SHORT_REACTION_TOOLS).toContain(SpeakerAgentToolName.PARAPHRASE);
     expect(INTERVIEWER_TOOLS).toContain(SpeakerAgentToolName.PARAPHRASE);
     expect(INTERJECTION_TOOLS).toContain(SpeakerAgentToolName.PARAPHRASE);
+  });
+});
+
+describe("AGREE, TEASE, INVITE tools", () => {
+  it("includes AGREE, TEASE, and INVITE with the shared {message, style} schema", () => {
+    const tools = toLlmTools();
+    for (const name of [
+      SpeakerAgentToolName.AGREE,
+      SpeakerAgentToolName.TEASE,
+      SpeakerAgentToolName.INVITE,
+    ]) {
+      const tool = tools.find((t) => t.name === name);
+      expect(tool).toBeDefined();
+      expect(tool?.input_schema.required).toEqual(["message", "style"]);
+    }
+  });
+
+  it("filters to a single new tool when requested via `only`", () => {
+    const tools = toLlmTools([SpeakerAgentToolName.TEASE]);
+    expect(tools).toHaveLength(1);
+    expect(tools[0].name).toBe(SpeakerAgentToolName.TEASE);
+  });
+
+  it("puts AGREE in SHORT_REACTION_TOOLS and INTERJECTION_TOOLS", () => {
+    expect(SHORT_REACTION_TOOLS).toContain(SpeakerAgentToolName.AGREE);
+    expect(INTERJECTION_TOOLS).toContain(SpeakerAgentToolName.AGREE);
   });
 });

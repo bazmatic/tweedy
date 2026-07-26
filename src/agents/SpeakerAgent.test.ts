@@ -517,6 +517,7 @@ describe("SpeakerAgent.interject tool set", () => {
       SpeakerAgentToolName.FILLER_COMMENT,
       SpeakerAgentToolName.CHALLENGE,
       SpeakerAgentToolName.PARAPHRASE,
+      SpeakerAgentToolName.AGREE,
     ]);
   });
 
