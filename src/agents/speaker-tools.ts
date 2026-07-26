@@ -144,7 +144,7 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
     toolDescription:
       "Introduce an upcoming point with a short, intriguing hook — 1-2 sentences that flag something interesting is coming without giving away the substance yet. Use when opening a new beat or topic you're about to elaborate on. Example: 'Okay, but here's where it gets interesting.'",
     styleDescription:
-      "How to deliver the tease. Include pacing and tone — inviting curiosity without over-dramatizing. Example: 'Slight pause before speaking, playful, building anticipation'",
+      "How to deliver the tease. Include pacing and tone — inviting curiosity without over-dramatising. Example: 'Slight pause before speaking, playful, building anticipation'",
     maxTokens: 100,
   },
   {
@@ -192,6 +192,7 @@ export const INTERVIEWER_TOOLS: SpeakerAgentToolName[] = [
   SpeakerAgentToolName.ONE_LINER,
   SpeakerAgentToolName.CHALLENGE,
   SpeakerAgentToolName.PARAPHRASE,
+  SpeakerAgentToolName.AGREE,
 ];
 
 export function getToolDefinition(name: SpeakerAgentToolName): SpeakerToolDefinition | undefined {

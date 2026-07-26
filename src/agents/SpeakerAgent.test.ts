@@ -635,9 +635,10 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
         SpeakerAgentToolName.ONE_LINER,
         SpeakerAgentToolName.CHALLENGE,
         SpeakerAgentToolName.PARAPHRASE,
+        SpeakerAgentToolName.AGREE,
       ])
     );
-    expect(toolNames.length).toBe(7);
+    expect(toolNames.length).toBe(8);
   });
 
   it("tells a solo audience guide they may ask, react, challenge, reframe or illustrate", async () => {

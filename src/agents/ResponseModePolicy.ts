@@ -45,6 +45,7 @@ const EXPERT_DEFAULT_TOOLS = Object.freeze([
   SpeakerAgentToolName.QUOTE,
   SpeakerAgentToolName.CHALLENGE,
   SpeakerAgentToolName.ONE_LINER,
+  SpeakerAgentToolName.AGREE,
 ]);
 
 const EXPERT_ANSWER_TOOLS = Object.freeze([
