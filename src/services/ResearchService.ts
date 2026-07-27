@@ -1,6 +1,6 @@
 import { MaterialService } from "./MaterialService";
 import { ResearchProviderFactory } from "../providers";
-import { PodcastMaterial, ResearchProviderName } from "../types";
+import { PodcastMaterial, ResearchOptions, ResearchProviderName } from "../types";
 
 export class ResearchService {
   constructor(
@@ -10,10 +10,11 @@ export class ResearchService {
 
   async research(
     query: string,
-    namePrefix?: string
+    namePrefix?: string,
+    options?: ResearchOptions
   ): Promise<PodcastMaterial[]> {
     const provider = ResearchProviderFactory.getProvider(this.provider);
-    const researchMaterials = await provider.research(query);
+    const researchMaterials = await provider.research(query, options);
 
     const materials: PodcastMaterial[] = [];
     for (const rm of researchMaterials) {

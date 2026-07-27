@@ -744,6 +744,7 @@ describe("ScriptService forced interjection eligibility", () => {
       makePastSpeech(expert, 2),
       makePastSpeech(guide2, 3),
       makePastSpeech(guide1, 4),
+      makePastSpeech(guide1, 5), // opening frame beat, completing the opening sequence
     ];
 
     chooseNextSpeakerMock.mockResolvedValue({

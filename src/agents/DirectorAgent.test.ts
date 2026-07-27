@@ -137,6 +137,21 @@ describe("DirectorAgent.createPodcastPlan", () => {
     expect(script.centralAnalogy).toBe("accounts are USB drives");
   });
 
+  it("stores the planned narrative on the script for the opening frame beat", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
+      narrative: "1953 was a hinge year for science and geopolitics alike.",
+      points: ["p1"],
+    });
+
+    await agent.createPodcastPlan();
+
+    expect(script.narrative).toBe(
+      "1953 was a hinge year for science and geopolitics alike."
+    );
+  });
+
   it("assigns sequential ids to points and stores them on the script", async () => {
     const script = makeScript();
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
@@ -577,6 +592,7 @@ describe("DirectorAgent progress / wrap-up pacing", () => {
 
     expect(result.forceNearlyOutOfTime).toBe(true);
     expect(result.timeStatus).toContain("almost out of time");
+    expect(result.timeStatus).toContain("must resolve it");
   });
 
   it("does not treat rising turn count alone as progress when duration is still low", async () => {
@@ -626,6 +642,7 @@ describe("DirectorAgent progress / wrap-up pacing", () => {
     }
 
     expect(result!.timeStatus).toContain("final turn");
+    expect(result!.timeStatus).toContain("throughline");
     expect(result!.forceNearlyOutOfTime).toBe(false);
   });
 });

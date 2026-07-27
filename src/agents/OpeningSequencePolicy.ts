@@ -15,6 +15,7 @@ export enum OpeningStage {
   Hook = "hook",
   Welcome = "welcome",
   Acknowledgements = "acknowledgements",
+  Frame = "frame",
   Complete = "complete",
 }
 
@@ -45,6 +46,9 @@ export class OpeningSequencePolicy {
     if (script.speeches.length === 1) return OpeningStage.Welcome;
     if (script.speeches.length < script.speakers.length + 1) {
       return OpeningStage.Acknowledgements;
+    }
+    if (script.speeches.length === script.speakers.length + 1) {
+      return OpeningStage.Frame;
     }
     return OpeningStage.Complete;
   }
@@ -83,6 +87,15 @@ export class OpeningSequencePolicy {
       }. ${handover}`;
 
       return this.toOpeningTurn(host, goal, EditorialMove.Humanise, false);
+    }
+
+    if (stage === OpeningStage.Frame) {
+      const host = orderedSpeakers[0];
+      const goal = script.narrative
+        ? `Step back before diving into any specific story and briefly frame why this episode's whole topic matters, in your own words: ${script.narrative} Keep it to 2-3 sentences — state the overall premise, don't tell any single story yet, and don't ask a question or hand off to your co-host.`
+        : "Step back before diving into any specific story and briefly frame why this episode's topic matters as a whole, in 2-3 sentences, without telling any single story yet.";
+
+      return this.toOpeningTurn(host, goal, EditorialMove.AddContext, false);
     }
 
     const speaker = orderedSpeakers[script.speeches.length - 1];

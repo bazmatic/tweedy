@@ -21,12 +21,19 @@ export function createResearchCommands(): Command {
       "Research provider to use",
       ResearchProviderName.Perplexity
     )
+    .option(
+      "-d, --depth <n>",
+      "Number of related follow-up queries to research for deeper coverage",
+      "2"
+    )
     .action(async (query, options) => {
       try {
         const provider = options.provider as ResearchProviderName;
         const researchService = new ResearchService(materialService, provider);
 
-        const materials = await researchService.research(query, options.name);
+        const materials = await researchService.research(query, options.name, {
+          followUpQueries: parseInt(options.depth, 10),
+        });
 
         logger.success(`Added ${materials.length} material(s) from research:`);
         materials.forEach((material) => {

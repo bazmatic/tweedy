@@ -48,7 +48,7 @@ describe("ResearchService", () => {
     expect(ResearchProviderFactory.getProvider).toHaveBeenCalledWith(
       ResearchProviderName.Perplexity
     );
-    expect(research).toHaveBeenCalledWith("what is X?");
+    expect(research).toHaveBeenCalledWith("what is X?", undefined);
     expect(addMaterial).toHaveBeenCalledTimes(2);
     expect(addMaterial).toHaveBeenNthCalledWith(1, {
       title: "The Answer",

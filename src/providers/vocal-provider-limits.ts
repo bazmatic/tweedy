@@ -8,6 +8,15 @@ import { VocalProviderName } from "../types";
 export const VOCAL_PROVIDER_MAX_GENERATION_SECONDS: Partial<
   Record<VocalProviderName, number>
 > = {
+  [VocalProviderName.ElevenLabs]: 30,
+  [VocalProviderName.ElevenLabsV3]: 30,
+  [VocalProviderName.OpenAI]: 30,
+  [VocalProviderName.Hume]: 30,
+  [VocalProviderName.Cartesia]: 30,
+  [VocalProviderName.Kokoro]: 30,
+  [VocalProviderName.Grok]: 30,
+  [VocalProviderName.GoogleChirp]: 30,
+  [VocalProviderName.GoogleGeminiMultispeaker]: 30,
   [VocalProviderName.VoiceGen]: 30,
 };
 

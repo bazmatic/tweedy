@@ -513,7 +513,8 @@ export class ScriptService implements IScriptService {
       if (
         !beat.covered &&
         (beat.purpose === BeatPurpose.Welcome ||
-          beat.purpose === BeatPurpose.Hook)
+          beat.purpose === BeatPurpose.Hook ||
+          beat.purpose === BeatPurpose.Orient)
       ) {
         beat.covered = true;
         beat.coveredAtTurn = script.speeches.length;

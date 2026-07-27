@@ -9,6 +9,7 @@ import {
 } from "../types";
 import { TurnReviewerAgent } from "./TurnReviewerAgent";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
+import { SpeakerAgentToolName } from "./speaker-tools";
 
 const speaker = {
   id: "s1",
@@ -84,6 +85,87 @@ describe("TurnReviewerAgent", () => {
     expect(result.accepted).toBe(true);
     expect(result.feedback).toBe("");
     expect(result.revisedMessage).toBe("");
+  });
+
+  it("adds the closing-statement guardrail note only for CLOSING_STATEMENT turns", async () => {
+    const agent = new TurnReviewerAgent();
+    const call = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({
+        accepted: true,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+        roleConsistent: true,
+        knowledgeConsistent: true,
+        audienceAccessible: true,
+        castConsistent: true,
+        introducedCardIds: [],
+        introducedTerms: [],
+        feedback: [],
+        revisedMessages: [],
+      });
+
+    await agent.review(
+      { ...speech, tool: SpeakerAgentToolName.CLOSING_STATEMENT },
+      {
+        speakerId: "s1",
+        goal: "Wrap up the episode.",
+        move: EditorialMove.Summarise,
+        cardIds: [],
+        audienceValue: AudienceValue.Connection,
+        desiredEnergy: EnergyLevel.Reflective,
+      },
+      [],
+      []
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).toContain("must not introduce any new topic");
+    expect(prompt).toContain("must not end on a question mark");
+    expect(prompt).not.toContain("nearly out of time");
+  });
+
+  it("adds the nearly-out-of-time guardrail note only for NEARLY_OUT_OF_TIME turns", async () => {
+    const agent = new TurnReviewerAgent();
+    const call = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({
+        accepted: true,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+        roleConsistent: true,
+        knowledgeConsistent: true,
+        audienceAccessible: true,
+        castConsistent: true,
+        introducedCardIds: [],
+        introducedTerms: [],
+        feedback: [],
+        revisedMessages: [],
+      });
+
+    await agent.review(
+      { ...speech, tool: SpeakerAgentToolName.NEARLY_OUT_OF_TIME },
+      {
+        speakerId: "s1",
+        goal: "Flag time pressure.",
+        move: EditorialMove.Transition,
+        cardIds: [],
+        audienceValue: AudienceValue.Connection,
+        desiredEnergy: EnergyLevel.Reflective,
+      },
+      [],
+      []
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).toContain("must actually answer it in substance");
+    expect(prompt).not.toContain("episode's closing statement");
   });
 
   it("cannot accept a turn that violates role consistency", async () => {

@@ -361,6 +361,7 @@ export interface PodcastScript {
    * DirectorAgent.assignSpeakerRoles and persisted alongside the other episode ledgers. */
   speakerRoleAssignments?: Record<string, SpeakerRoleProfile>;
   centralAnalogy?: string;
+  narrative?: string;
   createdAt: Date;
   updatedAt: Date;
 }

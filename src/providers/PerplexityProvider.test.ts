@@ -107,6 +107,48 @@ describe("PerplexityProvider", () => {
     });
   });
 
+  it("fans out into related follow-up queries when followUpQueries is set", async () => {
+    (axios.post as any)
+      .mockResolvedValueOnce({
+        data: {
+          choices: [{ message: { content: "Primary answer." } }],
+          citations: ["https://example.com/a"],
+          related_questions: ["follow-up 1", "follow-up 2", "follow-up 3"],
+          usage: {},
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          choices: [{ message: { content: "Follow-up 1 answer." } }],
+          citations: ["https://example.com/b"],
+          usage: {},
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          choices: [{ message: { content: "Follow-up 2 answer." } }],
+          citations: ["https://example.com/a"],
+          usage: {},
+        },
+      });
+
+    mockProcess.mockResolvedValue({ title: "Page", content: "Content", metadata: {} });
+
+    const provider = new PerplexityProvider();
+    const results = await provider.research("what is X?", { followUpQueries: 2 });
+
+    expect(axios.post).toHaveBeenCalledTimes(3);
+    expect((axios.post as any).mock.calls[1][1].messages[0].content).toBe("follow-up 1");
+    expect((axios.post as any).mock.calls[2][1].messages[0].content).toBe("follow-up 2");
+
+    const researchMaterials = results.filter((m) => m.sourceType === SourceType.Research);
+    expect(researchMaterials).toHaveLength(3);
+
+    const webMaterials = results.filter((m) => m.sourceType === SourceType.Web);
+    expect(webMaterials).toHaveLength(2);
+    expect(mockProcess).toHaveBeenCalledTimes(2);
+  });
+
   it("throws a sanitized error and never leaks the API key when the Perplexity API call fails", async () => {
     const axiosError = new Error("Request failed with status code 401") as any;
     axiosError.config = {

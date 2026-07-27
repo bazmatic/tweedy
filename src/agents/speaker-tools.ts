@@ -86,10 +86,10 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.NEARLY_OUT_OF_TIME,
     toolDescription:
-      "When the podcast is nearly over, let your co-hosts know that you're running out of time.",
+      "Signal that time is short — but first, if a question or thread is still hanging from the last turn or two (yours or your co-host's), actually answer it here in a sentence or two before or as you mention the time. Do not just announce urgency and defer the answer to later — never use running out of time as an excuse to dodge a question you can actually answer quickly. If nothing is currently unanswered, a brief 'we're almost out of time' on its own is fine.",
     styleDescription:
       "How to deliver the nearly-out-of-time message. Include timing, tone, and emphasis. Example: 'Pause slightly before speaking, use a thoughtful tone, emphasize \"perspective\"'",
-    maxTokens: 100,
+    maxTokens: 150,
   },
   {
     name: SpeakerAgentToolName.CHALLENGE,
@@ -110,7 +110,7 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.CLOSING_STATEMENT,
     toolDescription:
-      "Deliver a short closing statement that wraps up the podcast. Reflect on the key takeaway or theme and sign off naturally. Keep it authentic to your personality. Always finish the final sentence. This is the final word of the episode. Speak to the listener directly in the second person at least once (\"what does this mean for you…\", \"we'll see you next time\").",
+      "Deliver a short closing statement that wraps up the podcast: step back to the episode's overall throughline or big-picture takeaway — not a recap of every point, and not any new fact or angle not already discussed. Do not introduce or raise any new question in this turn, including one you haven't answered yet; if something feels unresolved, that should already have been handled before this turn, not here. Speak to the listener directly in the second person at least once (e.g. 'what does this mean for you' immediately followed by your own answer, or 'we'll see you next time') — but never end the turn on a question mark; the last sentence must be a statement or farewell. Keep it authentic to your personality. Always finish the final sentence. This is the final word of the episode.",
     styleDescription:
       "How to deliver the closing. Include tone and delivery style for signing off. Example: 'Warm, genuine, slightly reflective tone, natural pacing'",
     maxTokens: 600,
@@ -118,7 +118,7 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.COLD_OPEN,
     toolDescription:
-      "Open the episode cold, before any welcome or introductions — a short, vivid tease of the subject in 1-2 sentences. Use a striking image, surprising fact, or provocative question drawn from the material. Do not say 'welcome', name the show, greet listeners, or introduce yourself or your co-host — this is a teaser, not an introduction. Address the listener directly in the second person where it fits (\"Imagine you're…\", \"If you're listening to this, you already…\").",
+      "Open the episode cold, before any welcome or introductions — a short, vivid tease of the subject in 1-2 sentences. Use a striking image, surprising fact, or provocative question drawn from the material. Do not say 'welcome', name the show, greet listeners, or introduce yourself or your co-host — this is a teaser, not an introduction. Address the listener directly in the second person where it fits (\"Imagine you're…\", \"If you're listening to this, you already…\"). This is the very first sentence of the episode: nothing has been said before it, and the listener has no prior context beyond the episode's title. Write it as the true beginning of a conversation, not the middle of one.",
     styleDescription:
       "How to deliver the cold open. Include pacing and tone, natural and conversational — not overly dramatic or theatrical. Example: 'Natural, unhurried pace, letting the image land before continuing'",
     maxTokens: 100,

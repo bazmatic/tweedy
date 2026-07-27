@@ -99,6 +99,24 @@ describe("PARAPHRASE tool", () => {
   });
 });
 
+describe("NEARLY_OUT_OF_TIME tool", () => {
+  it("requires resolving a pending question before or alongside signaling urgency", () => {
+    expect(getToolMaxTokens(SpeakerAgentToolName.NEARLY_OUT_OF_TIME)).toBe(150);
+    const def = getToolDefinition(SpeakerAgentToolName.NEARLY_OUT_OF_TIME);
+    expect(def?.toolDescription).toMatch(/actually answer it/);
+    expect(def?.toolDescription).toMatch(/do not just announce urgency/i);
+  });
+});
+
+describe("CLOSING_STATEMENT tool", () => {
+  it("forbids introducing new material and ending on a question", () => {
+    const def = getToolDefinition(SpeakerAgentToolName.CLOSING_STATEMENT);
+    expect(def?.toolDescription).toMatch(/throughline/);
+    expect(def?.toolDescription).toMatch(/not introduce or raise any new question/);
+    expect(def?.toolDescription).toMatch(/never end the turn on a question mark/);
+  });
+});
+
 describe("AGREE, TEASE, INVITE tools", () => {
   it("includes AGREE, TEASE, and INVITE with the shared {message, style} schema", () => {
     const tools = toLlmTools();

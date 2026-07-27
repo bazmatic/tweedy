@@ -183,12 +183,43 @@ describe("OpeningSequencePolicy", () => {
     expect(turn?.direction).toContain("Do not introduce the subject");
   });
 
-  it("hands control to the editorial director after every speaker has greeted", () => {
+  it("frames the episode's premise after every speaker has greeted, before handing off to the director", () => {
     const policy = new OpeningSequencePolicy();
     const script = makeScript();
     const host = script.speakers.find((speaker) => speaker.roleProfile?.epistemicRole !== EpistemicRole.Expert)!;
     const expert = script.speakers.find((speaker) => speaker.roleProfile?.epistemicRole === EpistemicRole.Expert)!;
     script.speeches.push(makeSpeech(host), makeSpeech(host), makeSpeech(expert)); // hook + welcome + ack
+    script.narrative = "1953 was a hinge year because science, geopolitics, and culture all lurched at once.";
+
+    expect(policy.getStage(script)).toBe(OpeningStage.Frame);
+
+    const turn = policy.nextTurn(script);
+
+    expect(turn?.speaker.name).toBe("Ada");
+    expect(turn?.direction).toContain(
+      "1953 was a hinge year because science, geopolitics, and culture all lurched at once."
+    );
+    expect(turn?.direction).toContain("don't tell any single story yet");
+  });
+
+  it("falls back to a generic framing goal when no narrative was generated", () => {
+    const policy = new OpeningSequencePolicy();
+    const script = makeScript();
+    const host = script.speakers.find((speaker) => speaker.roleProfile?.epistemicRole !== EpistemicRole.Expert)!;
+    const expert = script.speakers.find((speaker) => speaker.roleProfile?.epistemicRole === EpistemicRole.Expert)!;
+    script.speeches.push(makeSpeech(host), makeSpeech(host), makeSpeech(expert));
+
+    const turn = policy.nextTurn(script);
+
+    expect(turn?.direction).toContain("matters as a whole");
+  });
+
+  it("hands control to the editorial director after the premise has been framed", () => {
+    const policy = new OpeningSequencePolicy();
+    const script = makeScript();
+    const host = script.speakers.find((speaker) => speaker.roleProfile?.epistemicRole !== EpistemicRole.Expert)!;
+    const expert = script.speakers.find((speaker) => speaker.roleProfile?.epistemicRole === EpistemicRole.Expert)!;
+    script.speeches.push(makeSpeech(host), makeSpeech(host), makeSpeech(expert), makeSpeech(host)); // hook + welcome + ack + frame
 
     expect(policy.getStage(script)).toBe(OpeningStage.Complete);
     expect(policy.nextTurn(script)).toBeNull();
