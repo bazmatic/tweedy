@@ -1,62 +1,71 @@
 import { z } from "zod";
 import { PendingTurnKindSchema, StopReasonSchema } from "./episode-schemas";
 
-const EpisodeInitialisedEventSchema = z.object({
+export const EpisodeInitialisedEventSchema = z.object({
   type: z.literal("EPISODE_INITIALISED"),
   timestamp: z.string(),
 });
+export type EpisodeInitialisedEvent = z.infer<typeof EpisodeInitialisedEventSchema>;
 
-const MaterialsPreparedEventSchema = z.object({
+export const MaterialsPreparedEventSchema = z.object({
   type: z.literal("MATERIALS_PREPARED"),
   timestamp: z.string(),
 });
+export type MaterialsPreparedEvent = z.infer<typeof MaterialsPreparedEventSchema>;
 
-const RolesAssignedEventSchema = z.object({
+export const RolesAssignedEventSchema = z.object({
   type: z.literal("ROLES_ASSIGNED"),
   timestamp: z.string(),
   assignments: z.record(z.string(), z.string()),
 });
+export type RolesAssignedEvent = z.infer<typeof RolesAssignedEventSchema>;
 
-const PlanCreatedEventSchema = z.object({
+export const PlanCreatedEventSchema = z.object({
   type: z.literal("PLAN_CREATED"),
   timestamp: z.string(),
 });
+export type PlanCreatedEvent = z.infer<typeof PlanCreatedEventSchema>;
 
-const OpeningAdvancedEventSchema = z.object({
+export const OpeningAdvancedEventSchema = z.object({
   type: z.literal("OPENING_ADVANCED"),
   timestamp: z.string(),
   isFinalOpeningTurn: z.boolean(),
 });
+export type OpeningAdvancedEvent = z.infer<typeof OpeningAdvancedEventSchema>;
 
-const TurnDirectedEventSchema = z.object({
+export const TurnDirectedEventSchema = z.object({
   type: z.literal("TURN_DIRECTED"),
   timestamp: z.string(),
   speakerId: z.string(),
   direction: z.string(),
   kind: PendingTurnKindSchema,
 });
+export type TurnDirectedEvent = z.infer<typeof TurnDirectedEventSchema>;
 
-const TurnGeneratedEventSchema = z.object({
+export const TurnGeneratedEventSchema = z.object({
   type: z.literal("TURN_GENERATED"),
   timestamp: z.string(),
   message: z.string(),
   stopReason: StopReasonSchema,
 });
+export type TurnGeneratedEvent = z.infer<typeof TurnGeneratedEventSchema>;
 
-const TurnReviewedEventSchema = z.object({
+export const TurnReviewedEventSchema = z.object({
   type: z.literal("TURN_REVIEWED"),
   timestamp: z.string(),
   approved: z.boolean(),
   notes: z.string(),
 });
+export type TurnReviewedEvent = z.infer<typeof TurnReviewedEventSchema>;
 
-const TurnRejectedEventSchema = z.object({
+export const TurnRejectedEventSchema = z.object({
   type: z.literal("TURN_REJECTED"),
   timestamp: z.string(),
   reason: z.string(),
 });
+export type TurnRejectedEvent = z.infer<typeof TurnRejectedEventSchema>;
 
-const TurnAcceptedEventSchema = z.object({
+export const TurnAcceptedEventSchema = z.object({
   type: z.literal("TURN_ACCEPTED"),
   timestamp: z.string(),
   speechId: z.string(),
@@ -64,30 +73,35 @@ const TurnAcceptedEventSchema = z.object({
   coveredDiscussionPointIds: z.array(z.string()),
   coveredConversationBeatIds: z.array(z.string()),
 });
+export type TurnAcceptedEvent = z.infer<typeof TurnAcceptedEventSchema>;
 
-const InterjectionRequestedEventSchema = z.object({
+export const InterjectionRequestedEventSchema = z.object({
   type: z.literal("INTERJECTION_REQUESTED"),
   timestamp: z.string(),
   speakerId: z.string(),
   direction: z.string(),
 });
+export type InterjectionRequestedEvent = z.infer<typeof InterjectionRequestedEventSchema>;
 
-const ClosingRequestedEventSchema = z.object({
+export const ClosingRequestedEventSchema = z.object({
   type: z.literal("CLOSING_REQUESTED"),
   timestamp: z.string(),
   reason: z.string(),
 });
+export type ClosingRequestedEvent = z.infer<typeof ClosingRequestedEventSchema>;
 
-const EpisodeCompletedEventSchema = z.object({
+export const EpisodeCompletedEventSchema = z.object({
   type: z.literal("EPISODE_COMPLETED"),
   timestamp: z.string(),
 });
+export type EpisodeCompletedEvent = z.infer<typeof EpisodeCompletedEventSchema>;
 
-const WorkflowWarningRecordedEventSchema = z.object({
+export const WorkflowWarningRecordedEventSchema = z.object({
   type: z.literal("WORKFLOW_WARNING_RECORDED"),
   timestamp: z.string(),
   message: z.string(),
 });
+export type WorkflowWarningRecordedEvent = z.infer<typeof WorkflowWarningRecordedEventSchema>;
 
 export const EpisodeEventSchema = z.discriminatedUnion("type", [
   EpisodeInitialisedEventSchema,
