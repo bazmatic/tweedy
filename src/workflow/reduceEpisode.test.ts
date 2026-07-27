@@ -316,6 +316,29 @@ describe("reduceEpisode: interjections, closing and completion", () => {
     expect(next.terminationReason).toBe("duration limit reached");
   });
 
+  it("rejects CLOSING_REQUESTED when already in the closing phase", () => {
+    const state = discussionState();
+    const closing = reduceEpisode(state, { type: "CLOSING_REQUESTED", timestamp, reason: "time" });
+    expect(() =>
+      reduceEpisode(closing, { type: "CLOSING_REQUESTED", timestamp, reason: "time again" })
+    ).toThrow(InvalidTransitionError);
+  });
+
+  it("rejects EPISODE_COMPLETED while a turn is pending in the closing phase", () => {
+    const state = discussionState();
+    let closing = reduceEpisode(state, { type: "CLOSING_REQUESTED", timestamp, reason: "time" });
+    closing = reduceEpisode(closing, {
+      type: "TURN_DIRECTED",
+      timestamp,
+      speakerId: "speaker-1",
+      direction: "wrap up",
+      kind: "speech",
+    });
+    expect(() => reduceEpisode(closing, { type: "EPISODE_COMPLETED", timestamp })).toThrow(
+      InvalidTransitionError
+    );
+  });
+
   it("rejects CLOSING_REQUESTED while a turn is pending", () => {
     let state = discussionState();
     state = reduceEpisode(state, {
