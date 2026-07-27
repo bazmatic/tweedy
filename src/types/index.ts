@@ -487,6 +487,8 @@ export interface MaterialRecord {
 
 export interface SpeechRecord {
   id: string;
+  /** Stable workflow identity used to make turn persistence retry-safe. */
+  idempotencyKey?: string;
   speakerId: string;
   message: string;
   instructions: string;
@@ -561,6 +563,15 @@ export interface IMaterialRepository {
 
 export interface ISpeechRepository {
   create(speech: Omit<SpeechRecord, "id">): Promise<SpeechRecord>;
+  createOrReturn(
+    speech: Omit<SpeechRecord, "id" | "idempotencyKey">,
+    idempotencyKey: string
+  ): Promise<SpeechRecord>;
+  getByIdempotencyKey(idempotencyKey: string): Promise<SpeechRecord | null>;
+  deleteUnaccepted(
+    idempotencyKey: string,
+    acceptedSpeechIds: readonly string[]
+  ): Promise<boolean>;
   getById(id: string): Promise<SpeechRecord | null>;
   getAll(): Promise<SpeechRecord[]>;
   delete(id: string): Promise<boolean>;

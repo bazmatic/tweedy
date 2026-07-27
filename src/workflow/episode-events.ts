@@ -39,6 +39,8 @@ export const TurnDirectedEventSchema = z.object({
   speakerId: z.string(),
   direction: z.string(),
   kind: PendingTurnKindSchema,
+  logicalTurn: z.number().int().nonnegative().optional(),
+  idempotencyKey: z.string().min(1).optional(),
 });
 export type TurnDirectedEvent = z.infer<typeof TurnDirectedEventSchema>;
 
@@ -72,6 +74,8 @@ export const TurnAcceptedEventSchema = z.object({
   durationSeconds: z.number().nonnegative(),
   coveredDiscussionPointIds: z.array(z.string()),
   coveredConversationBeatIds: z.array(z.string()),
+  introducedKnowledgeIds: z.array(z.string()).optional(),
+  introducedTerms: z.array(z.string()).optional(),
 });
 export type TurnAcceptedEvent = z.infer<typeof TurnAcceptedEventSchema>;
 
@@ -80,6 +84,8 @@ export const InterjectionRequestedEventSchema = z.object({
   timestamp: z.string(),
   speakerId: z.string(),
   direction: z.string(),
+  logicalTurn: z.number().int().nonnegative().optional(),
+  idempotencyKey: z.string().min(1).optional(),
 });
 export type InterjectionRequestedEvent = z.infer<typeof InterjectionRequestedEventSchema>;
 

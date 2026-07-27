@@ -141,6 +141,8 @@ describe("reduceEpisode: discussion phase turn pipeline", () => {
     });
     expect(next.pendingTurn).toEqual({
       kind: "speech",
+      logicalTurn: 0,
+      idempotencyKey: "ep-1/run-1/0/speech",
       speakerId: "speaker-1",
       direction: "open with a hook",
       candidateMessage: null,

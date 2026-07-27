@@ -18,6 +18,8 @@ export type PendingTurnKind = z.infer<typeof PendingTurnKindSchema>;
 
 export const PendingTurnSchema = z.object({
   kind: PendingTurnKindSchema,
+  logicalTurn: z.number().int().nonnegative(),
+  idempotencyKey: z.string().min(1),
   speakerId: z.string(),
   direction: z.string(),
   candidateMessage: z.string().nullable(),

@@ -352,6 +352,8 @@ export class ScriptService implements IScriptService {
     script: PodcastScript,
     params: GenerateScriptParams
   ): Promise<void> {
+    const workflowRunId = script.createdAt.toISOString();
+    const episodeId = script.id || encodeURIComponent(script.title);
     const directorAgent = new DirectorAgent(
       script,
       {
@@ -444,9 +446,13 @@ export class ScriptService implements IScriptService {
         );
         continue;
       }
+      await this.persistSpeech(
+        script,
+        speech,
+        `${episodeId}/${workflowRunId}/${turn}/speech`
+      );
       this.knowledgeLedgerPolicy.recordAcceptedTurn(script, speech);
       this.terminologyLedgerPolicy.recordAcceptedTurn(script, speech);
-      await this.persistSpeech(script, speech);
 
       // The enforced opening sequence (welcome + round-robin hellos) covers
       // the same editorial ground as the plan's Welcome/Hook beats, but
@@ -493,7 +499,11 @@ export class ScriptService implements IScriptService {
           logger.info(
             `Turn ${turn + 1}: ${interjector.name} interjected via ${interjection.tool}: "${interjection.message}"`
           );
-          await this.persistSpeech(script, interjection);
+          await this.persistSpeech(
+            script,
+            interjection,
+            `${episodeId}/${workflowRunId}/${turn}/interjection`
+          );
         }
       }
 
@@ -565,9 +575,10 @@ export class ScriptService implements IScriptService {
 
   private async persistSpeech(
     script: PodcastScript,
-    speech: Speech
+    speech: Speech,
+    idempotencyKey?: string
   ): Promise<void> {
-    const speechRecord = await this.speechRepository.create({
+    const record = {
       speakerId: speech.speaker.id,
       message: speech.message,
       instructions: speech.instructions,
@@ -578,11 +589,17 @@ export class ScriptService implements IScriptService {
       stopReason: speech.stopReason,
       turnBrief: speech.turnBrief,
       review: speech.review,
-    });
+    };
+    const speechRecord =
+      idempotencyKey && this.speechRepository.createOrReturn
+        ? await this.speechRepository.createOrReturn(record, idempotencyKey)
+        : await this.speechRepository.create(record);
 
     speech.id = speechRecord.id;
 
-    script.speeches.push(speech);
+    if (!script.speeches.some((accepted) => accepted.id === speechRecord.id)) {
+      script.speeches.push(speech);
+    }
     script.updatedAt = new Date();
   }
 

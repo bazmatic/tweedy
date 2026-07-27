@@ -74,6 +74,10 @@ function reduceTurnPipeline(
       }
       const pendingTurn: PendingTurn = {
         kind: event.kind,
+        logicalTurn: event.logicalTurn ?? state.turnsUsed,
+        idempotencyKey:
+          event.idempotencyKey ??
+          `${state.episodeId}/${state.workflowRunId}/${event.logicalTurn ?? state.turnsUsed}/${event.kind}`,
         speakerId: event.speakerId,
         direction: event.direction,
         candidateMessage: null,
@@ -140,6 +144,12 @@ function reduceTurnPipeline(
         conversationBeats: state.conversationBeats.map((beat) =>
           coveredBeatIds.has(beat.id) ? { ...beat, covered: true } : beat
         ),
+        knowledgeLedger: [
+          ...new Set([...state.knowledgeLedger, ...(event.introducedKnowledgeIds ?? [])]),
+        ],
+        terminologyLedger: [
+          ...new Set([...state.terminologyLedger, ...(event.introducedTerms ?? [])]),
+        ],
         lastAppliedEvent: event.type,
       };
     }
@@ -149,6 +159,10 @@ function reduceTurnPipeline(
       }
       const pendingTurn: PendingTurn = {
         kind: "interjection",
+        logicalTurn: event.logicalTurn ?? state.turnsUsed,
+        idempotencyKey:
+          event.idempotencyKey ??
+          `${state.episodeId}/${state.workflowRunId}/${event.logicalTurn ?? state.turnsUsed}/interjection`,
         speakerId: event.speakerId,
         direction: event.direction,
         candidateMessage: null,
