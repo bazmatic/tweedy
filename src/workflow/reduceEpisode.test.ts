@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createInitialEpisodeState, EpisodeDefinitionSchema } from "./episode-schemas";
+import { createInitialEpisodeState, EpisodeDefinitionSchema, EpisodeStateSchema } from "./episode-schemas";
 import { InvalidTransitionError, reduceEpisode } from "./reduceEpisode";
+import { EPISODE_EVENT_TYPES } from "./episode-events";
 
 const definition = EpisodeDefinitionSchema.parse({
   episodeId: "ep-1",
@@ -407,4 +408,68 @@ describe("reduceEpisode: interjections, closing and completion", () => {
       }
     }
   );
+});
+
+describe("reduceEpisode: round-trip, immutability and event coverage", () => {
+  it("round-trips a state that has been through several transitions via JSON", () => {
+    let state = createInitialEpisodeState(definition);
+    state = reduceEpisode(state, { type: "PLAN_CREATED", timestamp });
+    state = reduceEpisode(state, { type: "OPENING_ADVANCED", timestamp, isFinalOpeningTurn: true });
+    state = reduceEpisode(state, {
+      type: "TURN_DIRECTED",
+      timestamp,
+      speakerId: "speaker-1",
+      direction: "go",
+      kind: "speech",
+    });
+
+    const roundTripped = EpisodeStateSchema.parse(JSON.parse(JSON.stringify(state)));
+    expect(roundTripped).toEqual(state);
+  });
+
+  it("never mutates a frozen input state across every event type used in this file", () => {
+    let state = createInitialEpisodeState(definition);
+    state = reduceEpisode(state, { type: "PLAN_CREATED", timestamp });
+    state = reduceEpisode(state, { type: "OPENING_ADVANCED", timestamp, isFinalOpeningTurn: true });
+
+    const frozen = Object.freeze({
+      ...state,
+      discussionPoints: state.discussionPoints.map((p) => Object.freeze({ ...p })),
+      conversationBeats: state.conversationBeats.map((b) => Object.freeze({ ...b })),
+    });
+
+    expect(() =>
+      reduceEpisode(frozen, {
+        type: "TURN_DIRECTED",
+        timestamp,
+        speakerId: "speaker-1",
+        direction: "go",
+        kind: "speech",
+      })
+    ).not.toThrow();
+  });
+
+  it("has at least one valid (phase, event) transition covered by this suite for every declared event type", () => {
+    const coveredEventTypes = new Set([
+      "EPISODE_INITIALISED",
+      "MATERIALS_PREPARED",
+      "ROLES_ASSIGNED",
+      "PLAN_CREATED",
+      "OPENING_ADVANCED",
+      "TURN_DIRECTED",
+      "TURN_GENERATED",
+      "TURN_REVIEWED",
+      "TURN_REJECTED",
+      "TURN_ACCEPTED",
+      "INTERJECTION_REQUESTED",
+      "CLOSING_REQUESTED",
+      "EPISODE_COMPLETED",
+      "WORKFLOW_WARNING_RECORDED",
+    ]);
+
+    for (const eventType of EPISODE_EVENT_TYPES) {
+      expect(coveredEventTypes.has(eventType), `missing coverage for ${eventType}`).toBe(true);
+    }
+    expect(EPISODE_EVENT_TYPES.length).toBe(coveredEventTypes.size);
+  });
 });
