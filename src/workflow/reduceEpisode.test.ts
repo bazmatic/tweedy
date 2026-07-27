@@ -121,3 +121,166 @@ describe("reduceEpisode: opening phase", () => {
     );
   });
 });
+
+describe("reduceEpisode: discussion phase turn pipeline", () => {
+  function discussionState() {
+    const prepared = createInitialEpisodeState(definition);
+    const opened = reduceEpisode(prepared, { type: "PLAN_CREATED", timestamp });
+    return reduceEpisode(opened, { type: "OPENING_ADVANCED", timestamp, isFinalOpeningTurn: true });
+  }
+
+  it("TURN_DIRECTED opens a pendingTurn", () => {
+    const state = discussionState();
+    const next = reduceEpisode(state, {
+      type: "TURN_DIRECTED",
+      timestamp,
+      speakerId: "speaker-1",
+      direction: "open with a hook",
+      kind: "speech",
+    });
+    expect(next.pendingTurn).toEqual({
+      kind: "speech",
+      speakerId: "speaker-1",
+      direction: "open with a hook",
+      candidateMessage: null,
+      candidateStopReason: null,
+      reviewNotes: null,
+      reviewApproved: null,
+    });
+  });
+
+  it("rejects TURN_DIRECTED while a turn is already pending", () => {
+    const state = discussionState();
+    const directed = reduceEpisode(state, {
+      type: "TURN_DIRECTED",
+      timestamp,
+      speakerId: "speaker-1",
+      direction: "go",
+      kind: "speech",
+    });
+    expect(() =>
+      reduceEpisode(directed, {
+        type: "TURN_DIRECTED",
+        timestamp,
+        speakerId: "speaker-2",
+        direction: "go again",
+        kind: "speech",
+      })
+    ).toThrow(InvalidTransitionError);
+  });
+
+  it("full accept path: directed -> generated -> reviewed -> accepted", () => {
+    let state = discussionState();
+    state = reduceEpisode(state, {
+      type: "TURN_DIRECTED",
+      timestamp,
+      speakerId: "speaker-1",
+      direction: "open with a hook",
+      kind: "speech",
+    });
+    state = reduceEpisode(state, { type: "TURN_GENERATED", timestamp, message: "hello", stopReason: "stop" });
+    expect(state.pendingTurn?.candidateMessage).toBe("hello");
+
+    state = reduceEpisode(state, { type: "TURN_REVIEWED", timestamp, approved: true, notes: "good" });
+    expect(state.pendingTurn?.reviewApproved).toBe(true);
+
+    state = reduceEpisode(state, {
+      type: "TURN_ACCEPTED",
+      timestamp,
+      speechId: "speech-1",
+      durationSeconds: 10,
+      coveredDiscussionPointIds: ["dp-1"],
+      coveredConversationBeatIds: ["beat-1"],
+    });
+    expect(state.pendingTurn).toBeNull();
+    expect(state.acceptedSpeechIds).toEqual(["speech-1"]);
+    expect(state.turnsUsed).toBe(1);
+    expect(state.elapsedDurationEstimateSeconds).toBe(10);
+    expect(state.discussionPoints).toEqual([{ id: "dp-1", covered: true }]);
+    expect(state.conversationBeats).toEqual([{ id: "beat-1", covered: true }]);
+  });
+
+  it("reject path clears pendingTurn and records a warning without touching acceptedSpeechIds", () => {
+    let state = discussionState();
+    state = reduceEpisode(state, {
+      type: "TURN_DIRECTED",
+      timestamp,
+      speakerId: "speaker-1",
+      direction: "go",
+      kind: "speech",
+    });
+    state = reduceEpisode(state, { type: "TURN_GENERATED", timestamp, message: "hello", stopReason: "stop" });
+    state = reduceEpisode(state, { type: "TURN_REVIEWED", timestamp, approved: false, notes: "repetitive" });
+    state = reduceEpisode(state, { type: "TURN_REJECTED", timestamp, reason: "too repetitive" });
+    expect(state.pendingTurn).toBeNull();
+    expect(state.acceptedSpeechIds).toEqual([]);
+    expect(state.warnings).toEqual(["too repetitive"]);
+  });
+
+  it("rejects TURN_GENERATED with no pendingTurn", () => {
+    const state = discussionState();
+    expect(() =>
+      reduceEpisode(state, { type: "TURN_GENERATED", timestamp, message: "hello", stopReason: "stop" })
+    ).toThrow(InvalidTransitionError);
+  });
+
+  it("rejects TURN_REVIEWED before a candidate is generated", () => {
+    let state = discussionState();
+    state = reduceEpisode(state, {
+      type: "TURN_DIRECTED",
+      timestamp,
+      speakerId: "speaker-1",
+      direction: "go",
+      kind: "speech",
+    });
+    expect(() =>
+      reduceEpisode(state, { type: "TURN_REVIEWED", timestamp, approved: true, notes: "n/a" })
+    ).toThrow(InvalidTransitionError);
+  });
+
+  it("rejects TURN_ACCEPTED when the review was not approved", () => {
+    let state = discussionState();
+    state = reduceEpisode(state, {
+      type: "TURN_DIRECTED",
+      timestamp,
+      speakerId: "speaker-1",
+      direction: "go",
+      kind: "speech",
+    });
+    state = reduceEpisode(state, { type: "TURN_GENERATED", timestamp, message: "hello", stopReason: "stop" });
+    state = reduceEpisode(state, { type: "TURN_REVIEWED", timestamp, approved: false, notes: "no" });
+    expect(() =>
+      reduceEpisode(state, {
+        type: "TURN_ACCEPTED",
+        timestamp,
+        speechId: "speech-1",
+        durationSeconds: 1,
+        coveredDiscussionPointIds: [],
+        coveredConversationBeatIds: [],
+      })
+    ).toThrow(InvalidTransitionError);
+  });
+
+  it("does not increment turnsUsed for an accepted interjection", () => {
+    let state = discussionState();
+    state = reduceEpisode(state, {
+      type: "TURN_DIRECTED",
+      timestamp,
+      speakerId: "speaker-2",
+      direction: "push back",
+      kind: "interjection",
+    });
+    state = reduceEpisode(state, { type: "TURN_GENERATED", timestamp, message: "wait", stopReason: "stop" });
+    state = reduceEpisode(state, { type: "TURN_REVIEWED", timestamp, approved: true, notes: "ok" });
+    state = reduceEpisode(state, {
+      type: "TURN_ACCEPTED",
+      timestamp,
+      speechId: "speech-interjection-1",
+      durationSeconds: 3,
+      coveredDiscussionPointIds: [],
+      coveredConversationBeatIds: [],
+    });
+    expect(state.turnsUsed).toBe(0);
+    expect(state.acceptedSpeechIds).toEqual(["speech-interjection-1"]);
+  });
+});
