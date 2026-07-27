@@ -13,7 +13,7 @@ export function reduceEpisode(state: EpisodeState, event: EpisodeEvent): Episode
     case "preparing":
       return reducePreparing(state, event);
     case "opening":
-      throw new InvalidTransitionError(state.phase, event.type);
+      return reduceOpening(state, event);
     case "discussion":
     case "closing":
       throw new InvalidTransitionError(state.phase, event.type);
@@ -38,6 +38,22 @@ function reducePreparing(state: EpisodeState, event: EpisodeEvent): EpisodeState
       };
     case "PLAN_CREATED":
       return { ...state, phase: "opening", lastAppliedEvent: event.type };
+    case "WORKFLOW_WARNING_RECORDED":
+      return { ...state, warnings: [...state.warnings, event.message], lastAppliedEvent: event.type };
+    default:
+      throw new InvalidTransitionError(state.phase, event.type);
+  }
+}
+
+function reduceOpening(state: EpisodeState, event: EpisodeEvent): EpisodeState {
+  switch (event.type) {
+    case "OPENING_ADVANCED":
+      return {
+        ...state,
+        openingCursor: state.openingCursor + 1,
+        phase: event.isFinalOpeningTurn ? "discussion" : "opening",
+        lastAppliedEvent: event.type,
+      };
     case "WORKFLOW_WARNING_RECORDED":
       return { ...state, warnings: [...state.warnings, event.message], lastAppliedEvent: event.type };
     default:

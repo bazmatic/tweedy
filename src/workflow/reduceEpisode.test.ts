@@ -74,3 +74,50 @@ describe("reduceEpisode: preparing phase", () => {
     ).toThrow(InvalidTransitionError);
   });
 });
+
+describe("reduceEpisode: opening phase", () => {
+  function openingState() {
+    const prepared = createInitialEpisodeState(definition);
+    return reduceEpisode(prepared, { type: "PLAN_CREATED", timestamp });
+  }
+
+  it("OPENING_ADVANCED increments openingCursor and stays in opening when not final", () => {
+    const state = openingState();
+    const next = reduceEpisode(state, {
+      type: "OPENING_ADVANCED",
+      timestamp,
+      isFinalOpeningTurn: false,
+    });
+    expect(next.openingCursor).toBe(1);
+    expect(next.phase).toBe("opening");
+  });
+
+  it("OPENING_ADVANCED transitions opening -> discussion when final", () => {
+    const state = openingState();
+    const next = reduceEpisode(state, {
+      type: "OPENING_ADVANCED",
+      timestamp,
+      isFinalOpeningTurn: true,
+    });
+    expect(next.openingCursor).toBe(1);
+    expect(next.phase).toBe("discussion");
+  });
+
+  it("WORKFLOW_WARNING_RECORDED stays in opening", () => {
+    const state = openingState();
+    const next = reduceEpisode(state, {
+      type: "WORKFLOW_WARNING_RECORDED",
+      timestamp,
+      message: "opening ran long",
+    });
+    expect(next.phase).toBe("opening");
+    expect(next.warnings).toEqual(["opening ran long"]);
+  });
+
+  it("rejects PLAN_CREATED fired again from opening", () => {
+    const state = openingState();
+    expect(() => reduceEpisode(state, { type: "PLAN_CREATED", timestamp })).toThrow(
+      InvalidTransitionError
+    );
+  });
+});
