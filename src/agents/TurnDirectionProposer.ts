@@ -89,9 +89,11 @@ function buildConversationHistory(script: PodcastScript): string {
 }
 
 /**
- * Builds the same director prompt/schema call chooseNextSpeaker used, but
- * parameterised on an already-computed EpisodeInspection instead of reading
- * instance state, and returns the raw claim without applying it anywhere:
+ * Builds a simplified subset of the director prompt that chooseNextSpeaker uses.
+ * Omits pacing/balance/rhythm/signpost notes, editorial guidance, device guidance,
+ * and epistemic-role/personality descriptions, focusing instead on immediate
+ * direction and editorial moves. Parameterised on an already-computed EpisodeInspection
+ * instead of reading instance state, and returns the raw claim without applying it anywhere:
  * no turnsUsed increment, no discussion-point/beat mutation.
  */
 export async function proposeTurnDirection(
