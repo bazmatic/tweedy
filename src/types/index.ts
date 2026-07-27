@@ -412,6 +412,9 @@ export interface AppConfig {
   audioDir: string;
   scriptsDir: string;
   embeddingsDir: string;
+  mastraStoragePath: string;
+  mastraTracePath: string;
+  conversationRuntime: "legacy" | "mastra";
   defaultVoiceProvider: VocalProviderName;
   defaultAiProvider: AiProviderName;
   defaultChunkSize: number;

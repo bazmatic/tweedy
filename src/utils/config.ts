@@ -14,6 +14,14 @@ export function loadConfig(): AppConfig {
     audioDir: process.env.AUDIO_DIR || "./audio",
     scriptsDir: process.env.SCRIPTS_DIR || "./scripts",
     embeddingsDir: process.env.EMBEDDINGS_DIR || "./embeddings",
+    mastraStoragePath:
+      process.env.MASTRA_STORAGE_PATH ||
+      path.join(process.env.DATA_DIR || "./data", "mastra.db"),
+    mastraTracePath:
+      process.env.MASTRA_TRACE_PATH ||
+      path.join(process.env.DATA_DIR || "./data", "mastra-traces.jsonl"),
+    conversationRuntime:
+      process.env.CONVERSATION_RUNTIME === "mastra" ? "mastra" : "legacy",
     defaultVoiceProvider:
       (process.env.DEFAULT_VOICE_PROVIDER as VocalProviderName) ||
       VocalProviderName.ElevenLabs,

@@ -448,6 +448,12 @@ so the editorial agents and routing policy work unchanged with Anthropic,
 DeepSeek, or a future provider. If a provider has fewer model classes, multiple
 tiers can resolve to the same model.
 
+Mastra workflow infrastructure is available as an incremental, opt-in
+orchestration layer. All current `ModelTask` values retain a compatibility
+route through the same LangChain model factory, and legacy conversation
+generation remains the default. See [docs/MASTRA_RUNTIME.md](docs/MASTRA_RUNTIME.md)
+for storage, tracing, redaction, setup, and upgrade guidance.
+
 ### Structured Model Responses
 
 Tweedy distinguishes structured data from genuine actions. Episode planning,

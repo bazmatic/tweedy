@@ -1,0 +1,47 @@
+import { Mastra } from "@mastra/core/mastra";
+import { LibSQLStore } from "@mastra/libsql";
+import { AiProviderName } from "../types";
+import { createMinimalWorkflow } from "./minimal-workflow";
+import { createModelTaskRoutes } from "./model-routes";
+import { JsonlTraceSink, TraceSink } from "./tracing";
+
+export interface CreateTweedyMastraOptions {
+  storagePath: string;
+  tracePath?: string;
+  traceSink?: TraceSink;
+  provider?: AiProviderName;
+}
+
+/**
+ * Side-effect-free composition root. Importing this module does not construct
+ * provider clients, open a database, start a server or execute a workflow.
+ */
+export function createTweedyMastra(options: CreateTweedyMastraOptions) {
+  const storage = new LibSQLStore({ url: toFileUrl(options.storagePath) });
+  const traceSink =
+    options.traceSink ??
+    new JsonlTraceSink(
+      options.tracePath ?? `${options.storagePath}.traces.jsonl`
+    );
+  const minimalWorkflow = createMinimalWorkflow(traceSink);
+  const routes = createModelTaskRoutes(
+    options.provider ?? AiProviderName.Anthropic
+  );
+  const mastra = new Mastra({
+    storage,
+    workflows: { minimalWorkflow },
+  });
+
+  return { mastra, storage, traceSink, routes };
+}
+
+function toFileUrl(storagePath: string): string {
+  return storagePath === ":memory:" || storagePath.startsWith("file:")
+    ? storagePath
+    : `file:${storagePath}`;
+}
+
+export * from "./minimal-workflow";
+export * from "./model-routes";
+export * from "./runtime-context";
+export * from "./tracing";
