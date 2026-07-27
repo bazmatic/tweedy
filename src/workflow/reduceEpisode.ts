@@ -143,6 +143,47 @@ function reduceTurnPipeline(
         lastAppliedEvent: event.type,
       };
     }
+    case "INTERJECTION_REQUESTED": {
+      if (state.pendingTurn !== null) {
+        throw new InvalidTransitionError(phase, event.type, "a turn is already pending");
+      }
+      const pendingTurn: PendingTurn = {
+        kind: "interjection",
+        speakerId: event.speakerId,
+        direction: event.direction,
+        candidateMessage: null,
+        candidateStopReason: null,
+        reviewNotes: null,
+        reviewApproved: null,
+      };
+      return { ...state, pendingTurn, lastAppliedEvent: event.type };
+    }
+    case "CLOSING_REQUESTED": {
+      if (phase !== "discussion") {
+        throw new InvalidTransitionError(phase, event.type);
+      }
+      if (state.pendingTurn !== null) {
+        throw new InvalidTransitionError(phase, event.type, "cannot close while a turn is pending");
+      }
+      return {
+        ...state,
+        phase: "closing",
+        terminationRequested: true,
+        terminationReason: event.reason,
+        lastAppliedEvent: event.type,
+      };
+    }
+    case "EPISODE_COMPLETED": {
+      if (phase !== "closing") {
+        throw new InvalidTransitionError(phase, event.type);
+      }
+      if (state.pendingTurn !== null) {
+        throw new InvalidTransitionError(phase, event.type, "cannot complete while a turn is pending");
+      }
+      return { ...state, phase: "completed", lastAppliedEvent: event.type };
+    }
+    case "WORKFLOW_WARNING_RECORDED":
+      return { ...state, warnings: [...state.warnings, event.message], lastAppliedEvent: event.type };
     default:
       throw new InvalidTransitionError(phase, event.type);
   }

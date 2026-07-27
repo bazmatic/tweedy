@@ -284,3 +284,104 @@ describe("reduceEpisode: discussion phase turn pipeline", () => {
     expect(state.acceptedSpeechIds).toEqual(["speech-interjection-1"]);
   });
 });
+
+describe("reduceEpisode: interjections, closing and completion", () => {
+  function discussionState() {
+    const prepared = createInitialEpisodeState(definition);
+    const opened = reduceEpisode(prepared, { type: "PLAN_CREATED", timestamp });
+    return reduceEpisode(opened, { type: "OPENING_ADVANCED", timestamp, isFinalOpeningTurn: true });
+  }
+
+  it("INTERJECTION_REQUESTED opens an interjection pendingTurn", () => {
+    const state = discussionState();
+    const next = reduceEpisode(state, {
+      type: "INTERJECTION_REQUESTED",
+      timestamp,
+      speakerId: "speaker-2",
+      direction: "push back",
+    });
+    expect(next.pendingTurn?.kind).toBe("interjection");
+    expect(next.pendingTurn?.speakerId).toBe("speaker-2");
+  });
+
+  it("CLOSING_REQUESTED transitions discussion -> closing when no turn is pending", () => {
+    const state = discussionState();
+    const next = reduceEpisode(state, {
+      type: "CLOSING_REQUESTED",
+      timestamp,
+      reason: "duration limit reached",
+    });
+    expect(next.phase).toBe("closing");
+    expect(next.terminationRequested).toBe(true);
+    expect(next.terminationReason).toBe("duration limit reached");
+  });
+
+  it("rejects CLOSING_REQUESTED while a turn is pending", () => {
+    let state = discussionState();
+    state = reduceEpisode(state, {
+      type: "TURN_DIRECTED",
+      timestamp,
+      speakerId: "speaker-1",
+      direction: "go",
+      kind: "speech",
+    });
+    expect(() =>
+      reduceEpisode(state, { type: "CLOSING_REQUESTED", timestamp, reason: "time" })
+    ).toThrow(InvalidTransitionError);
+  });
+
+  it("rejects EPISODE_COMPLETED fired from discussion", () => {
+    const state = discussionState();
+    expect(() => reduceEpisode(state, { type: "EPISODE_COMPLETED", timestamp })).toThrow(
+      InvalidTransitionError
+    );
+  });
+
+  it("EPISODE_COMPLETED transitions closing -> completed", () => {
+    const state = discussionState();
+    const closing = reduceEpisode(state, { type: "CLOSING_REQUESTED", timestamp, reason: "time" });
+    const completed = reduceEpisode(closing, { type: "EPISODE_COMPLETED", timestamp });
+    expect(completed.phase).toBe("completed");
+  });
+
+  it("the turn pipeline still works from closing (final sign-off turn)", () => {
+    const state = discussionState();
+    let closing = reduceEpisode(state, { type: "CLOSING_REQUESTED", timestamp, reason: "time" });
+    closing = reduceEpisode(closing, {
+      type: "TURN_DIRECTED",
+      timestamp,
+      speakerId: "speaker-1",
+      direction: "wrap up",
+      kind: "speech",
+    });
+    closing = reduceEpisode(closing, { type: "TURN_GENERATED", timestamp, message: "bye", stopReason: "stop" });
+    closing = reduceEpisode(closing, { type: "TURN_REVIEWED", timestamp, approved: true, notes: "ok" });
+    closing = reduceEpisode(closing, {
+      type: "TURN_ACCEPTED",
+      timestamp,
+      speechId: "speech-final",
+      durationSeconds: 5,
+      coveredDiscussionPointIds: [],
+      coveredConversationBeatIds: [],
+    });
+    expect(closing.acceptedSpeechIds).toEqual(["speech-final"]);
+
+    const completed = reduceEpisode(closing, { type: "EPISODE_COMPLETED", timestamp });
+    expect(completed.phase).toBe("completed");
+  });
+
+  it.each(["completed", "failed"] as const)(
+    "every event is rejected from the terminal %s phase",
+    (phase) => {
+      const state = { ...discussionState(), phase };
+      const sampleEvents: Array<[string, object]> = [
+        ["EPISODE_INITIALISED", { type: "EPISODE_INITIALISED", timestamp }],
+        ["WORKFLOW_WARNING_RECORDED", { type: "WORKFLOW_WARNING_RECORDED", timestamp, message: "x" }],
+        ["EPISODE_COMPLETED", { type: "EPISODE_COMPLETED", timestamp }],
+      ];
+      for (const [, event] of sampleEvents) {
+        expect(() => reduceEpisode(state, event as never)).toThrow(InvalidTransitionError);
+      }
+    }
+  );
+});
