@@ -362,6 +362,11 @@ export interface PodcastScript {
   speakerRoleAssignments?: Record<string, SpeakerRoleProfile>;
   centralAnalogy?: string;
   narrative?: string;
+  conversationRun?: {
+    engine: "legacy" | "mastra";
+    flowVersion: string;
+    workflowRunId: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -414,7 +419,7 @@ export interface AppConfig {
   embeddingsDir: string;
   mastraStoragePath: string;
   mastraTracePath: string;
-  conversationRuntime: "legacy" | "mastra";
+  conversationWorkflowEngine: "legacy" | "mastra";
   defaultVoiceProvider: VocalProviderName;
   defaultAiProvider: AiProviderName;
   defaultChunkSize: number;
@@ -474,6 +479,11 @@ export interface ScriptRecord {
   audienceProfile?: AudienceProfile;
   terminologyLedger?: TerminologyLedger;
   speakerRoleAssignments?: Record<string, SpeakerRoleProfile>;
+  conversationRun?: {
+    engine: "legacy" | "mastra";
+    flowVersion: string;
+    workflowRunId: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -772,7 +782,10 @@ export interface ISpeakerService {
 }
 
 export interface IScriptService {
-  generateScript(params: GenerateScriptParams): Promise<PodcastScript>;
+  generateScript(
+    params: GenerateScriptParams,
+    options?: { engine?: "legacy" | "mastra" }
+  ): Promise<PodcastScript>;
   getScript(id: string): Promise<PodcastScript>;
   getAllScripts(): Promise<PodcastScript[]>;
   deleteScript(id: string): Promise<void>;

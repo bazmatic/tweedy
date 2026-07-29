@@ -2,8 +2,9 @@
 
 Tweedy includes a Mastra composition root for incremental workflow migration.
 The existing LangChain conversation generator remains the default. Set
-`CONVERSATION_RUNTIME=mastra` only for explicitly migrated entrypoints; no
-current CLI conversation command switches on this flag yet.
+`CONVERSATION_WORKFLOW_ENGINE=mastra` or pass `--engine mastra` to
+`tweedy script generate` to use the typed episode workflow. Switch back to
+`legacy` for configuration-only rollback.
 
 ## Pinned compatibility line
 
@@ -73,3 +74,16 @@ iteration ceilings force an explicit final sign-off even if direction or
 conclusion model calls fail. Snapshots are persisted after workflow steps, and
 stable `episode/run/logical-turn/kind` keys make replay after a post-write
 failure return the same speech record.
+
+## Engine selection and resume safety
+
+`ScriptService` resolves a `ConversationWorkflowEngine` before loading
+generation inputs. Both implementations consume the same request and return
+the same `PodcastScript` and `Speech` domain records, so export, editing and
+audio generation remain engine-neutral.
+
+Each new script records its engine name, flow version and workflow run ID.
+Resume is refused if the requested engine or flow version differs from that
+stored identity; active runs are never migrated between engines. Older scripts
+without this metadata remain readable and editable, but are not treated as
+resumable workflow runs.

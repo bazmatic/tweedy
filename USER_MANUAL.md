@@ -6,6 +6,20 @@ A comprehensive guide to using the Tweedy AI-powered podcast generation CLI tool
 
 ---
 
+## Choosing the conversation engine
+
+Script generation uses the legacy engine by default. To use the typed Mastra
+workflow for one episode:
+
+```bash
+tweedy script generate --engine mastra --title "Episode title" --speakers host,guest
+```
+
+Set `CONVERSATION_WORKFLOW_ENGINE=mastra` in `.env` to select it for new
+invocations. Set the value back to `legacy` to roll back. Existing scripts,
+exports, edits and audio commands work the same regardless of which engine
+created the script.
+
 ## Table of Contents
 
 1. [Introduction](#introduction)

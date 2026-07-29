@@ -85,6 +85,9 @@ export function createCLI(): Command {
       console.log(`  Scripts Directory: ${appConfig.scriptsDir}`);
       console.log(`  Embeddings Directory: ${appConfig.embeddingsDir}`);
       console.log(
+        `  Conversation Workflow Engine: ${appConfig.conversationWorkflowEngine}`
+      );
+      console.log(
         `  Default Voice Provider: ${appConfig.defaultVoiceProvider}`
       );
       console.log("");
@@ -118,4 +121,3 @@ export function createCLI(): Command {
 
   return program;
 }
-

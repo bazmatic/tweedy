@@ -602,7 +602,10 @@ export function createEpisodeWorkflow(
           };
         }
       }
-      if (inputData.state.phase === "opening") {
+      if (
+        inputData.state.phase === "opening" &&
+        selection.isFinalTurn
+      ) {
         selection = {
           ...selection,
           isOpeningTurn: true,

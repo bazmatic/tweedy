@@ -43,8 +43,18 @@ import {
   hasScriptEditChanges,
   ScriptEditPlanner,
 } from "./ScriptEditPlanner";
+import {
+  assertConversationRunCompatible,
+  ConversationEngineSelector,
+  ConversationWorkflowEngineName,
+  LegacyConversationWorkflowEngine,
+  MastraConversationWorkflowEngine,
+} from "./conversation-engine";
+import { MastraScriptWorkflowRunner } from "./MastraScriptWorkflowRunner";
 
 export class ScriptService implements IScriptService {
+  private readonly conversationEngineSelector: ConversationEngineSelector;
+
   constructor(
     private readonly scriptRepository: ScriptRepository,
     private readonly speakerRepository: SpeakerRepository,
@@ -57,11 +67,38 @@ export class ScriptService implements IScriptService {
     private readonly speechRepetitionPolicy = new SpeechRepetitionPolicy(),
     private readonly scriptEditPlanner = new ScriptEditPlanner(),
     private readonly episodeRecapPolicy = new EpisodeRecapPolicy(),
-    private readonly roleProfileResolver = new SpeakerRoleProfileResolver()
-  ) {}
+    private readonly roleProfileResolver = new SpeakerRoleProfileResolver(),
+    conversationEngineSelector?: ConversationEngineSelector
+  ) {
+    this.conversationEngineSelector =
+      conversationEngineSelector ??
+      new ConversationEngineSelector([
+        new LegacyConversationWorkflowEngine(
+          async ({ script, params, workflowRunId }) =>
+            this.generateScriptContent(script, params, workflowRunId)
+        ),
+        new MastraConversationWorkflowEngine(
+          new MastraScriptWorkflowRunner(
+            this.speechRepository,
+            this.ragService,
+            this.knowledgeLedgerPolicy,
+            this.terminologyLedgerPolicy,
+            this.speechRepetitionPolicy,
+            this.episodeRecapPolicy,
+            this.roleProfileResolver
+          )
+        ),
+      ]);
+  }
 
-  async generateScript(params: GenerateScriptParams): Promise<PodcastScript> {
+  async generateScript(
+    params: GenerateScriptParams,
+    options: { engine?: "legacy" | "mastra" } = {}
+  ): Promise<PodcastScript> {
     try {
+      const engine = this.conversationEngineSelector.resolve(
+        options.engine as ConversationWorkflowEngineName | undefined
+      );
       logger.info(`Generating script: ${params.title}`);
 
       // Load speakers and materials
@@ -85,8 +122,18 @@ export class ScriptService implements IScriptService {
         updatedAt: new Date(),
       };
 
-      // Generate script using AI agents
-      await this.generateScriptContent(script, params);
+      const workflowRunId = script.createdAt.toISOString();
+      logger.info(
+        `Conversation workflow starting: engine=${engine.name}, ` +
+          `flowVersion=${engine.flowVersion}, runId=${workflowRunId}`
+      );
+      const generated = await engine.generate({
+        script,
+        params,
+        workflowRunId,
+      });
+      Object.assign(script, generated.script);
+      script.conversationRun = generated.metadata;
 
       // Save script
       await this.saveScript(script);
@@ -97,6 +144,33 @@ export class ScriptService implements IScriptService {
       logger.error("Failed to generate script:", error);
       throw error;
     }
+  }
+
+  async assertCanResume(
+    scriptId: string,
+    requestedEngine: "legacy" | "mastra"
+  ): Promise<void> {
+    const record = await this.scriptRepository.getById(scriptId);
+    if (!record) {
+      throw new Error(`Script with id ${scriptId} not found`);
+    }
+    if (!record.conversationRun) {
+      throw new Error(
+        `Script ${scriptId} has no resumable conversation workflow metadata`
+      );
+    }
+    const engine = this.conversationEngineSelector.resolve(
+      requestedEngine as ConversationWorkflowEngineName
+    );
+    assertConversationRunCompatible(
+      {
+        engine: record.conversationRun
+          .engine as ConversationWorkflowEngineName,
+        flowVersion: record.conversationRun.flowVersion,
+        workflowRunId: record.conversationRun.workflowRunId,
+      },
+      engine
+    );
   }
 
   async getScript(id: string): Promise<PodcastScript> {
@@ -350,9 +424,9 @@ export class ScriptService implements IScriptService {
 
   private async generateScriptContent(
     script: PodcastScript,
-    params: GenerateScriptParams
+    params: GenerateScriptParams,
+    workflowRunId = script.createdAt.toISOString()
   ): Promise<void> {
-    const workflowRunId = script.createdAt.toISOString();
     const episodeId = script.id || encodeURIComponent(script.title);
     const directorAgent = new DirectorAgent(
       script,
@@ -666,6 +740,7 @@ export class ScriptService implements IScriptService {
         record.terminologyLedger ?? this.terminologyLedgerPolicy.createLedger(),
       speakerRoleAssignments: record.speakerRoleAssignments,
       centralAnalogy: record.centralAnalogy,
+      conversationRun: record.conversationRun,
       createdAt: new Date(record.createdAt),
       updatedAt: new Date(record.updatedAt),
     };
@@ -689,6 +764,7 @@ export class ScriptService implements IScriptService {
         script.terminologyLedger ?? this.terminologyLedgerPolicy.createLedger(),
       speakerRoleAssignments: script.speakerRoleAssignments,
       centralAnalogy: script.centralAnalogy,
+      conversationRun: script.conversationRun,
     };
 
     const created = await this.scriptRepository.create(record);

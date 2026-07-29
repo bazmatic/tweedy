@@ -456,8 +456,10 @@ for storage, tracing, redaction, setup, and upgrade guidance.
 
 The opt-in runtime now includes a typed, nested episode workflow with bounded
 turn iteration, durable step snapshots, reducer-only state transitions and
-idempotent speech/interjection acceptance. It is infrastructure for the
-upcoming engine-selection work; `ScriptService` still uses the legacy loop.
+idempotent speech/interjection acceptance. Select it per invocation with
+`tweedy script generate --engine mastra ...`, or set
+`CONVERSATION_WORKFLOW_ENGINE=mastra`. Legacy remains the default and rollback
+is configuration-only.
 
 ### Structured Model Responses
 

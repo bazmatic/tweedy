@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig } from "./config";
+import { loadConfig, parseConversationWorkflowEngine } from "./config";
 
 describe("loadConfig multispeakerChunkSize", () => {
   const original = process.env.MULTISPEAKER_CHUNK_SIZE;
@@ -24,13 +24,14 @@ describe("loadConfig multispeakerChunkSize", () => {
 });
 
 describe("loadConfig Mastra runtime", () => {
-  const originalRuntime = process.env.CONVERSATION_RUNTIME;
+  const originalRuntime = process.env.CONVERSATION_WORKFLOW_ENGINE;
   const originalDataDir = process.env.DATA_DIR;
   const originalStoragePath = process.env.MASTRA_STORAGE_PATH;
 
   afterEach(() => {
-    if (originalRuntime === undefined) delete process.env.CONVERSATION_RUNTIME;
-    else process.env.CONVERSATION_RUNTIME = originalRuntime;
+    if (originalRuntime === undefined)
+      delete process.env.CONVERSATION_WORKFLOW_ENGINE;
+    else process.env.CONVERSATION_WORKFLOW_ENGINE = originalRuntime;
     if (originalDataDir === undefined) delete process.env.DATA_DIR;
     else process.env.DATA_DIR = originalDataDir;
     if (originalStoragePath === undefined) delete process.env.MASTRA_STORAGE_PATH;
@@ -38,8 +39,19 @@ describe("loadConfig Mastra runtime", () => {
   });
 
   it("keeps legacy generation as the default", () => {
-    delete process.env.CONVERSATION_RUNTIME;
-    expect(loadConfig().conversationRuntime).toBe("legacy");
+    delete process.env.CONVERSATION_WORKFLOW_ENGINE;
+    expect(loadConfig().conversationWorkflowEngine).toBe("legacy");
+  });
+
+  it("selects Mastra explicitly", () => {
+    process.env.CONVERSATION_WORKFLOW_ENGINE = "mastra";
+    expect(loadConfig().conversationWorkflowEngine).toBe("mastra");
+  });
+
+  it("rejects invalid engine configuration", () => {
+    expect(() => parseConversationWorkflowEngine("automatic")).toThrow(
+      'Invalid CONVERSATION_WORKFLOW_ENGINE "automatic"'
+    );
   });
 
   it("places workflow storage under DATA_DIR by default", () => {
