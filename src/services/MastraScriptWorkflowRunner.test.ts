@@ -11,6 +11,7 @@ import {
   UncertaintyStyle,
   VocalProviderName,
 } from "../types";
+import { SpeakerAgentToolName } from "../agents/speaker-tools";
 
 const directorCreatePlan = vi.fn();
 const directorChoose = vi.fn();
@@ -51,6 +52,9 @@ vi.mock("../agents", async (importOriginal) => {
         chooseNextSpeaker: directorChoose,
         reviewSpeech: directorReview,
         isConversationComplete: directorComplete,
+        recordAcceptedBeat: vi.fn(),
+        recordAcceptedCoverage: vi.fn(),
+        markRemainingPointsOmitted: vi.fn(),
       };
     }),
     SpeakerAgent: vi.fn().mockImplementation(function () {
@@ -115,11 +119,26 @@ describe("MastraScriptWorkflowRunner", () => {
       voiceStyle: speaker.voiceStyle,
       timestamp: new Date("2026-07-29T00:00:01.000Z"),
       stopReason: "stop" as const,
+      tool: SpeakerAgentToolName.CLOSING_STATEMENT,
     };
-    speakerSpeak.mockResolvedValue(speech);
+    speakerSpeak.mockImplementation(async (...args) => {
+      const isFinalTurn = args[10] === true;
+      return {
+        ...speech,
+        message: isFinalTurn
+          ? "A distinct closing thought."
+          : "A concise opening thought.",
+        tool: isFinalTurn
+          ? SpeakerAgentToolName.CLOSING_STATEMENT
+          : SpeakerAgentToolName.SPEAK,
+      };
+    });
     directorReview.mockImplementation(async (candidate) => ({
       ...candidate,
-      message: "A reviewer-improved opening and final thought.",
+      message:
+        candidate.tool === SpeakerAgentToolName.CLOSING_STATEMENT
+          ? "A reviewer-improved final thought. Thanks for listening, and until next time."
+          : "A reviewer-improved opening thought.",
     }));
     directorComplete.mockResolvedValue(false);
     directorChoose.mockResolvedValue({
@@ -176,11 +195,12 @@ describe("MastraScriptWorkflowRunner", () => {
     expect(result.speeches.length).toBeGreaterThan(0);
     expect(createOrReturn).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: "A reviewer-improved opening and final thought.",
+        message:
+          "A reviewer-improved final thought. Thanks for listening, and until next time.",
       }),
       expect.stringContaining("/run-14/")
     );
-    expect(speechesVisibleWhenLedgerRecorded).toBe(0);
+    expect(speechesVisibleWhenLedgerRecorded).toBe(1);
     expect(directorCreatePlan).toHaveBeenCalledOnce();
   });
 });

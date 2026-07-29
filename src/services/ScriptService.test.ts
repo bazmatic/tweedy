@@ -43,6 +43,8 @@ vi.mock("../agents", () => ({
       chooseNextSpeaker: chooseNextSpeakerMock,
       reviewSpeech: reviewSpeechMock,
       isConversationComplete: isConversationCompleteMock,
+      recordAcceptedBeat: vi.fn(),
+      recordAcceptedCoverage: vi.fn(),
     };
   }),
   SpeakerAgent: vi.fn().mockImplementation(function (speaker, ragService) {
@@ -1006,6 +1008,31 @@ describe("ScriptService.logUncoveredPoints", () => {
 
     expect(warnSpy).not.toHaveBeenCalled();
     warnSpy.mockRestore();
+  });
+
+  it("reports intentional omissions separately from missed points", () => {
+    const service = makeService({});
+    const script = makeScript();
+    script.discussionPoints = [
+      {
+        id: "p1",
+        text: "Optional detail",
+        covered: false,
+        omitted: true,
+        omissionReason: "duration_budget",
+      },
+    ];
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
+
+    (service as any).logUncoveredPoints(script);
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledWith(
+      "1 lower-ranked discussion point(s) omitted gracefully: p1 (Optional detail)"
+    );
+    warnSpy.mockRestore();
+    infoSpy.mockRestore();
   });
 });
 

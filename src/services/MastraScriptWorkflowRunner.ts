@@ -5,6 +5,7 @@ import {
   OpeningTurn,
 } from "../agents/OpeningSequencePolicy";
 import { EpisodeRecapPolicy } from "../agents/EpisodeRecapPolicy";
+import { EpisodeConclusionPolicy } from "../agents/EpisodeConclusionPolicy";
 import { KnowledgeLedgerPolicy } from "../agents/KnowledgeLedgerPolicy";
 import { SpeakerRoleProfileResolver } from "../agents/SpeakerRoleProfileResolver";
 import { TerminologyLedgerPolicy } from "../agents/TerminologyLedgerPolicy";
@@ -67,7 +68,8 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
     } = {
       storagePath: appConfig.mastraStoragePath,
       tracePath: appConfig.mastraTracePath,
-    }
+    },
+    private readonly conclusionPolicy = new EpisodeConclusionPolicy()
   ) {}
 
   async run(request: ConversationGenerationRequest): Promise<PodcastScript> {
@@ -168,38 +170,34 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
         });
       },
       repairTurn: async (_state, proposal) => proposal,
-      forceClosingTurn: async (state) => {
-        let choice: Awaited<ReturnType<DirectorAgent["chooseNextSpeaker"]>>;
-        try {
-          choice = await director.chooseNextSpeaker(script);
-        } catch {
-          const lastSpeaker = script.speeches[script.speeches.length - 1]?.speaker;
-          const speaker =
-            script.speakers.find(
-              (candidate) => candidate.id !== lastSpeaker?.id
-            ) ?? script.speakers[0];
-          if (!speaker) {
-            throw new Error("Cannot close an episode without a speaker");
-          }
-          choice = {
-            speaker,
-            direction:
-              "Deliver the final big-picture takeaway and sign off naturally.",
-            timeStatus: "",
-            forceNearlyOutOfTime: false,
-            requestSummary: true,
-            isFinalTurn: true,
-            turnBrief: {
-              speakerId: speaker.id,
-              goal:
-                "Deliver the final big-picture takeaway and sign off naturally.",
-              move: EditorialMove.Summarise,
-              cardIds: [],
-              audienceValue: AudienceValue.Insight,
-              desiredEnergy: EnergyLevel.Reflective,
-            },
-          };
+      forceClosingTurn: async (state, reason) => {
+        director.markRemainingPointsOmitted(reason.replace(/ /g, "_"));
+        const lastSpeaker = script.speeches[script.speeches.length - 1]?.speaker;
+        const speaker =
+          script.speakers.find(
+            (candidate) => candidate.id !== lastSpeaker?.id
+          ) ?? script.speakers[0];
+        if (!speaker) {
+          throw new Error("Cannot close an episode without a speaker");
         }
+        const choice = {
+          speaker,
+          direction:
+            "Deliver the final big-picture takeaway, address the listener directly, thank the co-host, and sign off naturally. Briefly resolve only an immediately outstanding question before the farewell; do not open another topic.",
+          timeStatus: "",
+          forceNearlyOutOfTime: false,
+          requestSummary: false,
+          isFinalTurn: true,
+          turnBrief: {
+            speakerId: speaker.id,
+            goal:
+              "Deliver a self-contained final takeaway and explicit listener-facing farewell.",
+            move: EditorialMove.Summarise,
+            cardIds: [],
+            audienceValue: AudienceValue.Connection,
+            desiredEnergy: EnergyLevel.Warm,
+          },
+        };
         return rememberSelection(
           state,
           {
@@ -307,6 +305,19 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           ? "Repeated candidate"
           : null;
       },
+      validateFinalCandidate: async (_state, selection) => {
+        const speech = generatedSpeeches.get(keyFor(selection));
+        if (!speech) {
+          return "Missing generated closing statement";
+        }
+        const projectedScript: PodcastScript = {
+          ...script,
+          speeches: [...script.speeches, speech],
+        };
+        return this.conclusionPolicy.hasFinalSignOff(projectedScript)
+          ? null
+          : "Final turn did not contain a complete listener-facing sign-off";
+      },
       persistCandidate: async (_state, selection, _candidate, idempotencyKey) => {
         const speech = generatedSpeeches.get(keyFor(selection));
         if (!speech) {
@@ -384,11 +395,13 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
         }
         speech.id = persisted.speechId;
         if (!script.speeches.some((accepted) => accepted.id === speech.id)) {
+          director.recordAcceptedBeat(speech);
           // Policies calculate introducedAtTurn from speeches.length + 1.
           // Apply them after TURN_ACCEPTED, before transcript insertion.
           this.knowledgeLedgerPolicy.recordAcceptedTurn(script, speech);
           this.terminologyLedgerPolicy.recordAcceptedTurn(script, speech);
           script.speeches.push(speech);
+          await director.recordAcceptedCoverage(script, speech);
         }
         script.updatedAt = new Date();
       },
@@ -450,6 +463,11 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
     });
     if (result.status !== "success") {
       throw new Error(`Mastra episode workflow ended with ${result.status}`);
+    }
+    if (result.result.state.phase !== "completed") {
+      throw new Error(
+        `Mastra episode workflow ended without a valid closing statement (${result.result.state.phase}): ${result.result.state.warnings.join("; ")}`
+      );
     }
     return script;
   }

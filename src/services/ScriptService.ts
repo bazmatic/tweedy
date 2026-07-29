@@ -525,6 +525,8 @@ export class ScriptService implements IScriptService {
         speech,
         `${episodeId}/${workflowRunId}/${turn}/speech`
       );
+      directorAgent.recordAcceptedBeat(speech);
+      await directorAgent.recordAcceptedCoverage(script, speech);
       this.knowledgeLedgerPolicy.recordAcceptedTurn(script, speech);
       this.terminologyLedgerPolicy.recordAcceptedTurn(script, speech);
 
@@ -635,16 +637,25 @@ export class ScriptService implements IScriptService {
 
   private logUncoveredPoints(script: PodcastScript): void {
     const uncovered = (script.discussionPoints ?? []).filter(
-      (point) => !point.covered
+      (point) => !point.covered && !point.omitted
     );
-    if (uncovered.length === 0) {
-      return;
+    if (uncovered.length > 0) {
+      logger.warn(
+        `${uncovered.length} discussion point(s) never covered: ${uncovered
+          .map((point) => `${point.id} (${point.text})`)
+          .join(", ")}`
+      );
     }
-    logger.warn(
-      `${uncovered.length} discussion point(s) never covered: ${uncovered
-        .map((point) => `${point.id} (${point.text})`)
-        .join(", ")}`
+    const omitted = (script.discussionPoints ?? []).filter(
+      (point) => point.omitted
     );
+    if (omitted.length > 0) {
+      logger.info(
+        `${omitted.length} lower-ranked discussion point(s) omitted gracefully: ${omitted
+          .map((point) => `${point.id} (${point.text})`)
+          .join(", ")}`
+      );
+    }
   }
 
   private async persistSpeech(
@@ -740,6 +751,7 @@ export class ScriptService implements IScriptService {
         record.terminologyLedger ?? this.terminologyLedgerPolicy.createLedger(),
       speakerRoleAssignments: record.speakerRoleAssignments,
       centralAnalogy: record.centralAnalogy,
+      productionOutcome: record.productionOutcome,
       conversationRun: record.conversationRun,
       createdAt: new Date(record.createdAt),
       updatedAt: new Date(record.updatedAt),
@@ -764,6 +776,7 @@ export class ScriptService implements IScriptService {
         script.terminologyLedger ?? this.terminologyLedgerPolicy.createLedger(),
       speakerRoleAssignments: script.speakerRoleAssignments,
       centralAnalogy: script.centralAnalogy,
+      productionOutcome: script.productionOutcome,
       conversationRun: script.conversationRun,
     };
 

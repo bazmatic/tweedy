@@ -7,6 +7,7 @@ import {
   AudienceValue,
   BeatPurpose,
   EditorialMove,
+  DiscussionPointPriority,
   EnergyLevel,
   EpistemicRole,
   PodcastMaterial,
@@ -163,9 +164,9 @@ describe("DirectorAgent.createPodcastPlan", () => {
     await agent.createPodcastPlan();
 
     expect(script.discussionPoints).toEqual([
-      { id: "p1", text: "Point A", covered: false },
-      { id: "p2", text: "Point B", covered: false },
-      { id: "p3", text: "Point C", covered: false },
+      expect.objectContaining({ id: "p1", text: "Point A", covered: false }),
+      expect.objectContaining({ id: "p2", text: "Point B", covered: false }),
+      expect.objectContaining({ id: "p3", text: "Point C", covered: false }),
     ]);
   });
 
@@ -359,7 +360,7 @@ describe("DirectorAgent editorial turn briefs", () => {
     expect(cardIdOrder[cardIdOrder.length - 1]).toBe("card-1");
   });
 
-  it("tracks completed conversation beats independently of discussion points", async () => {
+  it("tracks a beat only after an accepted reviewed speech advances it", async () => {
     const script = makeScript();
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
     const call = vi.spyOn(agent as any, "callModelForStructuredOutput");
@@ -383,6 +384,34 @@ describe("DirectorAgent editorial turn briefs", () => {
     });
 
     await agent.chooseNextSpeaker(script);
+
+    expect(script.conversationBeats?.[0].covered).toBe(false);
+    agent.recordAcceptedBeat({
+      id: "speech-1",
+      speaker: script.speakers[0],
+      message: "A vivid opening detail.",
+      instructions: "",
+      voice: script.speakers[0].voice,
+      voiceStyle: script.speakers[0].voiceStyle,
+      timestamp: new Date(),
+      turnBrief: {
+        speakerId: script.speakers[0].id,
+        beatId: "b1",
+        goal: "Open with a vivid detail.",
+        move: EditorialMove.Illustrate,
+        cardIds: [],
+        audienceValue: AudienceValue.Entertainment,
+        desiredEnergy: EnergyLevel.Energetic,
+      },
+      review: {
+        accepted: true,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+      },
+    });
 
     expect(script.conversationBeats?.[0]).toEqual(
       expect.objectContaining({ covered: true, coveredAtTurn: 1 })
@@ -471,8 +500,8 @@ describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
     await agent.chooseNextSpeaker(script);
 
     const prompt = (chooseSpy.mock.calls[4][1] as any)[0].content as string;
-    expect(prompt).toContain("p2: Point B");
-    expect(prompt).not.toContain("p1: Point A");
+    expect(prompt).toContain("p2 [supporting");
+    expect(prompt).not.toContain("p1 [supporting");
   });
 
   it("does not mark a point covered if verification rejects the director's claim (hallucination regression)", async () => {
@@ -1043,6 +1072,149 @@ describe("DirectorAgent.reviewSpeech", () => {
 });
 
 describe("DirectorAgent velocity / pacing", () => {
+  it("ranks essential and high-story-value open points ahead of optional points", () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 120 });
+    (agent as any).points = [
+      {
+        id: "optional",
+        text: "Optional detail",
+        covered: false,
+        priority: DiscussionPointPriority.Optional,
+        storyValue: 10,
+        estimatedTurns: 1,
+      },
+      {
+        id: "essential",
+        text: "Central promise",
+        covered: false,
+        priority: DiscussionPointPriority.Essential,
+        storyValue: 6,
+        estimatedTurns: 2,
+      },
+    ];
+
+    const ranked = (agent as any).rankedOpenPoints();
+
+    expect(ranked.map((point: any) => point.id)).toEqual([
+      "essential",
+      "optional",
+    ]);
+  });
+
+  it("makes the highest-ranked open point the next turn's explicit target", async () => {
+    const script = makeScript({
+      speakers: [makeSpeaker("s1"), makeSpeaker("s2")],
+    });
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    const points = [
+      {
+        id: "optional",
+        text: "Optional colour",
+        covered: false,
+        priority: DiscussionPointPriority.Optional,
+        storyValue: 10,
+        estimatedTurns: 1,
+      },
+      {
+        id: "essential",
+        text: "The episode's central promise",
+        covered: false,
+        priority: DiscussionPointPriority.Essential,
+        storyValue: 6,
+        estimatedTurns: 2,
+      },
+    ];
+    (agent as any).points = points;
+    script.discussionPoints = points;
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
+      speakerId: "s1",
+      direction: "Continue naturally.",
+      coveredPointIds: [],
+    });
+
+    const result = await agent.chooseNextSpeaker(script);
+
+    expect(result.turnBrief.targetPointId).toBe("essential");
+    expect(result.direction).toContain(
+      "Advance the scheduled point essential"
+    );
+  });
+
+  it("verifies the scheduled point immediately after its speech is accepted", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    const point = {
+      id: "p1",
+      text: "Central promise",
+      covered: false,
+      priority: DiscussionPointPriority.Essential,
+    };
+    (agent as any).points = [point];
+    script.discussionPoints = [point];
+    vi.spyOn(agent as any, "verifyCoveredPoints").mockResolvedValue(["p1"]);
+    const speaker = script.speakers[0];
+    const speech = {
+      id: "speech-1",
+      speaker,
+      message: "The central promise is now explained in concrete detail.",
+      instructions: "",
+      voice: speaker.voice,
+      voiceStyle: speaker.voiceStyle,
+      timestamp: new Date(),
+      turnBrief: {
+        speakerId: speaker.id,
+        targetPointId: "p1",
+        goal: "Explain the central promise.",
+        move: EditorialMove.Explain,
+        cardIds: [],
+        audienceValue: AudienceValue.Understanding,
+        desiredEnergy: EnergyLevel.Curious,
+      },
+    } as Speech;
+    script.speeches.push(speech);
+
+    await agent.recordAcceptedCoverage(script, speech);
+
+    expect(point.covered).toBe(true);
+  });
+
+  it("records lower-ranked leftovers as explicit graceful omissions", () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 120 });
+    const points = [
+      {
+        id: "covered",
+        text: "Covered",
+        covered: true,
+        priority: DiscussionPointPriority.Essential,
+      },
+      {
+        id: "omitted",
+        text: "Optional detail",
+        covered: false,
+        priority: DiscussionPointPriority.Optional,
+      },
+    ];
+    (agent as any).points = points;
+    script.discussionPoints = points;
+
+    agent.markRemainingPointsOmitted("duration_budget");
+
+    expect(points[1]).toEqual(
+      expect.objectContaining({
+        omitted: true,
+        omissionReason: "duration_budget",
+      })
+    );
+    expect(script.productionOutcome).toEqual({
+      status: "complete_with_omissions",
+      completionReason: "duration_budget",
+      omittedPointIds: ["omitted"],
+      omissionSeverity: "optional_only",
+    });
+  });
+
   it("requests a summary turn when behind pace with 2+ open points", async () => {
     const script = makeScript({
       speeches: [

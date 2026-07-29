@@ -140,11 +140,33 @@ export interface PodcastMaterial {
   createdAt: Date;
 }
 
+export enum DiscussionPointPriority {
+  Essential = "essential",
+  Supporting = "supporting",
+  Optional = "optional",
+}
+
 export interface DiscussionPoint {
   id: string;
   text: string;
   covered: boolean;
   coveredAtTurn?: number;
+  /** Editorial importance used when the production team must triage for time. */
+  priority?: DiscussionPointPriority;
+  /** 1-10 estimate of how compelling this point will be in spoken form. */
+  storyValue?: number;
+  /** Estimated substantive turns needed to land the point naturally. */
+  estimatedTurns?: number;
+  /** Explicit graceful-degradation outcome; omitted is not the same as missed. */
+  omitted?: boolean;
+  omissionReason?: string;
+}
+
+export interface ProductionOutcome {
+  status: "complete" | "complete_with_omissions";
+  completionReason: string;
+  omittedPointIds: string[];
+  omissionSeverity?: "none" | "optional_only" | "supporting" | "essential";
 }
 
 /** Subject-neutral editorial ingredients prepared from source material. */
@@ -269,6 +291,8 @@ export interface ConversationBeat {
   prerequisiteBeatIds: string[];
   desiredEnergy: EnergyLevel;
   targetTurns: number;
+  /** Ranked discussion points this beat is intended to advance. */
+  pointIds?: string[];
   covered: boolean;
   coveredAtTurn?: number;
 }
@@ -321,6 +345,8 @@ export interface TurnBrief {
   desiredEnergy: EnergyLevel;
   device?: ConversationalDevice;
   knowledgeSource?: KnowledgeSource;
+  /** Deterministically scheduled editorial point for this accepted turn. */
+  targetPointId?: string;
 }
 
 export interface TurnReview {
@@ -362,6 +388,7 @@ export interface PodcastScript {
   speakerRoleAssignments?: Record<string, SpeakerRoleProfile>;
   centralAnalogy?: string;
   narrative?: string;
+  productionOutcome?: ProductionOutcome;
   conversationRun?: {
     engine: "legacy" | "mastra";
     flowVersion: string;
@@ -479,6 +506,7 @@ export interface ScriptRecord {
   audienceProfile?: AudienceProfile;
   terminologyLedger?: TerminologyLedger;
   speakerRoleAssignments?: Record<string, SpeakerRoleProfile>;
+  productionOutcome?: ProductionOutcome;
   conversationRun?: {
     engine: "legacy" | "mastra";
     flowVersion: string;

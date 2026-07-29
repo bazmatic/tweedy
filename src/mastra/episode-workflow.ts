@@ -149,6 +149,11 @@ export interface EpisodeWorkflowDependencies {
     selection: TurnSelection,
     candidate: WorkflowCandidate
   ): Promise<string | null>;
+  validateFinalCandidate?(
+    state: EpisodeState,
+    selection: TurnSelection,
+    candidate: WorkflowCandidate
+  ): Promise<string | null>;
   persistCandidate(
     state: EpisodeState,
     selection: TurnSelection,
@@ -412,6 +417,12 @@ export function createTurnTransactionWorkflow(
       const rejectionReason =
         (!reviewResult.approved &&
           (reviewResult.notes || "Editorial review rejected the candidate")) ||
+        (selection.isFinalTurn &&
+          (await dependencies.validateFinalCandidate?.(
+            inputData.state,
+            selection,
+            candidate
+          ))) ||
         (await dependencies.validateIntegrity(
           inputData.state,
           selection,
@@ -622,6 +633,14 @@ export function createEpisodeWorkflow(
           reason
         );
         selection = { ...selection, isFinalTurn: true };
+      } else if (inputData.state.phase === "closing") {
+        selection = {
+          ...(await dependencies.forceClosingTurn(
+            inputData.state,
+            "closing phase"
+          )),
+          isFinalTurn: true,
+        };
       } else {
         try {
           const naturallyComplete =
@@ -870,8 +889,10 @@ export function createEpisodeWorkflow(
         }
         if (state.phase === "closing") {
           state = apply(state, {
-            type: "EPISODE_COMPLETED",
+            type: "WORKFLOW_WARNING_RECORDED",
             timestamp: timestamp(),
+            message:
+              "Workflow iteration bound reached before a valid closing statement was accepted",
           });
         }
       }

@@ -317,6 +317,40 @@ describe("nested Mastra episode workflow", () => {
     expect(forceClosingTurn).toHaveBeenCalledWith(expect.anything(), reason);
   });
 
+  it("does not complete when every forced final candidate fails closing validation", async () => {
+    const { result } = await runEpisode(
+      dependencies({
+        validateFinalCandidate: vi
+          .fn()
+          .mockResolvedValue("missing listener-facing sign-off"),
+      }),
+      { maxTurns: 2, maxDurationSeconds: 1 }
+    );
+
+    expect(result.state.phase).toBe("closing");
+    expect(result.state.warnings).toContain(
+      "Workflow iteration bound reached before a valid closing statement was accepted"
+    );
+    expect(result.state.acceptedSpeechIds).toHaveLength(1);
+  });
+
+  it("retries an invalid final candidate and completes only after validation succeeds", async () => {
+    const validateFinalCandidate = vi
+      .fn()
+      .mockResolvedValueOnce("missing listener-facing sign-off")
+      .mockResolvedValue(null);
+    const { result } = await runEpisode(
+      dependencies({ validateFinalCandidate }),
+      { maxTurns: 8, maxDurationSeconds: 1 }
+    );
+
+    expect(result.state.phase).toBe("completed");
+    expect(validateFinalCandidate).toHaveBeenCalledTimes(2);
+    expect(result.state.warnings).toContain(
+      "missing listener-facing sign-off"
+    );
+  });
+
   it("uses the natural conclusion judgement but remains explicitly final", async () => {
     const forceClosingTurn = vi.fn(async (state: EpisodeState) =>
       selection(state, {
