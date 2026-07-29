@@ -65,6 +65,15 @@ const WorkflowReviewSchema = z.object({
   approved: z.boolean(),
   notes: z.string(),
 });
+type WorkflowReview = z.infer<typeof WorkflowReviewSchema>;
+
+export interface WorkflowReviewResult extends TurnReviewResult {
+  /**
+   * A reviewer may return a rewritten candidate. Keeping it explicit avoids
+   * mutating a snapshotted step input behind Mastra's back.
+   */
+  candidate?: WorkflowCandidate;
+}
 
 export const EpisodeWorkflowEnvelopeSchema = z.object({
   state: EpisodeStateSchema,
@@ -123,7 +132,7 @@ export interface EpisodeWorkflowDependencies {
     state: EpisodeState,
     selection: TurnSelection,
     candidate: WorkflowCandidate
-  ): Promise<TurnReviewResult>;
+  ): Promise<WorkflowReviewResult>;
   reviseCandidate?(
     state: EpisodeState,
     selection: TurnSelection,
@@ -146,6 +155,16 @@ export interface EpisodeWorkflowDependencies {
     candidate: WorkflowCandidate,
     idempotencyKey: string
   ): Promise<PersistedTurn>;
+  /**
+   * Projects already-accepted workflow truth back into the domain model.
+   * This runs only after TURN_ACCEPTED has been reduced.
+   */
+  acceptCandidate?(
+    state: EpisodeState,
+    selection: TurnSelection,
+    candidate: WorkflowCandidate,
+    persisted: PersistedTurn
+  ): Promise<void>;
   selectInterjection?(
     state: EpisodeState,
     acceptedSpeechId: string
@@ -260,7 +279,7 @@ export function createTurnTransactionWorkflow(
     retries: 1,
     execute: async ({ inputData }) => {
       if (!inputData.selection || !inputData.candidate) return inputData;
-      let reviewResult: TurnReviewResult;
+      let reviewResult: WorkflowReviewResult;
       try {
         reviewResult = await dependencies.reviewCandidate(
           inputData.state,
@@ -273,12 +292,34 @@ export function createTurnTransactionWorkflow(
           notes: "Reviewer unavailable; accepted fail-open",
         };
       }
-      const state = apply(inputData.state, {
+      const reviewedCandidate = reviewResult.candidate ?? inputData.candidate;
+      const review: WorkflowReview = {
+        approved: reviewResult.approved,
+        notes: reviewResult.notes,
+      };
+      let state = inputData.state;
+      if (reviewedCandidate.message !== inputData.candidate.message) {
+        // The existing DirectorAgent can revise internally. Express that
+        // rewrite as reducer events so pending state and durable speech agree.
+        state = apply(state, {
+          type: "TURN_REVIEWED",
+          timestamp: timestamp(),
+          approved: false,
+          notes: review.notes || "Reviewer supplied a revision",
+        });
+        state = apply(state, {
+          type: "TURN_REVISED",
+          timestamp: timestamp(),
+          message: reviewedCandidate.message,
+          stopReason: reviewedCandidate.stopReason,
+        });
+      }
+      state = apply(state, {
         type: "TURN_REVIEWED",
         timestamp: timestamp(),
-        ...reviewResult,
+        ...review,
       });
-      return { ...inputData, state, review: reviewResult };
+      return { ...inputData, state, candidate: reviewedCandidate, review };
     },
   });
 
@@ -445,6 +486,12 @@ export function createTurnTransactionWorkflow(
         introducedKnowledgeIds: persisted.introducedKnowledgeIds ?? [],
         introducedTerms: persisted.introducedTerms ?? [],
       });
+      await dependencies.acceptCandidate?.(
+        state,
+        selection,
+        candidate,
+        persisted
+      );
       if (selection.isOpeningTurn) {
         state = apply(state, {
           type: "OPENING_ADVANCED",

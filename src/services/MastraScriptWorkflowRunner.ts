@@ -290,10 +290,14 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           script.speeches
         );
         generatedSpeeches.set(keyFor(selection), reviewed);
-        candidate.message = reviewed.message;
         return {
           approved: true,
           notes: reviewed.review?.feedback ?? "Director review completed",
+          candidate: {
+            ...candidate,
+            message: reviewed.message,
+            stopReason: reviewed.stopReason ?? candidate.stopReason,
+          },
         };
       },
       validateIntegrity: async () => null,
@@ -325,12 +329,32 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           idempotencyKey
         );
         speech.id = persisted.id;
-        if (!script.speeches.some((accepted) => accepted.id === speech.id)) {
-          script.speeches.push(speech);
-          this.knowledgeLedgerPolicy.recordAcceptedTurn(script, speech);
-          this.terminologyLedgerPolicy.recordAcceptedTurn(script, speech);
-        }
-        script.updatedAt = new Date();
+        const projectedScript: PodcastScript = {
+          ...script,
+          speeches: [...script.speeches],
+          knowledgeLedger: {
+            introducedCards: [
+              ...(script.knowledgeLedger?.introducedCards ?? []),
+            ],
+          },
+          terminologyLedger: {
+            explainedTerms: [
+              ...(script.terminologyLedger?.explainedTerms ?? []),
+            ],
+          },
+        };
+        const introducedKnowledgeBefore = new Set(
+          projectedScript.knowledgeLedger?.introducedCards.map(
+            (entry) => entry.cardId
+          ) ?? []
+        );
+        const introducedTermsBefore = new Set(
+          projectedScript.terminologyLedger?.explainedTerms.map(
+            (entry) => entry.term
+          ) ?? []
+        );
+        this.knowledgeLedgerPolicy.recordAcceptedTurn(projectedScript, speech);
+        this.terminologyLedgerPolicy.recordAcceptedTurn(projectedScript, speech);
         const durationSeconds =
           (speech.message.trim().split(/\s+/).filter(Boolean).length / 150) *
           60;
@@ -343,9 +367,30 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           coveredConversationBeatIds: (script.conversationBeats ?? [])
             .filter((beat) => beat.covered)
             .map((beat) => beat.id),
-          introducedKnowledgeIds: [],
-          introducedTerms: [],
+          introducedKnowledgeIds:
+            projectedScript.knowledgeLedger?.introducedCards
+              .map((entry) => entry.cardId)
+              .filter((cardId) => !introducedKnowledgeBefore.has(cardId)) ?? [],
+          introducedTerms:
+            projectedScript.terminologyLedger?.explainedTerms
+              .map((entry) => entry.term)
+              .filter((term) => !introducedTermsBefore.has(term)) ?? [],
         };
+      },
+      acceptCandidate: async (_state, selection, _candidate, persisted) => {
+        const speech = generatedSpeeches.get(keyFor(selection));
+        if (!speech) {
+          throw new Error(`Missing accepted turn ${keyFor(selection)}`);
+        }
+        speech.id = persisted.speechId;
+        if (!script.speeches.some((accepted) => accepted.id === speech.id)) {
+          // Policies calculate introducedAtTurn from speeches.length + 1.
+          // Apply them after TURN_ACCEPTED, before transcript insertion.
+          this.knowledgeLedgerPolicy.recordAcceptedTurn(script, speech);
+          this.terminologyLedgerPolicy.recordAcceptedTurn(script, speech);
+          script.speeches.push(speech);
+        }
+        script.updatedAt = new Date();
       },
       selectInterjection: async (state) => {
         const last = script.speeches[script.speeches.length - 1];

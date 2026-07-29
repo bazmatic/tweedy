@@ -11,7 +11,8 @@
     "dev": "ts-node src/index.ts",
     "start": "node dist/index.js",
     "clean": "rm -rf dist",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:workflows": "vitest run src/mastra src/workflow src/services/conversation-engine.test.ts src/services/MastraScriptWorkflowRunner.test.ts src/agents/OpeningSequencePolicy.test.ts src/agents/TurnAssignmentRepairPipeline.test.ts src/agents/DialogueCadencePolicy.test.ts src/agents/CoverageVerifier.test.ts src/agents/KnowledgeLedgerPolicy.test.ts src/agents/TerminologyLedgerPolicy.test.ts"
   },
   "keywords": [
     "podcast",

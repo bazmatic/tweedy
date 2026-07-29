@@ -117,7 +117,10 @@ describe("MastraScriptWorkflowRunner", () => {
       stopReason: "stop" as const,
     };
     speakerSpeak.mockResolvedValue(speech);
-    directorReview.mockImplementation(async (candidate) => candidate);
+    directorReview.mockImplementation(async (candidate) => ({
+      ...candidate,
+      message: "A reviewer-improved opening and final thought.",
+    }));
     directorComplete.mockResolvedValue(false);
     directorChoose.mockResolvedValue({
       speaker,
@@ -133,10 +136,18 @@ describe("MastraScriptWorkflowRunner", () => {
       id: `speech-${idempotencyKey}`,
       idempotencyKey,
     }));
+    let speechesVisibleWhenLedgerRecorded = -1;
+    const knowledgeLedgerPolicy = {
+      createLedger: () => ({ introducedCards: [] }),
+      getAccessibleCards: () => [],
+      recordAcceptedTurn: (targetScript: typeof script) => {
+        speechesVisibleWhenLedgerRecorded = targetScript.speeches.length;
+      },
+    };
     const runner = new MastraScriptWorkflowRunner(
       { createOrReturn } as any,
       { addMaterials: vi.fn() } as any,
-      undefined,
+      knowledgeLedgerPolicy as any,
       undefined,
       undefined,
       undefined,
@@ -164,9 +175,12 @@ describe("MastraScriptWorkflowRunner", () => {
     expect(result).toBe(script);
     expect(result.speeches.length).toBeGreaterThan(0);
     expect(createOrReturn).toHaveBeenCalledWith(
-      expect.anything(),
+      expect.objectContaining({
+        message: "A reviewer-improved opening and final thought.",
+      }),
       expect.stringContaining("/run-14/")
     );
+    expect(speechesVisibleWhenLedgerRecorded).toBe(0);
     expect(directorCreatePlan).toHaveBeenCalledOnce();
   });
 });
