@@ -241,6 +241,41 @@ describe("reduceEpisode: discussion phase turn pipeline", () => {
     ).toThrow(InvalidTransitionError);
   });
 
+  it("TURN_REVISED replaces a rejected candidate and requires re-review", () => {
+    let state = discussionState();
+    state = reduceEpisode(state, {
+      type: "TURN_DIRECTED",
+      timestamp,
+      speakerId: "speaker-1",
+      direction: "explain",
+      kind: "speech",
+    });
+    state = reduceEpisode(state, {
+      type: "TURN_GENERATED",
+      timestamp,
+      message: "unclear candidate",
+      stopReason: "stop",
+    });
+    state = reduceEpisode(state, {
+      type: "TURN_REVIEWED",
+      timestamp,
+      approved: false,
+      notes: "make it clearer",
+    });
+    const revised = reduceEpisode(state, {
+      type: "TURN_REVISED",
+      timestamp,
+      message: "clear candidate",
+      stopReason: "stop",
+    });
+
+    expect(revised.pendingTurn).toMatchObject({
+      candidateMessage: "clear candidate",
+      reviewApproved: null,
+      reviewNotes: null,
+    });
+  });
+
   it("rejects TURN_ACCEPTED when the review was not approved", () => {
     let state = discussionState();
     state = reduceEpisode(state, {
@@ -461,6 +496,7 @@ describe("reduceEpisode: round-trip, immutability and event coverage", () => {
       "TURN_DIRECTED",
       "TURN_GENERATED",
       "TURN_REVIEWED",
+      "TURN_REVISED",
       "TURN_REJECTED",
       "TURN_ACCEPTED",
       "INTERJECTION_REQUESTED",

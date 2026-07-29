@@ -50,3 +50,26 @@ For troubleshooting, verify the data directory is writable, remove no live
 SQLite files, and run `pnpm test` plus `pnpm build`. A missing model credential
 does not prevent composition-root construction; it fails only when the
 compatibility route actually constructs that provider model.
+
+## Episode workflow
+
+Pass `episodeWorkflowDependencies` to `createTweedyMastra()` to register the
+typed `generate-episode` workflow. The dependencies are narrow adapters around
+the existing repositories, inspector, direction proposer, assignment repair,
+speaker generation, review and transactional persistence seams. Large
+materials, speakers and voice records are loaded inside those adapters by
+episode or entity ID and do not enter workflow snapshots.
+
+The top-level workflow prepares materials, assigns roles, creates the plan,
+executes the nested `produce-episode-turn` workflow in a bounded `doWhile`,
+and finalises the compact `EpisodeState`. The nested graph separates episode
+inspection, proposal, deterministic repair, generation, review, validation,
+idempotent persistence and reducer acceptance. It reuses the same transaction
+workflow for independent interjections.
+
+Generation and persistence steps have bounded retries. Review remains
+fail-open and material/RAG preparation remains best effort. Turn, duration and
+iteration ceilings force an explicit final sign-off even if direction or
+conclusion model calls fail. Snapshots are persisted after workflow steps, and
+stable `episode/run/logical-turn/kind` keys make replay after a post-write
+failure return the same speech record.

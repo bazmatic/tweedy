@@ -454,6 +454,11 @@ route through the same LangChain model factory, and legacy conversation
 generation remains the default. See [docs/MASTRA_RUNTIME.md](docs/MASTRA_RUNTIME.md)
 for storage, tracing, redaction, setup, and upgrade guidance.
 
+The opt-in runtime now includes a typed, nested episode workflow with bounded
+turn iteration, durable step snapshots, reducer-only state transitions and
+idempotent speech/interjection acceptance. It is infrastructure for the
+upcoming engine-selection work; `ScriptService` still uses the legacy loop.
+
 ### Structured Model Responses
 
 Tweedy distinguishes structured data from genuine actions. Episode planning,

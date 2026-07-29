@@ -38,7 +38,17 @@ function reducePreparing(state: EpisodeState, event: EpisodeEvent): EpisodeState
         lastAppliedEvent: event.type,
       };
     case "PLAN_CREATED":
-      return { ...state, phase: "opening", lastAppliedEvent: event.type };
+      return {
+        ...state,
+        phase: "opening",
+        discussionPoints:
+          event.discussionPointIds?.map((id) => ({ id, covered: false })) ??
+          state.discussionPoints,
+        conversationBeats:
+          event.conversationBeatIds?.map((id) => ({ id, covered: false })) ??
+          state.conversationBeats,
+        lastAppliedEvent: event.type,
+      };
     case "WORKFLOW_WARNING_RECORDED":
       return { ...state, warnings: [...state.warnings, event.message], lastAppliedEvent: event.type };
     default:
@@ -49,6 +59,13 @@ function reducePreparing(state: EpisodeState, event: EpisodeEvent): EpisodeState
 function reduceOpening(state: EpisodeState, event: EpisodeEvent): EpisodeState {
   switch (event.type) {
     case "OPENING_ADVANCED":
+      if (state.pendingTurn !== null) {
+        throw new InvalidTransitionError(
+          state.phase,
+          event.type,
+          "cannot advance while an opening turn is pending"
+        );
+      }
       return {
         ...state,
         openingCursor: state.openingCursor + 1,
@@ -58,14 +75,17 @@ function reduceOpening(state: EpisodeState, event: EpisodeEvent): EpisodeState {
     case "WORKFLOW_WARNING_RECORDED":
       return { ...state, warnings: [...state.warnings, event.message], lastAppliedEvent: event.type };
     default:
-      throw new InvalidTransitionError(state.phase, event.type);
+      // Opening speeches use the same pending -> reviewed -> persisted ->
+      // accepted transaction as discussion speeches. OPENING_ADVANCED remains
+      // a separate event so a rejected candidate cannot move the cursor.
+      return reduceTurnPipeline(state, event, "opening");
   }
 }
 
 function reduceTurnPipeline(
   state: EpisodeState,
   event: EpisodeEvent,
-  phase: "discussion" | "closing"
+  phase: "opening" | "discussion" | "closing"
 ): EpisodeState {
   switch (event.type) {
     case "TURN_DIRECTED": {
@@ -112,6 +132,30 @@ function reduceTurnPipeline(
       return {
         ...state,
         pendingTurn: { ...state.pendingTurn, reviewNotes: event.notes, reviewApproved: event.approved },
+        lastAppliedEvent: event.type,
+      };
+    }
+    case "TURN_REVISED": {
+      if (
+        state.pendingTurn === null ||
+        state.pendingTurn.candidateMessage === null ||
+        state.pendingTurn.reviewApproved !== false
+      ) {
+        throw new InvalidTransitionError(
+          phase,
+          event.type,
+          "no rejected review awaiting revision"
+        );
+      }
+      return {
+        ...state,
+        pendingTurn: {
+          ...state.pendingTurn,
+          candidateMessage: event.message,
+          candidateStopReason: event.stopReason,
+          reviewNotes: null,
+          reviewApproved: null,
+        },
         lastAppliedEvent: event.type,
       };
     }

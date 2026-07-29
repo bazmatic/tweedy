@@ -4,12 +4,17 @@ import { AiProviderName } from "../types";
 import { createMinimalWorkflow } from "./minimal-workflow";
 import { createModelTaskRoutes } from "./model-routes";
 import { JsonlTraceSink, TraceSink } from "./tracing";
+import {
+  createEpisodeWorkflow,
+  EpisodeWorkflowDependencies,
+} from "./episode-workflow";
 
 export interface CreateTweedyMastraOptions {
   storagePath: string;
   tracePath?: string;
   traceSink?: TraceSink;
   provider?: AiProviderName;
+  episodeWorkflowDependencies?: EpisodeWorkflowDependencies;
 }
 
 /**
@@ -24,15 +29,20 @@ export function createTweedyMastra(options: CreateTweedyMastraOptions) {
       options.tracePath ?? `${options.storagePath}.traces.jsonl`
     );
   const minimalWorkflow = createMinimalWorkflow(traceSink);
+  const episodeWorkflow = options.episodeWorkflowDependencies
+    ? createEpisodeWorkflow(options.episodeWorkflowDependencies, traceSink)
+    : undefined;
   const routes = createModelTaskRoutes(
     options.provider ?? AiProviderName.Anthropic
   );
   const mastra = new Mastra({
     storage,
-    workflows: { minimalWorkflow },
+    workflows: episodeWorkflow
+      ? { minimalWorkflow, episodeWorkflow }
+      : { minimalWorkflow },
   });
 
-  return { mastra, storage, traceSink, routes };
+  return { mastra, storage, traceSink, routes, episodeWorkflow };
 }
 
 function toFileUrl(storagePath: string): string {
@@ -42,6 +52,7 @@ function toFileUrl(storagePath: string): string {
 }
 
 export * from "./minimal-workflow";
+export * from "./episode-workflow";
 export * from "./model-routes";
 export * from "./runtime-context";
 export * from "./tracing";

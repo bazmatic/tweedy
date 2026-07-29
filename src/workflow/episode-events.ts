@@ -23,6 +23,8 @@ export type RolesAssignedEvent = z.infer<typeof RolesAssignedEventSchema>;
 export const PlanCreatedEventSchema = z.object({
   type: z.literal("PLAN_CREATED"),
   timestamp: z.string(),
+  discussionPointIds: z.array(z.string()).optional(),
+  conversationBeatIds: z.array(z.string()).optional(),
 });
 export type PlanCreatedEvent = z.infer<typeof PlanCreatedEventSchema>;
 
@@ -59,6 +61,14 @@ export const TurnReviewedEventSchema = z.object({
   notes: z.string(),
 });
 export type TurnReviewedEvent = z.infer<typeof TurnReviewedEventSchema>;
+
+export const TurnRevisedEventSchema = z.object({
+  type: z.literal("TURN_REVISED"),
+  timestamp: z.string(),
+  message: z.string(),
+  stopReason: StopReasonSchema,
+});
+export type TurnRevisedEvent = z.infer<typeof TurnRevisedEventSchema>;
 
 export const TurnRejectedEventSchema = z.object({
   type: z.literal("TURN_REJECTED"),
@@ -118,6 +128,7 @@ export const EpisodeEventSchema = z.discriminatedUnion("type", [
   TurnDirectedEventSchema,
   TurnGeneratedEventSchema,
   TurnReviewedEventSchema,
+  TurnRevisedEventSchema,
   TurnRejectedEventSchema,
   TurnAcceptedEventSchema,
   InterjectionRequestedEventSchema,
