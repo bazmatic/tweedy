@@ -38,14 +38,19 @@ describe("loadConfig Mastra runtime", () => {
     else process.env.MASTRA_STORAGE_PATH = originalStoragePath;
   });
 
-  it("keeps legacy generation as the default", () => {
+  it("uses Mastra generation by default", () => {
     delete process.env.CONVERSATION_WORKFLOW_ENGINE;
-    expect(loadConfig().conversationWorkflowEngine).toBe("legacy");
+    expect(loadConfig().conversationWorkflowEngine).toBe("mastra");
   });
 
   it("selects Mastra explicitly", () => {
     process.env.CONVERSATION_WORKFLOW_ENGINE = "mastra";
     expect(loadConfig().conversationWorkflowEngine).toBe("mastra");
+  });
+
+  it("selects legacy explicitly for rollback", () => {
+    process.env.CONVERSATION_WORKFLOW_ENGINE = "legacy";
+    expect(loadConfig().conversationWorkflowEngine).toBe("legacy");
   });
 
   it("rejects invalid engine configuration", () => {

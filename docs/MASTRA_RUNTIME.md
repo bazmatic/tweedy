@@ -1,10 +1,10 @@
 # Mastra runtime
 
-Tweedy includes a Mastra composition root for incremental workflow migration.
-The existing LangChain conversation generator remains the default. Set
-`CONVERSATION_WORKFLOW_ENGINE=mastra` or pass `--engine mastra` to
-`tweedy script generate` to use the typed episode workflow. Switch back to
-`legacy` for configuration-only rollback.
+Tweedy uses the typed Mastra episode workflow by default. Set
+`CONVERSATION_WORKFLOW_ENGINE=legacy` or pass `--engine legacy` to
+`tweedy script generate` for configuration-only rollback during the soak
+window. See [MASTRA_CUTOVER.md](MASTRA_CUTOVER.md) for success thresholds,
+monitoring and the rollback procedure.
 
 ## Pinned compatibility line
 
@@ -48,9 +48,10 @@ values identified as prompts, sources, excerpts, documents, materials, or
 long free text are replaced with `[REDACTED]` before export.
 
 For troubleshooting, verify the data directory is writable, remove no live
-SQLite files, and run `pnpm test` plus `pnpm build`. A missing model credential
-does not prevent composition-root construction; it fails only when the
-compatibility route actually constructs that provider model.
+SQLite files, and run `pnpm test:workflows`, `pnpm test` and `pnpm build`. A
+missing model credential does not prevent composition-root construction; it
+fails only when the compatibility route actually constructs that provider
+model.
 
 ## Episode workflow
 

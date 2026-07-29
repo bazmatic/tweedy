@@ -186,13 +186,41 @@ describe("ScriptService conversation engine integration", () => {
     );
   });
 
+  it("runs Mastra by default when no engine override is supplied", async () => {
+    const repositories = generationRepositories();
+    const run = vi.fn(async ({ script }) => script);
+    const mastra = new MastraConversationWorkflowEngine({ run });
+    const legacyExecute = vi.fn();
+    const service = makeService({
+      ...repositories,
+      conversationEngineSelector: new ConversationEngineSelector([
+        new LegacyConversationWorkflowEngine(legacyExecute),
+        mastra,
+      ]),
+    });
+
+    const script = await service.generateScript({
+      title: "Mastra default",
+      description: "",
+      speakers: [{ id: "speaker-1" }] as any,
+      materials: [],
+      maxTurns: 4,
+      maxDuration: 60,
+      allocation: "sequential" as any,
+    });
+
+    expect(run).toHaveBeenCalledOnce();
+    expect(legacyExecute).not.toHaveBeenCalled();
+    expect(script.conversationRun?.engine).toBe("mastra");
+  });
+
   it("rejects an unavailable engine before loading repositories", async () => {
     const repositories = generationRepositories();
     const service = makeService({
       ...repositories,
       conversationEngineSelector: new ConversationEngineSelector([
         new LegacyConversationWorkflowEngine(vi.fn()),
-      ]),
+      ], ConversationWorkflowEngineName.Legacy),
     });
 
     await expect(
@@ -1196,16 +1224,19 @@ describe("ScriptService guidance", () => {
       speechRepository,
     });
 
-    await service.generateScript({
-      title: "Test",
-      description: "Desc",
-      guidance: "Keep it skeptical of the marketing claims.",
-      speakers: [{ id: "s1" } as any],
-      materials: [],
-      maxTurns: 1,
-      maxDuration: 60,
-      allocation: "sequential" as any,
-    });
+    await service.generateScript(
+      {
+        title: "Test",
+        description: "Desc",
+        guidance: "Keep it skeptical of the marketing claims.",
+        speakers: [{ id: "s1" } as any],
+        materials: [],
+        maxTurns: 1,
+        maxDuration: 60,
+        allocation: "sequential" as any,
+      },
+      { engine: "legacy" }
+    );
 
     expect(directorAgentConstructorMock).toHaveBeenCalled();
     const [, , guidanceArg] = directorAgentConstructorMock.mock.calls[0];

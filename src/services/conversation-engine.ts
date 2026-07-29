@@ -94,7 +94,7 @@ export class ConversationEngineSelector {
 
   constructor(
     engines: ConversationWorkflowEngine[],
-    readonly defaultEngine = ConversationWorkflowEngineName.Legacy
+    readonly defaultEngine = ConversationWorkflowEngineName.Mastra
   ) {
     this.engines = new Map(engines.map((engine) => [engine.name, engine]));
     if (!this.engines.has(defaultEngine)) {

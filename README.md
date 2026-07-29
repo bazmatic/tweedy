@@ -448,18 +448,19 @@ so the editorial agents and routing policy work unchanged with Anthropic,
 DeepSeek, or a future provider. If a provider has fewer model classes, multiple
 tiers can resolve to the same model.
 
-Mastra workflow infrastructure is available as an incremental, opt-in
-orchestration layer. All current `ModelTask` values retain a compatibility
-route through the same LangChain model factory, and legacy conversation
-generation remains the default. See [docs/MASTRA_RUNTIME.md](docs/MASTRA_RUNTIME.md)
-for storage, tracing, redaction, setup, and upgrade guidance.
+Mastra is the default conversation orchestration layer. All current
+`ModelTask` values retain a compatibility route through the same LangChain
+model factory. See [docs/MASTRA_RUNTIME.md](docs/MASTRA_RUNTIME.md) for storage,
+tracing, redaction, setup and upgrade guidance, and
+[docs/MASTRA_CUTOVER.md](docs/MASTRA_CUTOVER.md) for soak thresholds and
+rollback.
 
-The opt-in runtime now includes a typed, nested episode workflow with bounded
+The runtime includes a typed, nested episode workflow with bounded
 turn iteration, durable step snapshots, reducer-only state transitions and
-idempotent speech/interjection acceptance. Select it per invocation with
-`tweedy script generate --engine mastra ...`, or set
-`CONVERSATION_WORKFLOW_ENGINE=mastra`. Legacy remains the default and rollback
-is configuration-only.
+idempotent speech/interjection acceptance. Use
+`tweedy script generate --engine legacy ...` or set
+`CONVERSATION_WORKFLOW_ENGINE=legacy` for configuration-only rollback during
+the soak window.
 
 ### Structured Model Responses
 

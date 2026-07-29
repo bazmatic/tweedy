@@ -41,11 +41,11 @@ export function loadConfig(): AppConfig {
 export function parseConversationWorkflowEngine(
   value: string | undefined
 ): "legacy" | "mastra" {
-  if (value === undefined || value === "" || value === "legacy") {
-    return "legacy";
-  }
-  if (value === "mastra") {
+  if (value === undefined || value === "" || value === "mastra") {
     return "mastra";
+  }
+  if (value === "legacy") {
+    return "legacy";
   }
   throw new Error(
     `Invalid CONVERSATION_WORKFLOW_ENGINE "${value}"; expected legacy or mastra`

@@ -148,9 +148,16 @@ describe("ConversationEngineSelector", () => {
     run: async ({ script }) => script,
   });
 
-  it("defaults to legacy", () => {
+  it("defaults to Mastra after cutover", () => {
     const selector = new ConversationEngineSelector([legacy, mastra]);
-    expect(selector.resolve()).toBe(legacy);
+    expect(selector.resolve()).toBe(mastra);
+  });
+
+  it("selects legacy explicitly for configuration-only rollback", () => {
+    const selector = new ConversationEngineSelector([legacy, mastra]);
+    expect(selector.resolve(ConversationWorkflowEngineName.Legacy)).toBe(
+      legacy
+    );
   });
 
   it("selects Mastra explicitly", () => {
@@ -161,7 +168,10 @@ describe("ConversationEngineSelector", () => {
   });
 
   it("fails clearly when an engine is unavailable", () => {
-    const selector = new ConversationEngineSelector([legacy]);
+    const selector = new ConversationEngineSelector(
+      [legacy],
+      ConversationWorkflowEngineName.Legacy
+    );
     expect(() =>
       selector.resolve(ConversationWorkflowEngineName.Mastra)
     ).toThrow('Conversation workflow engine "mastra" is not available');
