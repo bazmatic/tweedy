@@ -18,6 +18,10 @@ data/
 audio/
 scripts/
 embeddings/
+*.db
+*.db-shm
+*.db-wal
+mastra-traces.jsonl
 
 # Logs
 logs/
@@ -67,4 +71,3 @@ specs/
 .codegraph/
 .superpowers/
 .cursor/
-

@@ -63,6 +63,27 @@ describe("director structured-output schemas", () => {
     expect(parsed.centralAnalogy).toContain("USB");
   });
 
+  it("accepts ranked discussion points for adaptive production scheduling", () => {
+    const parsed = createPodcastPlanSchema.parse({
+      narrative: "n",
+      points: [
+        {
+          text: "The central idea",
+          priority: "essential",
+          storyValue: 9,
+          estimatedTurns: 2,
+        },
+      ],
+    });
+
+    expect(parsed.points[0]).toEqual({
+      text: "The central idea",
+      priority: "essential",
+      storyValue: 9,
+      estimatedTurns: 2,
+    });
+  });
+
   it("validates coverage verification and conclusion decisions", () => {
     expect(
       verifyCoveredPointsSchema.parse({ confirmedPointIds: ["p1"] })

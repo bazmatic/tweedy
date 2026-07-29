@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { readFile, writeFile } from "fs/promises";
 import inquirer from "inquirer";
 import { hasScriptEditChanges, ScriptService } from "../../services";
@@ -16,6 +16,8 @@ import {
   SpeakerAllocation,
 } from "../../types";
 import { logger } from "../../utils/logger";
+import { appConfig } from "../../utils/config";
+import { ConversationWorkflowEngineName } from "../../services/conversation-engine";
 
 function parseAudienceProfile(value: string): AudienceProfile {
   const profile = Object.values(AudienceProfile).find(
@@ -37,7 +39,9 @@ function describeEditSummary(summary: ScriptEditSummary): string {
   ].join(", ");
 }
 
-export function createScriptCommands(): Command {
+export function createScriptCommands(
+  injectedScriptService?: ScriptService
+): Command {
   const scriptCommand = new Command("script");
 
   const scriptRepository = new ScriptRepository();
@@ -46,14 +50,16 @@ export function createScriptCommands(): Command {
   const voiceRepository = new VoiceRepository();
   const speechRepository = new SpeechRepository();
   const ragService = new RAGService();
-  const scriptService = new ScriptService(
-    scriptRepository,
-    speakerRepository,
-    materialRepository,
-    voiceRepository,
-    speechRepository,
-    ragService
-  );
+  const scriptService =
+    injectedScriptService ??
+    new ScriptService(
+      scriptRepository,
+      speakerRepository,
+      materialRepository,
+      voiceRepository,
+      speechRepository,
+      ragService
+    );
 
   scriptCommand.description("Generate and manage podcast scripts").alias("s");
 
@@ -118,6 +124,14 @@ export function createScriptCommands(): Command {
       "Speaker allocation strategy",
       "sequential"
     )
+    .addOption(
+      new Option(
+        "--engine <engine>",
+        "Conversation workflow engine"
+      )
+        .choices(Object.values(ConversationWorkflowEngineName))
+        .default(appConfig.conversationWorkflowEngine)
+    )
     .action(async (options) => {
       try {
         if (!options.title || !options.speakers) {
@@ -147,7 +161,9 @@ export function createScriptCommands(): Command {
         };
 
         logger.progress("Generating script...");
-        const script = await scriptService.generateScript(params);
+        const script = await scriptService.generateScript(params, {
+          engine: options.engine,
+        });
 
         logger.success(`Script generated: ${script.title}`);
         console.log(`\nScript Details:`);

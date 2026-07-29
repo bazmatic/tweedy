@@ -4,6 +4,7 @@ import {
   BeatPurpose,
   ConversationBeat,
   DiscussionPoint,
+  DiscussionPointPriority,
   EditorialCard,
   EditorialMove,
   EnergyLevel,
@@ -177,9 +178,9 @@ when the prepared material supports them. Do not force scientific analysis or
 formal tests onto topics that do not call for them. Use Australian/British
 spelling.
 
-Also provide a separate list of at least ${minDiscussionPoints} concrete discussion points that must be covered during the episode (roughly one per ${MINUTES_PER_DISCUSSION_POINT} minutes of runtime) — short, discrete phrases rather than full sentences, since they'll be tracked individually as the conversation progresses.
+Also provide a separate list of at least ${minDiscussionPoints} ranked discussion points — editorial opportunities rather than a rigid checklist. For each point provide a short text, priority (essential, supporting, or optional), storyValue from 1-10, and estimatedTurns from 1-6. Essential means the episode would fail its central promise without it; supporting deepens that promise; optional is worthwhile only if time permits. The production team will use this ranking to adapt gracefully to the duration.
 
-Also provide a sequence of conversation beats. Each beat must have a listener-centred purpose and goal, suitable energy, useful prepared card ids and realistic target turn count. Vary the beat purposes so the episode has shape rather than becoming a run of explanations.
+Also provide a sequence of conversation beats. Each beat must have a listener-centred purpose and goal, suitable energy, useful prepared card ids, realistic target turn count, and pointIds naming the ranked points it advances (p1, p2, and so on). Vary the beat purposes so the episode has shape rather than becoming a run of explanations.
 
 Also nominate one central analogy — a concrete, physical, everyday comparison for the episode's core concept. Choose something both speakers can return to and extend as new aspects of the topic appear, the way a good explainer keeps one metaphor alive for a whole episode.`,
         }
@@ -193,11 +194,25 @@ Also nominate one central analogy — a concrete, physical, everyday comparison 
       );
 
       this.podcastPlan = narrative ?? '';
-      this.points = (points ?? []).map((text, index) => ({
-        id: `p${index + 1}`,
-        text,
-        covered: false,
-      }));
+      this.points = (points ?? []).map((point, index) => {
+        const ranked =
+          typeof point === 'string'
+            ? {
+                text: point,
+                priority: DiscussionPointPriority.Supporting,
+                storyValue: 5,
+                estimatedTurns: 2,
+              }
+            : point;
+        return {
+          id: `p${index + 1}`,
+          text: ranked.text,
+          priority: ranked.priority,
+          storyValue: ranked.storyValue,
+          estimatedTurns: ranked.estimatedTurns,
+          covered: false,
+        };
+      });
       this.script.discussionPoints = this.points;
       this.script.conversationBeats = this.toConversationBeats(
         beats,
@@ -325,12 +340,21 @@ Default to "informed_host" for any speaker whose personality doesn't say otherwi
         hasAnnouncedTimePressure
       );
       const velocityBeforeThisTurn = this.calculateVelocity(script);
+      const targetPoint = isFinalTurn
+        ? undefined
+        : this.selectScheduledPoint();
       const velocityNote = this.getVelocityNote(velocityBeforeThisTurn);
       const openPointsSection = this.getOpenPointsSection();
       const balanceNote = this.getBalanceNote(script);
       const rhythmNote = this.getRhythmNote(script);
       const signpostNote = this.getSignpostNote(script);
-      const editorialSection = this.getEditorialSection(script);
+      const editorialSection = this.getEditorialSection(
+        script,
+        targetPoint?.id
+      );
+      const schedulingNote = targetPoint
+        ? `\n\nProduction scheduling decision: advance ${targetPoint.id} [${targetPoint.priority ?? DiscussionPointPriority.Supporting}] — ${targetPoint.text}. This target was selected deterministically from the ranked open points. Shape the next turn around it; a brief reaction or necessary answer may bridge into it, but do not substitute a lower-ranked new topic.`
+        : '';
       const guidanceNote = this.guidance
         ? ` Keep steering the conversation in line with the producer's guidance for this episode: ${this.guidance}`
         : '';
@@ -359,7 +383,7 @@ Default to "informed_host" for any speaker whose personality doesn't say otherwi
 
 Podcast Plan: ${this.podcastPlan}
 
-Progress: ${progress}% complete${openPointsSection}${editorialSection}
+Progress: ${progress}% complete${openPointsSection}${editorialSection}${schedulingNote}
 
 Speakers:
 ${speakerDescriptions}
@@ -367,7 +391,7 @@ ${speakerDescriptions}
 Conversation so far (each line tagged with the tool used to deliver it — "speak" is substantive content; "interject", "filler_comment", "one_liner", and "short_question" are brief reactions, not real answers or new points):
 ${history || '(nothing said yet — this is the opening of the episode)'}
 
-Decide which speaker should talk next. Only give them direction if it's actually needed — a brief goal or topic, not a script. If the conversation is flowing well and the next speaker can naturally carry it forward, leave direction empty rather than inventing something for them to say. When you do give direction, tell them what to address, not what to say; leave the wording, phrasing and specific angle to the speaker so they sound like themselves rather than reciting your lines. Also choose a subject-neutral editorial move, the primary audience value, desired energy, relevant beat and prepared card ids. Every turn should help the listener understand, entertain them, reveal something meaningful, create connection, or move the conversation forwards; it need not do all of these. Don't force analysis onto a story or humour onto an explanation. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. A challenge creates a right of reply: direct the speaker who was challenged to respond before the challenger speaks again. A good challenge can open a short segment: after the challenged speaker's first answer, it is fine to let the exchange continue for another turn or two until the objection is genuinely resolved, rather than moving straight to a new point. Respect the chronological order shown above; a remark made before a challenge cannot be described as a response to that challenge. The episode's welcome and speaker introductions are already handled before you are ever consulted — never direct anyone to (re)welcome listeners or (re)introduce themselves or a co-host, no matter how far into the episode this is. Before assigning a goal or direction, check the conversation so far for any fact, comparison, analogy, illustrative example, or question already used — even if worded differently than you'd phrase it — and never direct a speaker to re-explain, re-derive, or re-ask about it; point them toward new ground instead. This applies just as much to a brief handoff (invite, short_question) as to a full explanation: don't reach for an already-settled topic just because the move calls for something short. Mark genuinely completed beat ids in coveredBeatIds. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack). Use Australian/British spelling.${this.getPacingNote(
+Decide which speaker should talk next. Only give them direction if it's actually needed — a brief goal or topic, not a script. If the conversation is flowing well and the next speaker can naturally carry it forward, leave direction empty rather than inventing something for them to say. When you do give direction, tell them what to address, not what to say; leave the wording, phrasing and specific angle to the speaker so they sound like themselves rather than reciting your lines. Also choose a subject-neutral editorial move, the primary audience value, desired energy, relevant beat and prepared card ids. Every turn should help the listener understand, entertain them, reveal something meaningful, create connection, or move the conversation forwards; it need not do all of these. Don't force analysis onto a story or humour onto an explanation. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. A challenge creates a right of reply: direct the speaker who was challenged to respond before the challenger speaks again. A good challenge can open a short segment: after the challenged speaker's first answer, it is fine to let the exchange continue for another turn or two until the objection is genuinely resolved, rather than moving straight to a new point. Respect the chronological order shown above; a remark made before a challenge cannot be described as a response to that challenge. The episode's welcome and speaker introductions are already handled before you are ever consulted — never direct anyone to (re)welcome listeners or (re)introduce themselves or a co-host, no matter how far into the episode this is. Before assigning a goal or direction, check the conversation so far for any fact, comparison, analogy, illustrative example, or question already used — even if worded differently than you'd phrase it — and never direct a speaker to re-explain, re-derive, or re-ask about it; point them toward new ground instead. This applies just as much to a brief handoff (invite, short_question) as to a full explanation: don't reach for an already-settled topic just because the move calls for something short. Choose the beat this proposed turn should advance; beat completion is recorded only after the resulting speech is accepted and reviewed. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack). Use Australian/British spelling.${this.getPacingNote(
             script
           )}${wrapUpNote}${velocityNote}${balanceNote}${rhythmNote}${signpostNote}${guidanceNote}${this.speakerRolePolicy.buildDirectorGuidance(script)}${this.audienceAccessibilityPolicy.buildDirectorGuidance(script.audienceProfile ?? AudienceProfile.General)} Occasionally — at most once every several turns, mid-explanation — assign the trail_off device so a speaker hands an unfinished sentence to their co-host to complete; never assign it on a closing or summary turn. When a speaker is about to open a brand new beat or point the conversation hasn't touched yet, consider assigning them the tease move instead of explain — a short hook rather than the full explanation — so their co-host can naturally invite them to continue; don't use tease for a beat that's already underway.`
         }
@@ -381,7 +405,9 @@ Decide which speaker should talk next. Only give them direction if it's actually
           MAX_TURN_DIRECTION_TOKENS
         );
       const { speakerId, coveredPointIds } = result;
-      const direction = result.direction ?? '';
+      const direction = targetPoint
+        ? `${result.direction ?? ''} Advance the scheduled point ${targetPoint.id}: ${targetPoint.text}.`.trim()
+        : result.direction ?? '';
       if (result.moveRationale) {
         logger.debug(
           `Director move rationale (${result.move ?? 'unspecified'}): ${result.moveRationale}`
@@ -393,13 +419,18 @@ Decide which speaker should talk next. Only give them direction if it's actually
         script
       );
       this.applyCoveredPoints(confirmedPointIds);
-      this.applyCoveredBeats(result.coveredBeatIds);
       const velocityAfterThisTurn = this.calculateVelocity(script);
       this.logVelocity(velocityAfterThisTurn);
       const requestSummary =
+        progress >= 50 &&
         velocityAfterThisTurn.paceStatus === 'behind' &&
-        velocityAfterThisTurn.openCount >= 2;
+        velocityAfterThisTurn.openCount >= 2 &&
+        this.remainingWorkExceedsCapacity(velocityAfterThisTurn);
       const turnBrief = this.toTurnBrief(result, direction);
+      if (targetPoint) {
+        turnBrief.targetPointId = targetPoint.id;
+        turnBrief.goal = direction;
+      }
 
       // With exactly two speakers there's only one sensible turn order —
       // ping-pong deterministically rather than trusting the model's pick,
@@ -439,6 +470,15 @@ Decide which speaker should talk next. Only give them direction if it's actually
       logger.debug(
         `Director chose ${assignment.speaker.name}: ${assignment.direction}`
       );
+      if (isFinalTurn) {
+        this.markRemainingPointsOmitted(
+          progress >= 100
+            ? 'duration_budget'
+            : this.turnsUsed >= this.maxTurns
+              ? 'turn_budget'
+              : 'closing_reserve'
+        );
+      }
       return {
         speaker: assignment.speaker,
         direction: assignment.direction,
@@ -461,7 +501,10 @@ Decide which speaker should talk next. Only give them direction if it's actually
    * natural conclusion. Summaries and time warnings cannot end the episode.
    */
   async isConversationComplete(script: PodcastScript): Promise<boolean> {
-    if (this.points.length === 0 || this.points.some((point) => !point.covered)) {
+    if (
+      this.points.length === 0 ||
+      this.points.some((point) => !point.covered && !point.omitted)
+    ) {
       return false;
     }
     if (!this.episodeConclusionPolicy.hasFinalSignOff(script)) {
@@ -694,6 +737,90 @@ Return only the ids of points that were genuinely, substantively covered.`,
     }
   }
 
+  /**
+   * Records an explicit editorial omission when production must close before
+   * every planned opportunity fits. Omitted points remain visible in the
+   * saved script and are not misrepresented as covered.
+   */
+  markRemainingPointsOmitted(reason: string): DiscussionPoint[] {
+    const omitted = this.points.filter(
+      (point) => !point.covered && !point.omitted
+    );
+    for (const point of omitted) {
+      point.omitted = true;
+      point.omissionReason = reason;
+    }
+    const allOmitted = this.points.filter((point) => point.omitted);
+    const omissionSeverity = allOmitted.some(
+      (point) => point.priority === DiscussionPointPriority.Essential
+    )
+      ? "essential"
+      : allOmitted.some(
+            (point) => point.priority === DiscussionPointPriority.Supporting
+          )
+        ? "supporting"
+        : allOmitted.length > 0
+          ? "optional_only"
+          : "none";
+    this.script.productionOutcome = {
+      status:
+        allOmitted.length > 0 ? "complete_with_omissions" : "complete",
+      completionReason:
+        this.script.productionOutcome?.completionReason ?? reason,
+      omittedPointIds: allOmitted.map((point) => point.id),
+      omissionSeverity,
+    };
+    return omitted;
+  }
+
+  private priorityWeight(point: DiscussionPoint): number {
+    switch (point.priority) {
+      case DiscussionPointPriority.Essential:
+        return 300;
+      case DiscussionPointPriority.Optional:
+        return 100;
+      case DiscussionPointPriority.Supporting:
+      default:
+        return 200;
+    }
+  }
+
+  private rankedOpenPoints(): DiscussionPoint[] {
+    return this.points
+      .filter((point) => !point.covered && !point.omitted)
+      .sort((a, b) => {
+        const aScore =
+          this.priorityWeight(a) +
+          (a.storyValue ?? 5) * 10 -
+          (a.estimatedTurns ?? 2);
+        const bScore =
+          this.priorityWeight(b) +
+          (b.storyValue ?? 5) * 10 -
+          (b.estimatedTurns ?? 2);
+        return bScore - aScore;
+      });
+  }
+
+  private selectScheduledPoint(): DiscussionPoint | undefined {
+    return this.rankedOpenPoints()[0];
+  }
+
+  private remainingWorkExceedsCapacity(
+    velocity: ReturnType<DirectorAgent['calculateVelocity']>
+  ): boolean {
+    const requiredTurns = this.rankedOpenPoints().reduce(
+      (sum, point) => sum + (point.estimatedTurns ?? 2),
+      0
+    );
+    // A natural two-person discussion averages roughly 2.5 substantive turns
+    // per minute once reactions and transitions are accounted for.
+    const availableTurns = Math.max(
+      0,
+      Math.floor(velocity.remainingMinutes * 2.5)
+    );
+    return requiredTurns > availableTurns;
+  }
+
   private applyCoveredBeats(coveredBeatIds?: string[]): void {
     if (!coveredBeatIds || coveredBeatIds.length === 0) return;
     for (const beat of this.script.conversationBeats ?? []) {
@@ -702,6 +829,27 @@ Return only the ids of points that were genuinely, substantively covered.`,
         beat.coveredAtTurn = this.turnsUsed;
       }
     }
+  }
+
+  /**
+   * Beat progress is recorded from an accepted, reviewed speech rather than
+   * from the direction model's prediction about what a future turn may cover.
+   */
+  recordAcceptedBeat(speech: Speech): void {
+    const beatId = speech.turnBrief?.beatId;
+    if (beatId && speech.review?.advancesBeat === true) {
+      this.applyCoveredBeats([beatId]);
+    }
+  }
+
+  async recordAcceptedCoverage(
+    script: PodcastScript,
+    speech: Speech
+  ): Promise<void> {
+    const targetPointId = speech.turnBrief?.targetPointId;
+    if (!targetPointId) return;
+    const confirmed = await this.verifyCoveredPoints([targetPointId], script);
+    this.applyCoveredPoints(confirmed);
   }
 
   /**
@@ -732,7 +880,9 @@ Return only the ids of points that were genuinely, substantively covered.`,
       0.1
     );
     const coveredCount = this.points.filter((point) => point.covered).length;
-    const openCount = this.points.length - coveredCount;
+    const openCount = this.points.filter(
+      (point) => !point.covered && !point.omitted
+    ).length;
 
     if (elapsedMinutes <= 0) {
       return {
@@ -766,15 +916,18 @@ Return only the ids of points that were genuinely, substantively covered.`,
       return '';
     }
 
-    const openPoints = this.points.filter((point) => !point.covered);
+    const openPoints = this.rankedOpenPoints();
     const nextPointsList = openPoints
       .slice(0, 2)
-      .map((point) => `- ${point.id}: ${point.text}`)
+      .map(
+        (point) =>
+          `- ${point.id} [${point.priority ?? DiscussionPointPriority.Supporting}, story ${point.storyValue ?? 5}/10, ~${point.estimatedTurns ?? 2} turn(s)]: ${point.text}`
+      )
       .join('\n');
 
     return ` The conversation is behind pace on discussion points — ${velocity.openCount} point(s) remain with about ${velocity.remainingMinutes.toFixed(
       1
-    )} minutes left. Pick up the pace over the next few turns, but never direct a single speaker to cover more than one new point in one turn — cramming several points into one monologue is worse than falling behind. Move to the next point:\n${nextPointsList}`;
+    )} minutes left. Use the ranking below: cover the highest-ranked point that connects naturally to the current conversation. It is acceptable to omit lower-ranked opportunities; never pretend an omitted point was covered. Compatible points may be combined when they form one coherent idea, but do not turn the speech into a checklist.\n${nextPointsList}`;
   }
 
   /**
@@ -826,12 +979,15 @@ Return only the ids of points that were genuinely, substantively covered.`,
     if (this.points.length === 0) {
       return '';
     }
-    const openPoints = this.points.filter((point) => !point.covered);
+    const openPoints = this.rankedOpenPoints();
     if (openPoints.length === 0) {
       return '\n\nAll discussion points have been covered.';
     }
     const list = openPoints
-      .map((point) => `- ${point.id}: ${point.text}`)
+      .map(
+        (point) =>
+          `- ${point.id} [${point.priority ?? DiscussionPointPriority.Supporting}, story ${point.storyValue ?? 5}/10, ~${point.estimatedTurns ?? 2} turn(s)]: ${point.text}`
+      )
       .join('\n');
     return `\n\nOpen discussion points (mark any addressed by the last speech(es) via coveredPointIds):\n${list}`;
   }
@@ -843,7 +999,7 @@ Return only the ids of points that were genuinely, substantively covered.`,
       return;
     }
     logger.info(
-      `Discussion points: ${velocity.coveredCount}/${this.points.length} covered · ${velocity.elapsedMinutes.toFixed(
+      `Discussion points: ${velocity.coveredCount}/${velocity.coveredCount + velocity.openCount} active covered · ${this.points.filter((point) => point.omitted).length} omitted · ${velocity.elapsedMinutes.toFixed(
         1
       )}/${(this.maxDuration / 60).toFixed(1)} min elapsed · pace: ${velocity.paceStatus}`
     );
@@ -965,6 +1121,7 @@ Return only the ids of points that were genuinely, substantively covered.`,
         prerequisiteBeatIds: index === 0 ? [] : [`b${index}`],
         desiredEnergy: EnergyLevel.Curious,
         targetTurns: 2,
+        pointIds: [point.id],
         covered: false,
       }));
     }
@@ -977,6 +1134,7 @@ Return only the ids of points that were genuinely, substantively covered.`,
       prerequisiteBeatIds: input.prerequisiteBeatIds ?? [],
       desiredEnergy: input.desiredEnergy ?? EnergyLevel.Curious,
       targetTurns: Math.max(1, input.targetTurns ?? 1),
+      pointIds: input.pointIds ?? [],
       covered: false,
     }));
   }
@@ -1008,10 +1166,18 @@ Return only the ids of points that were genuinely, substantively covered.`,
     };
   }
 
-  private getEditorialSection(script: PodcastScript): string {
-    const beats = (script.conversationBeats ?? []).filter(
-      (beat) => !beat.covered
-    );
+  private getEditorialSection(
+    script: PodcastScript,
+    targetPointId?: string
+  ): string {
+    const beats = (script.conversationBeats ?? [])
+      .filter((beat) => !beat.covered)
+      .sort((a, b) => {
+        if (!targetPointId) return 0;
+        const aMatches = a.pointIds?.includes(targetPointId) ? 1 : 0;
+        const bMatches = b.pointIds?.includes(targetPointId) ? 1 : 0;
+        return bMatches - aMatches;
+      });
     const cards = [...(script.editorialCards ?? [])].sort(
       (a, b) => b.storyValue - a.storyValue
     );

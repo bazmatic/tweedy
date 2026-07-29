@@ -11,7 +11,8 @@
     "dev": "ts-node src/index.ts",
     "start": "node dist/index.js",
     "clean": "rm -rf dist",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:workflows": "vitest run src/mastra src/workflow src/services/conversation-engine.test.ts src/services/MastraScriptWorkflowRunner.test.ts src/agents/OpeningSequencePolicy.test.ts src/agents/TurnAssignmentRepairPipeline.test.ts src/agents/DialogueCadencePolicy.test.ts src/agents/CoverageVerifier.test.ts src/agents/KnowledgeLedgerPolicy.test.ts src/agents/TerminologyLedgerPolicy.test.ts"
   },
   "keywords": [
     "podcast",
@@ -23,12 +24,17 @@
   "author": "Barry Earsman",
   "license": "MIT",
   "dependencies": {
+    "@ai-sdk/anthropic": "2.0.33",
+    "@ai-sdk/openai": "2.0.53",
     "@langchain/anthropic": "^1.5.1",
     "@langchain/classic": "1.0.40",
     "@langchain/core": "^1.2.2",
     "@langchain/openai": "^1.5.5",
     "@langchain/textsplitters": "1.0.1",
+    "@mastra/core": "0.23.3",
+    "@mastra/libsql": "0.16.4",
     "@xenova/transformers": "^2.17.2",
+    "ai": "5.0.76",
     "axios": "^1.6.2",
     "chalk": "^4.1.2",
     "cheerio": "^1.0.0-rc.12",

@@ -6,6 +6,20 @@ A comprehensive guide to using the Tweedy AI-powered podcast generation CLI tool
 
 ---
 
+## Choosing the conversation engine
+
+Script generation uses the typed Mastra workflow by default:
+
+```bash
+tweedy script generate --engine mastra --title "Episode title" --speakers host,guest
+```
+
+The `--engine mastra` flag is optional. Set
+`CONVERSATION_WORKFLOW_ENGINE=legacy` in `.env`, or pass `--engine legacy`, to
+roll back new generations during the soak window. Active runs are never
+migrated. Existing scripts, exports, edits and audio commands work the same
+regardless of which engine created the script.
+
 ## Table of Contents
 
 1. [Introduction](#introduction)
@@ -47,7 +61,7 @@ Tweedy is a command-line application that generates AI-powered podcasts from var
 
 ### Prerequisites
 
-- **Node.js**: Version 18.0.0 or higher
+- **Node.js**: Version 20.0.0 or higher
 - **pnpm**: Package manager used by this project ([install guide](https://pnpm.io/installation))
 - **FFmpeg**: Required for audio processing
 

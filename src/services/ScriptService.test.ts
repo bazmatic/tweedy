@@ -18,6 +18,12 @@ import {
 } from "../types";
 import type { RAGService } from "../rag";
 import { logger } from "../utils/logger";
+import {
+  ConversationEngineSelector,
+  ConversationWorkflowEngineName,
+  LegacyConversationWorkflowEngine,
+  MastraConversationWorkflowEngine,
+} from "./conversation-engine";
 
 const chooseNextSpeakerMock = vi.fn();
 const createPodcastPlanMock = vi.fn().mockResolvedValue(undefined);
@@ -37,6 +43,8 @@ vi.mock("../agents", () => ({
       chooseNextSpeaker: chooseNextSpeakerMock,
       reviewSpeech: reviewSpeechMock,
       isConversationComplete: isConversationCompleteMock,
+      recordAcceptedBeat: vi.fn(),
+      recordAcceptedCoverage: vi.fn(),
     };
   }),
   SpeakerAgent: vi.fn().mockImplementation(function (speaker, ragService) {
@@ -82,6 +90,7 @@ function makeService(overrides: {
   materialRepository?: any;
   voiceRepository?: any;
   ragService?: any;
+  conversationEngineSelector?: ConversationEngineSelector;
 }) {
   return new ScriptService(
     overrides.scriptRepository ?? ({} as any),
@@ -89,9 +98,175 @@ function makeService(overrides: {
     overrides.materialRepository ?? ({} as any),
     overrides.voiceRepository ?? ({} as any),
     overrides.speechRepository ?? ({} as any),
-    overrides.ragService ?? ({ addMaterials: vi.fn() } as any)
+    overrides.ragService ?? ({ addMaterials: vi.fn() } as any),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    overrides.conversationEngineSelector
   );
 }
+
+describe("ScriptService conversation engine integration", () => {
+  function generationRepositories() {
+    const speakerRecord = {
+      id: "speaker-1",
+      slug: "speaker-1",
+      name: "Speaker",
+      personality: "curious",
+      voiceId: "voice-1",
+      voiceStyle: "natural",
+    };
+    const voiceRecord = {
+      id: "voice-1",
+      name: "Voice",
+      description: "",
+      provider: VocalProviderName.ElevenLabs,
+      providerId: "provider-1",
+      settings: {},
+    };
+    return {
+      scriptRepository: {
+        create: vi.fn(async (record) => ({
+          ...record,
+          id: "script-14",
+          createdAt: new Date("2026-07-29T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-29T00:00:00.000Z"),
+        })),
+        getById: vi.fn(),
+      },
+      speakerRepository: {
+        findBySlug: vi.fn().mockResolvedValue(speakerRecord),
+        getById: vi.fn(),
+      },
+      materialRepository: { getById: vi.fn() },
+      voiceRepository: { getById: vi.fn().mockResolvedValue(voiceRecord) },
+      speechRepository: {},
+      ragService: { addMaterials: vi.fn() },
+    };
+  }
+
+  it("runs the explicitly selected Mastra engine and persists correlation metadata", async () => {
+    const repositories = generationRepositories();
+    const mastra = new MastraConversationWorkflowEngine({
+      run: vi.fn(async ({ script }) => script),
+    });
+    const legacy = new LegacyConversationWorkflowEngine(vi.fn());
+    const service = makeService({
+      ...repositories,
+      conversationEngineSelector: new ConversationEngineSelector([
+        legacy,
+        mastra,
+      ]),
+    });
+
+    const script = await service.generateScript(
+      {
+        title: "Mastra selection",
+        description: "",
+        speakers: [{ id: "speaker-1" }] as any,
+        materials: [],
+        maxTurns: 4,
+        maxDuration: 60,
+        allocation: "sequential" as any,
+      },
+      { engine: "mastra" }
+    );
+
+    expect(script.conversationRun).toEqual(
+      expect.objectContaining({
+        engine: "mastra",
+        flowVersion: "mastra-episode-v1",
+      })
+    );
+    expect(repositories.scriptRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationRun: expect.objectContaining({ engine: "mastra" }),
+      })
+    );
+  });
+
+  it("runs Mastra by default when no engine override is supplied", async () => {
+    const repositories = generationRepositories();
+    const run = vi.fn(async ({ script }) => script);
+    const mastra = new MastraConversationWorkflowEngine({ run });
+    const legacyExecute = vi.fn();
+    const service = makeService({
+      ...repositories,
+      conversationEngineSelector: new ConversationEngineSelector([
+        new LegacyConversationWorkflowEngine(legacyExecute),
+        mastra,
+      ]),
+    });
+
+    const script = await service.generateScript({
+      title: "Mastra default",
+      description: "",
+      speakers: [{ id: "speaker-1" }] as any,
+      materials: [],
+      maxTurns: 4,
+      maxDuration: 60,
+      allocation: "sequential" as any,
+    });
+
+    expect(run).toHaveBeenCalledOnce();
+    expect(legacyExecute).not.toHaveBeenCalled();
+    expect(script.conversationRun?.engine).toBe("mastra");
+  });
+
+  it("rejects an unavailable engine before loading repositories", async () => {
+    const repositories = generationRepositories();
+    const service = makeService({
+      ...repositories,
+      conversationEngineSelector: new ConversationEngineSelector([
+        new LegacyConversationWorkflowEngine(vi.fn()),
+      ], ConversationWorkflowEngineName.Legacy),
+    });
+
+    await expect(
+      service.generateScript(
+        {
+          title: "Unavailable",
+          description: "",
+          speakers: [{ id: "speaker-1" }] as any,
+          materials: [],
+          maxTurns: 4,
+          maxDuration: 60,
+          allocation: "sequential" as any,
+        },
+        { engine: ConversationWorkflowEngineName.Mastra }
+      )
+    ).rejects.toThrow('Conversation workflow engine "mastra" is not available');
+    expect(repositories.speakerRepository.findBySlug).not.toHaveBeenCalled();
+  });
+
+  it("refuses resume with a different engine", async () => {
+    const repositories = generationRepositories();
+    repositories.scriptRepository.getById.mockResolvedValue({
+      id: "script-14",
+      conversationRun: {
+        engine: "legacy",
+        flowVersion: "legacy-script-service-v1",
+        workflowRunId: "run-14",
+      },
+    });
+    const service = makeService({
+      ...repositories,
+      conversationEngineSelector: new ConversationEngineSelector([
+        new LegacyConversationWorkflowEngine(vi.fn()),
+        new MastraConversationWorkflowEngine({
+          run: async ({ script }) => script,
+        }),
+      ]),
+    });
+
+    await expect(service.assertCanResume("script-14", "mastra")).rejects.toThrow(
+      "Cannot resume workflow run run-14"
+    );
+  });
+});
 
 describe("ScriptService stopReason persistence", () => {
   it("persistSpeech includes stopReason when creating the SpeechRecord", async () => {
@@ -834,6 +1009,31 @@ describe("ScriptService.logUncoveredPoints", () => {
     expect(warnSpy).not.toHaveBeenCalled();
     warnSpy.mockRestore();
   });
+
+  it("reports intentional omissions separately from missed points", () => {
+    const service = makeService({});
+    const script = makeScript();
+    script.discussionPoints = [
+      {
+        id: "p1",
+        text: "Optional detail",
+        covered: false,
+        omitted: true,
+        omissionReason: "duration_budget",
+      },
+    ];
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
+
+    (service as any).logUncoveredPoints(script);
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledWith(
+      "1 lower-ranked discussion point(s) omitted gracefully: p1 (Optional detail)"
+    );
+    warnSpy.mockRestore();
+    infoSpy.mockRestore();
+  });
 });
 
 describe("ScriptService discussionPoints persistence", () => {
@@ -1051,16 +1251,19 @@ describe("ScriptService guidance", () => {
       speechRepository,
     });
 
-    await service.generateScript({
-      title: "Test",
-      description: "Desc",
-      guidance: "Keep it skeptical of the marketing claims.",
-      speakers: [{ id: "s1" } as any],
-      materials: [],
-      maxTurns: 1,
-      maxDuration: 60,
-      allocation: "sequential" as any,
-    });
+    await service.generateScript(
+      {
+        title: "Test",
+        description: "Desc",
+        guidance: "Keep it skeptical of the marketing claims.",
+        speakers: [{ id: "s1" } as any],
+        materials: [],
+        maxTurns: 1,
+        maxDuration: 60,
+        allocation: "sequential" as any,
+      },
+      { engine: "legacy" }
+    );
 
     expect(directorAgentConstructorMock).toHaveBeenCalled();
     const [, , guidanceArg] = directorAgentConstructorMock.mock.calls[0];

@@ -3,6 +3,7 @@ import {
   AudienceValue,
   BeatPurpose,
   ConversationalDevice,
+  DiscussionPointPriority,
   EditorialMove,
   EnergyLevel,
   EpistemicRole,
@@ -50,16 +51,40 @@ export const conversationBeatSchema = z.object({
     .number()
     .optional()
     .describe("A realistic number of speaking turns for the beat."),
+  pointIds: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Discussion point ids this beat advances, using the point order as p1, p2, and so on."
+    ),
 });
 
 export type ConversationBeatInput = z.infer<typeof conversationBeatSchema>;
 
+const rankedDiscussionPointSchema = z.object({
+  text: z.string().describe("A short, concrete discussion point."),
+  priority: z
+    .nativeEnum(DiscussionPointPriority)
+    .describe("How important this point is to the episode's central promise."),
+  storyValue: z
+    .number()
+    .min(1)
+    .max(10)
+    .describe("How compelling or memorable this point is likely to sound."),
+  estimatedTurns: z
+    .number()
+    .int()
+    .min(1)
+    .max(6)
+    .describe("Substantive speaking turns needed to cover it naturally."),
+});
+
 export const createPodcastPlanSchema = z
   .object({
     points: z
-      .array(z.string())
+      .array(z.union([z.string(), rankedDiscussionPointSchema]))
       .describe(
-        "Concrete, discrete discussion points that must be covered, each expressed as a short phrase."
+        "Ranked editorial opportunities. Prefer objects with text, priority, storyValue and estimatedTurns; plain strings remain accepted for compatibility."
       ),
     narrative: z
       .string()

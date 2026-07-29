@@ -9,11 +9,21 @@ config();
 config({ path: path.join(os.homedir(), ".tweedy", ".env") });
 
 export function loadConfig(): AppConfig {
+  const conversationWorkflowEngine = parseConversationWorkflowEngine(
+    process.env.CONVERSATION_WORKFLOW_ENGINE
+  );
   return {
     dataDir: process.env.DATA_DIR || "./data",
     audioDir: process.env.AUDIO_DIR || "./audio",
     scriptsDir: process.env.SCRIPTS_DIR || "./scripts",
     embeddingsDir: process.env.EMBEDDINGS_DIR || "./embeddings",
+    mastraStoragePath:
+      process.env.MASTRA_STORAGE_PATH ||
+      path.join(process.env.DATA_DIR || "./data", "mastra.db"),
+    mastraTracePath:
+      process.env.MASTRA_TRACE_PATH ||
+      path.join(process.env.DATA_DIR || "./data", "mastra-traces.jsonl"),
+    conversationWorkflowEngine,
     defaultVoiceProvider:
       (process.env.DEFAULT_VOICE_PROVIDER as VocalProviderName) ||
       VocalProviderName.ElevenLabs,
@@ -26,6 +36,20 @@ export function loadConfig(): AppConfig {
       ? parseInt(process.env.MULTISPEAKER_CHUNK_SIZE, 10)
       : undefined,
   };
+}
+
+export function parseConversationWorkflowEngine(
+  value: string | undefined
+): "legacy" | "mastra" {
+  if (value === undefined || value === "" || value === "mastra") {
+    return "mastra";
+  }
+  if (value === "legacy") {
+    return "legacy";
+  }
+  throw new Error(
+    `Invalid CONVERSATION_WORKFLOW_ENGINE "${value}"; expected legacy or mastra`
+  );
 }
 
 export function validateConfig(config: AppConfig): {

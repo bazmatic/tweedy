@@ -16,9 +16,27 @@ CLI  →  Service  →  Repository  →  Provider
 - **Provider** (`src/providers/`) — external integrations (LLMs, TTS vendors, research APIs), selected via factories.
 - **RAG** (`src/rag/`) — vector store for material retrieval, independent of the above chain.
 
+## Conversation workflow engines
+
+`ScriptService` delegates generation to a `ConversationWorkflowEngine`.
+`LegacyConversationWorkflowEngine` preserves the existing service loop, while
+`MastraConversationWorkflowEngine` adapts the typed nested episode workflow.
+Both return the same `PodcastScript` and persisted `Speech` records; export,
+editing, TTS and audio layers do not branch on the selected engine.
+
+Selection is explicit through `CONVERSATION_WORKFLOW_ENGINE=legacy|mastra` or
+the script-generation `--engine` option. Mastra is the default; legacy remains
+available during the documented soak window as a configuration-only rollback.
+Engine name, flow version and workflow run ID are stored with new scripts, and
+resume requires an exact engine/version match. Changing configuration affects
+new runs without migrating an active run or repairing stored domain data. The
+cutover gate and rollback runbook live in
+[`docs/MASTRA_CUTOVER.md`](docs/MASTRA_CUTOVER.md).
+
 ## Script generation (agent) pipeline
 
-`ScriptService.generateScriptContent` is the orchestrator:
+The Mastra `generate-episode` workflow is the default orchestrator. The legacy
+`ScriptService.generateScriptContent` loop is retained temporarily for rollback:
 
 1. Builds one `DirectorAgent` per script.
 2. Calls `createPodcastPlan()` once to produce the episode plan.

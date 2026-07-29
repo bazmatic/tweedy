@@ -448,6 +448,20 @@ so the editorial agents and routing policy work unchanged with Anthropic,
 DeepSeek, or a future provider. If a provider has fewer model classes, multiple
 tiers can resolve to the same model.
 
+Mastra is the default conversation orchestration layer. All current
+`ModelTask` values retain a compatibility route through the same LangChain
+model factory. See [docs/MASTRA_RUNTIME.md](docs/MASTRA_RUNTIME.md) for storage,
+tracing, redaction, setup and upgrade guidance, and
+[docs/MASTRA_CUTOVER.md](docs/MASTRA_CUTOVER.md) for soak thresholds and
+rollback.
+
+The runtime includes a typed, nested episode workflow with bounded
+turn iteration, durable step snapshots, reducer-only state transitions and
+idempotent speech/interjection acceptance. Use
+`tweedy script generate --engine legacy ...` or set
+`CONVERSATION_WORKFLOW_ENGINE=legacy` for configuration-only rollback during
+the soak window.
+
 ### Structured Model Responses
 
 Tweedy distinguishes structured data from genuine actions. Episode planning,

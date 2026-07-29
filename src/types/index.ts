@@ -140,11 +140,33 @@ export interface PodcastMaterial {
   createdAt: Date;
 }
 
+export enum DiscussionPointPriority {
+  Essential = "essential",
+  Supporting = "supporting",
+  Optional = "optional",
+}
+
 export interface DiscussionPoint {
   id: string;
   text: string;
   covered: boolean;
   coveredAtTurn?: number;
+  /** Editorial importance used when the production team must triage for time. */
+  priority?: DiscussionPointPriority;
+  /** 1-10 estimate of how compelling this point will be in spoken form. */
+  storyValue?: number;
+  /** Estimated substantive turns needed to land the point naturally. */
+  estimatedTurns?: number;
+  /** Explicit graceful-degradation outcome; omitted is not the same as missed. */
+  omitted?: boolean;
+  omissionReason?: string;
+}
+
+export interface ProductionOutcome {
+  status: "complete" | "complete_with_omissions";
+  completionReason: string;
+  omittedPointIds: string[];
+  omissionSeverity?: "none" | "optional_only" | "supporting" | "essential";
 }
 
 /** Subject-neutral editorial ingredients prepared from source material. */
@@ -269,6 +291,8 @@ export interface ConversationBeat {
   prerequisiteBeatIds: string[];
   desiredEnergy: EnergyLevel;
   targetTurns: number;
+  /** Ranked discussion points this beat is intended to advance. */
+  pointIds?: string[];
   covered: boolean;
   coveredAtTurn?: number;
 }
@@ -321,6 +345,8 @@ export interface TurnBrief {
   desiredEnergy: EnergyLevel;
   device?: ConversationalDevice;
   knowledgeSource?: KnowledgeSource;
+  /** Deterministically scheduled editorial point for this accepted turn. */
+  targetPointId?: string;
 }
 
 export interface TurnReview {
@@ -362,6 +388,12 @@ export interface PodcastScript {
   speakerRoleAssignments?: Record<string, SpeakerRoleProfile>;
   centralAnalogy?: string;
   narrative?: string;
+  productionOutcome?: ProductionOutcome;
+  conversationRun?: {
+    engine: "legacy" | "mastra";
+    flowVersion: string;
+    workflowRunId: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -412,6 +444,9 @@ export interface AppConfig {
   audioDir: string;
   scriptsDir: string;
   embeddingsDir: string;
+  mastraStoragePath: string;
+  mastraTracePath: string;
+  conversationWorkflowEngine: "legacy" | "mastra";
   defaultVoiceProvider: VocalProviderName;
   defaultAiProvider: AiProviderName;
   defaultChunkSize: number;
@@ -471,6 +506,12 @@ export interface ScriptRecord {
   audienceProfile?: AudienceProfile;
   terminologyLedger?: TerminologyLedger;
   speakerRoleAssignments?: Record<string, SpeakerRoleProfile>;
+  productionOutcome?: ProductionOutcome;
+  conversationRun?: {
+    engine: "legacy" | "mastra";
+    flowVersion: string;
+    workflowRunId: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -487,6 +528,8 @@ export interface MaterialRecord {
 
 export interface SpeechRecord {
   id: string;
+  /** Stable workflow identity used to make turn persistence retry-safe. */
+  idempotencyKey?: string;
   speakerId: string;
   message: string;
   instructions: string;
@@ -561,6 +604,15 @@ export interface IMaterialRepository {
 
 export interface ISpeechRepository {
   create(speech: Omit<SpeechRecord, "id">): Promise<SpeechRecord>;
+  createOrReturn(
+    speech: Omit<SpeechRecord, "id" | "idempotencyKey">,
+    idempotencyKey: string
+  ): Promise<SpeechRecord>;
+  getByIdempotencyKey(idempotencyKey: string): Promise<SpeechRecord | null>;
+  deleteUnaccepted(
+    idempotencyKey: string,
+    acceptedSpeechIds: readonly string[]
+  ): Promise<boolean>;
   getById(id: string): Promise<SpeechRecord | null>;
   getAll(): Promise<SpeechRecord[]>;
   delete(id: string): Promise<boolean>;
@@ -758,7 +810,10 @@ export interface ISpeakerService {
 }
 
 export interface IScriptService {
-  generateScript(params: GenerateScriptParams): Promise<PodcastScript>;
+  generateScript(
+    params: GenerateScriptParams,
+    options?: { engine?: "legacy" | "mastra" }
+  ): Promise<PodcastScript>;
   getScript(id: string): Promise<PodcastScript>;
   getAllScripts(): Promise<PodcastScript[]>;
   deleteScript(id: string): Promise<void>;
