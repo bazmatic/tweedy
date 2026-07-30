@@ -6,6 +6,8 @@ import {
 } from "@langchain/core/messages";
 import { z } from "zod";
 import { jsonrepair } from "jsonrepair";
+import type { AnySpan, ObservabilityInstance, Span } from "@mastra/core/observability";
+import { SpanType } from "@mastra/core/observability";
 import { AiModelFactory } from "../providers/AiModelFactory";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
 import { StructuredOutputMethodPolicy } from "../providers/StructuredOutputMethodPolicy";
@@ -321,11 +323,59 @@ function toBaseMessages(messages: LlmMessage[]): BaseMessage[] {
 }
 
 export abstract class BaseAgent {
+  private observabilityParent?: AnySpan;
+  private observabilityInstance?: ObservabilityInstance;
+
+  /**
+   * Wires this agent's model calls into real Mastra spans so each call is
+   * recorded as a full (unredacted) model_generation span — input messages
+   * and output — inspectable in Studio.
+   *
+   * Pass the active workflow step's `tracingContext.currentSpan` so the
+   * resulting span nests under that step's trace (what Studio's workflow
+   * trace view actually shows). Pass a bare `ObservabilityInstance` only
+   * when there's no active step to nest under (e.g. post-workflow audit
+   * passes) — that produces a standalone root-level trace instead. Left
+   * unset, calls run exactly as before with no tracing overhead.
+   */
+  attachObservability(parentOrInstance: AnySpan | ObservabilityInstance | undefined): void {
+    if (parentOrInstance && "createChildSpan" in parentOrInstance) {
+      this.observabilityParent = parentOrInstance;
+      this.observabilityInstance = undefined;
+    } else {
+      this.observabilityInstance = parentOrInstance;
+      this.observabilityParent = undefined;
+    }
+  }
+
+  private startModelSpan(
+    task: ModelTask,
+    input: unknown
+  ): Span<typeof SpanType.MODEL_GENERATION> | undefined {
+    const name = `${this.constructor.name}.${task}`;
+    const attributes = { provider: appConfig.defaultAiProvider };
+    if (this.observabilityParent) {
+      return this.observabilityParent.createChildSpan({
+        type: SpanType.MODEL_GENERATION,
+        name,
+        input,
+        attributes,
+      });
+    }
+    return this.observabilityInstance?.startSpan({
+      type: SpanType.MODEL_GENERATION,
+      name,
+      input,
+      attributes,
+    });
+  }
+
   protected async callModel(
     task: ModelTask,
     messages: LlmMessage[],
     maxTokens: number = 200
   ): Promise<string> {
+    const span = this.startModelSpan(task, messages);
     try {
       const model = AiModelFactory.getModel(
         appConfig.defaultAiProvider,
@@ -334,9 +384,12 @@ export abstract class BaseAgent {
       );
       const response = await model.invoke(toBaseMessages(messages));
 
-      return typeof response.content === "string" ? response.content : "";
+      const output = typeof response.content === "string" ? response.content : "";
+      span?.end({ output });
+      return output;
     } catch (error) {
       logger.error("AI model call failed:", error);
+      span?.error({ error: error instanceof Error ? error : new Error(String(error)), endSpan: true });
       throw error;
     }
   }
@@ -352,6 +405,7 @@ export abstract class BaseAgent {
     style: string;
     stopReason: StopReason;
   }> {
+    const span = this.startModelSpan(task, messages);
     try {
       const model = AiModelFactory.getModel(
         appConfig.defaultAiProvider,
@@ -369,11 +423,13 @@ export abstract class BaseAgent {
           logger.warn(
             "Tool call truncated by the token limit; using the partial response instead of retrying"
           );
-          return {
+          const result = {
             ...recovered,
             message: appendTruncationFiller(recovered.message),
-            stopReason: "max_tokens",
+            stopReason: "max_tokens" as StopReason,
           };
+          span?.end({ output: result });
+          return result;
         }
         throw new Error("AI model response did not include a tool call");
       }
@@ -387,7 +443,7 @@ export abstract class BaseAgent {
         throw new Error("AI model tool call omitted a spoken message");
       }
 
-      return {
+      const result = {
         toolName: toolCall.name,
         message:
           stopReason === "max_tokens"
@@ -396,8 +452,11 @@ export abstract class BaseAgent {
         style: typeof input.style === "string" ? input.style : "",
         stopReason,
       };
+      span?.end({ output: result });
+      return result;
     } catch (error) {
       logger.error("AI model tool-use call failed:", error);
+      span?.error({ error: error instanceof Error ? error : new Error(String(error)), endSpan: true });
       throw error;
     }
   }
@@ -410,6 +469,7 @@ export abstract class BaseAgent {
     schema: z.ZodType<T, z.ZodTypeDef, any>,
     maxTokens: number = 200
   ): Promise<T> {
+    const span = this.startModelSpan(task, messages);
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -434,6 +494,7 @@ export abstract class BaseAgent {
             `AI model for task "${task}" did not produce the required tool call`
           );
         }
+        span?.end({ output: result });
         return result;
       } catch (error) {
         const recovered = recoverFromJsonParseFailure(error, schema);
@@ -441,6 +502,7 @@ export abstract class BaseAgent {
           logger.warn(
             "AI model structured-output arguments were malformed JSON; repaired and recovered instead of retrying"
           );
+          span?.end({ output: recovered });
           return recovered;
         }
         logger.error(
@@ -448,6 +510,7 @@ export abstract class BaseAgent {
           error
         );
         if (attempt === maxAttempts) {
+          span?.error({ error: error instanceof Error ? error : new Error(String(error)), endSpan: true });
           throw error;
         }
         // This call is observably flaky — the model occasionally returns zero

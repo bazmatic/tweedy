@@ -1,6 +1,7 @@
 import {
   AudienceProfile,
   EditorialCard,
+  EditorialMove,
   ITurnReviewer,
   KnowledgeLedger,
   LlmMessage,
@@ -26,6 +27,11 @@ const EMPTY_KNOWLEDGE_LEDGER: KnowledgeLedger = { introducedCards: [] };
 const EMPTY_TERMINOLOGY_LEDGER: TerminologyLedger = { explainedTerms: [] };
 const MAX_REVIEW_TOKENS = 850;
 const MAX_REWRITE_TOKENS = 180;
+// Wider than the 6-turn recentText window used for conversational flow —
+// repeated content is often said by a DIFFERENT speaker further back than
+// that, and the old same-speaker-only history missed it entirely since it
+// both filtered by speaker and used an even shorter window.
+const REPETITION_HISTORY_LIMIT = 20;
 
 export class TurnReviewerAgent extends BaseAgent implements ITurnReviewer {
   constructor(
@@ -43,7 +49,8 @@ export class TurnReviewerAgent extends BaseAgent implements ITurnReviewer {
     knowledgeLedger: KnowledgeLedger = EMPTY_KNOWLEDGE_LEDGER,
     audienceProfile = AudienceProfile.General,
     terminologyLedger = EMPTY_TERMINOLOGY_LEDGER,
-    speakers: Speaker[] = []
+    speakers: Speaker[] = [],
+    priorRejectionReason?: string
   ): Promise<ReviewedTurn> {
     const roleProfile = this.roleProfileResolver.resolve(speech.speaker);
     const relevantCards = cards
@@ -70,10 +77,12 @@ export class TurnReviewerAgent extends BaseAgent implements ITurnReviewer {
           }]`
       )
       .join("\n");
-    const sameSpeakerHistory = recentSpeeches
-      .filter((item) => item.speaker.id === speech.speaker.id)
-      .slice(-3)
-      .map((item) => `- ${item.message}`)
+    // Anyone's content counts as "already said", not just this speaker's
+    // own lines — a rephrase of a point a co-host made five turns ago is
+    // still a repeat.
+    const repetitionHistory = recentSpeeches
+      .slice(-REPETITION_HISTORY_LIMIT)
+      .map((item) => `- ${item.speaker.name}: ${item.message}`)
       .join("\n");
     const explainedTerms = terminologyLedger.explainedTerms
       .map((entry) => `- ${entry.term}: ${entry.plainLanguageMeaning}`)
@@ -87,6 +96,30 @@ export class TurnReviewerAgent extends BaseAgent implements ITurnReviewer {
       speech.tool === SpeakerAgentToolName.NEARLY_OUT_OF_TIME
         ? ` This turn signals the episode is nearly out of time. Check the recent conversation above: if the immediately preceding turn(s) posed a genuine question or left a concrete thread open that has not yet been answered, this turn must actually answer it in substance — not just announce time pressure and defer the answer. If it only announces urgency while leaving a real pending question unaddressed, set accepted to false and rewrite it to answer the question first, in 1-2 sentences, before or alongside the time-pressure remark, in the same voice. If there is no pending question in the recent conversation, a brief time-pressure announcement alone is acceptable and should be accepted as-is.`
         : "";
+    const revisionContextNote = priorRejectionReason
+      ? ` This is a corrected rewrite of an earlier candidate that you rejected for: "${priorRejectionReason}". Check specifically whether that problem is now fixed. If it is fixed, do not reject the turn again for a different, marginal reading of the same rubric — only reject for that original problem still being present, or for a distinct, clearly present issue.`
+      : "";
+    const isColdOpen = speech.tool === SpeakerAgentToolName.COLD_OPEN;
+    // A cold open deliberately withholds who or what it's about as a hook
+    // (like a magazine teaser) — the ordinary comprehension audit's
+    // identify-every-reference requirement is simply the wrong rule for this
+    // turn, so it is left out of the prompt entirely rather than included
+    // and then countermanded; a rule the model never sees can't be
+    // misapplied.
+    const comprehensionAuditNote = isColdOpen
+      ? `First perform a listener-comprehension audit. Imagine you are a listener hearing this as the very first thing in the episode, with no context yet given. This is the cold open: a deliberately mysterious tease, like a magazine article's teaser. Withholding who "you" or "he" refers to, or naming a person or place without yet explaining who or what they are, is the intended hook technique here — do not require the subject, a pronoun, or a named person or place to already be identified. Decide only whether the sentence is coherent and could be followed word to word on its own terms. If it is simply incoherent or nonsensical regardless of who it's about, set clear and accepted to false. Do not credit information merely because it appears in the goal or prepared material; it must be grounded in that material, not invented.`
+      : `First perform a listener-comprehension audit. Imagine you are a listener who has heard only the spoken Recent conversation and earlier episode knowledge explicitly recorded above. You cannot see the director's goal, prepared cards, source notes, or future turns. Decide whether you can identify what this turn is talking about, resolve every necessary reference, follow how each sentence connects to the preceding exchange, and paraphrase the turn's complete point without supplying missing context yourself. If not, set clear, audienceAccessible, and accepted to false. Do not credit information merely because it appears in the goal or prepared material; it must have been spoken already or be introduced clearly in this turn.`;
+    // A turn whose job is to ask about a term — whatever move the director
+    // assigned it — cannot also contain that term's answer; the answer is
+    // expected from whoever responds. Detected structurally (the goal is to
+    // ask, or the turn poses a question anywhere in it, e.g. "What is a
+    // widget? I don't know."), not just by a single move label, since a
+    // question can appear inside other moves too.
+    const isQuestionTurn =
+      brief.move === EditorialMove.Question || speech.message.includes("?");
+    const termExplanationRequirement = isQuestionTurn
+      ? "A concept needs a plain-language explanation only from the turn that answers or asserts it — a turn whose job is to ask about the concept (this one) is not expected to explain it in the same breath; that explanation belongs to whoever responds. Do not reject this turn merely for asking about an unexplained term."
+      : "A concept needs explaining when it is likely unfamiliar to this audience, necessary to understand the current point, and not already explained above. Familiar words used in a specialised sense can qualify; incidental terminology that listeners do not need to understand does not. When a specialist concept carries the argument, reject unless its meaning is explained plainly in the spoken wording.";
     const messages: LlmMessage[] = [
       {
         role: "user",
@@ -114,16 +147,16 @@ ${explainedTerms || "(None.)"}
 Recent conversation:
 ${recentText || "(This is the first turn.)"}
 
-What this speaker has already said recently:
-${sameSpeakerHistory || "(This speaker has not spoken yet.)"}
+What has already been said in the episode so far, by any speaker (check for a fact, claim, comparison, or example this turn substantively repeats, even if reworded — not just this speaker's own lines):
+${repetitionHistory || "(Nothing has been said yet.)"}
 
 ${speech.speaker.name} said: "${speech.message}"
 
-Important transcript boundary: the speech labelled "${speech.speaker.name} said" is a proposed candidate that has NOT been heard by listeners yet. It is not part of Recent conversation and must never be treated as an earlier turn, even when reviewing a correction of that candidate. If Recent conversation says this is the first turn, this candidate is the first turn; do not claim the speaker has already opened, teased, or spoken.
+Important transcript boundary: the speech labelled "${speech.speaker.name} said" is a proposed candidate that has NOT been heard by listeners yet. It is not part of Recent conversation and must never be treated as an earlier turn, even when reviewing a correction of that candidate. If Recent conversation says this is the first turn, this candidate is the first turn; do not claim the speaker has already opened, teased, or spoken.${revisionContextNote}
 
-First perform a listener-comprehension audit. Imagine you are a listener who has heard only the spoken Recent conversation and earlier episode knowledge explicitly recorded above. You cannot see the director's goal, prepared cards, source notes, or future turns. Decide whether you can identify what this turn is talking about, resolve every necessary reference, follow how each sentence connects to the preceding exchange, and paraphrase the turn's complete point without supplying missing context yourself. If not, set clear, audienceAccessible, and accepted to false. Do not credit information merely because it appears in the goal or prepared material; it must have been spoken already or be introduced clearly in this turn.
+${comprehensionAuditNote}
 
-Then judge the turn according to what it is trying to do. Do not demand analysis from a story, humour from an explanation, or insight from a brief reaction. It should fulfil the goal, be understandable, sound engaging and natural, remain grounded when it makes factual claims, advance the beat, and avoid needless repetition. When the immediately preceding speech is a brief filler comment or interjection and this speaker is continuing the thought they held before it, they should normally acknowledge the co-host's contribution in their opening few words before continuing. A short response such as "Exactly", "Right?", "I know", or "That's the point" is enough, but it must suit the actual reaction, must not falsely agree with scepticism or a challenge, and should not become the same repeated verbal tic. If the resumed speaker simply talks past the interjection, set accepted to false. Preserve conversational time continuity: phrases such as "where we left off", "to recap", "as we were saying", or "back to the story" are unnatural when the recent transcript shows an uninterrupted adjacent exchange rather than an actual break, digression, or explicit recap. In that case set accepted to false. If the goal or the immediately preceding turn explicitly asks this speaker to read, quote, or recite specific source text aloud (e.g. "read that post aloud"), a reply that only promises to do so ("here it is", "sure, let me read that") without actually reciting the material is an unmet promise: set accepted to false. It must remain consistent with the speaker's epistemic role and must not use prepared knowledge unavailable to that role. Experts must not feign ignorance of foundational assigned material; audience guides must not suddenly introduce unseen specialist facts. An expert has regressed out of character if they express discovery, confusion, or audience-surrogate surprise about a source fact they should know or have already explained. Phrases such as "So wait", "you mean", or an incredulous question about their own material are not harmless conversational colour in that context: set roleConsistent and accepted to false. An expert speaker is knowledgeable about the material, not necessarily its author: if this speech (or a co-host addressing this speaker) claims or implies they personally conducted the study, ran the experiment, or wrote the paper, and the material does not say so, set roleConsistent and accepted to false. Preserve stance continuity as well as factual consistency. This episode has a fixed cast — check the speech against "This episode's actual speakers" above: if it names, addresses, thanks, or hands off to any person by name who is not one of those listed speakers (a hallucinated guest, producer, or co-host), set castConsistent and accepted to false. Do not flag names of researchers, historical figures, or people mentioned only as the subject of the source material — this check is only for who the speaker is addressing or crediting as being present in the conversation. When the immediately preceding turn is a challenge, the challenged speaker must receive a real opportunity to respond; the challenger must not concede, reverse position, or claim that somebody replied when no such reply appears after the challenge in the chronological history. Reject any unsupported reversal. Natural fillers, pauses, hesitations, false starts and self-corrections are desirable delivery features and are not evidence of ignorance. ${this.audienceAccessibilityPolicy.buildReviewerGuidance(audienceProfile)} A concept needs explaining when it is likely unfamiliar to this audience, necessary to understand the current point, and not already explained above. Familiar words used in a specialised sense can qualify; incidental terminology that listeners do not need to understand does not. When a specialist concept carries the argument, reject unless its meaning is explained plainly in the spoken wording. Report in introducedTerms only necessary technical terms whose meaning this speech genuinely explains for the first time. Report in introducedCardIds only assigned cards whose substance this speech explicitly introduced aloud; availability alone is not introduction.${closingStatementNote}${nearlyOutOfTimeNote}
+Then judge the turn according to what it is trying to do. Do not demand analysis from a story, humour from an explanation, or insight from a brief reaction. It should fulfil the goal, be understandable, sound engaging and natural, remain grounded when it makes factual claims, and advance the beat. Check the turn against "What has already been said in the episode so far" above: if it substantively repeats a fact, claim, comparison, or example already made — by this speaker or any other — without building on it, adding new detail, or taking it somewhere new, that is needless repetition even when the wording is different; set addsVariety and accepted to false. A brief callback that explicitly builds on or references an earlier point is not repetition. When the immediately preceding speech is a brief filler comment or interjection and this speaker is continuing the thought they held before it, they should normally acknowledge the co-host's contribution in their opening few words before continuing. A short response such as "Exactly", "Right?", "I know", or "That's the point" is enough, but it must suit the actual reaction, must not falsely agree with scepticism or a challenge, and should not become the same repeated verbal tic. If the resumed speaker simply talks past the interjection, set accepted to false. Preserve conversational time continuity: phrases such as "where we left off", "to recap", "as we were saying", or "back to the story" are unnatural when the recent transcript shows an uninterrupted adjacent exchange rather than an actual break, digression, or explicit recap. In that case set accepted to false. If the goal or the immediately preceding turn explicitly asks this speaker to read, quote, or recite specific source text aloud (e.g. "read that post aloud"), a reply that only promises to do so ("here it is", "sure, let me read that") without actually reciting the material is an unmet promise: set accepted to false. It must remain consistent with the speaker's epistemic role and must not use prepared knowledge unavailable to that role. Experts must not feign ignorance of foundational assigned material; audience guides must not suddenly introduce unseen specialist facts. An expert has regressed out of character if they express discovery, confusion, or audience-surrogate surprise about a source fact they should know or have already explained. Phrases such as "So wait", "you mean", or an incredulous question about their own material are not harmless conversational colour in that context: set roleConsistent and accepted to false. An expert speaker is knowledgeable about the material, not necessarily its author: if this speech (or a co-host addressing this speaker) claims or implies they personally conducted the study, ran the experiment, or wrote the paper, and the material does not say so, set roleConsistent and accepted to false. Preserve stance continuity as well as factual consistency. This episode has a fixed cast — check the speech against "This episode's actual speakers" above: if it names, addresses, thanks, or hands off to any person by name who is not one of those listed speakers (a hallucinated guest, producer, or co-host), set castConsistent and accepted to false. Do not flag names of researchers, historical figures, or people mentioned only as the subject of the source material — this check is only for who the speaker is addressing or crediting as being present in the conversation. When the immediately preceding turn is a challenge, the challenged speaker must receive a real opportunity to respond; the challenger must not concede, reverse position, or claim that somebody replied when no such reply appears after the challenge in the chronological history. Reject any unsupported reversal. Natural fillers, pauses, hesitations, false starts and self-corrections are desirable delivery features and are not evidence of ignorance. ${this.audienceAccessibilityPolicy.buildReviewerGuidance(audienceProfile, { omitReferentRule: isColdOpen })} ${termExplanationRequirement} Report in introducedTerms only necessary technical terms whose meaning this speech genuinely explains for the first time. Report in introducedCardIds only assigned cards whose substance this speech explicitly introduced aloud; availability alone is not introduction.${closingStatementNote}${nearlyOutOfTimeNote}
 
 Keep your logic terse. When rejected, return one feedback item written as a plain dot-point fragment of at most 12 words. Do not quote the speech and do not propose wording. When accepted, return an empty feedback array. This call judges only; it must not rewrite the turn.`,
       },

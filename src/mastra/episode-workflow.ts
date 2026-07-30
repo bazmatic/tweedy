@@ -1,4 +1,5 @@
 import { createStep, createWorkflow } from "@mastra/core/workflows";
+import type { TracingContext } from "@mastra/core/observability";
 import { z } from "zod";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
 import { EpisodeEvent } from "../workflow/episode-events";
@@ -113,13 +114,18 @@ export interface EpisodeWorkflowDependencies {
   prepareMaterials(episodeId: string): Promise<void>;
   assignSpeakerRoles(
     episodeId: string,
-    speakerIds: string[]
+    speakerIds: string[],
+    tracingContext?: TracingContext
   ): Promise<Record<string, string>>;
-  createPlan(episodeId: string): Promise<EpisodePreparationResult>;
+  createPlan(
+    episodeId: string,
+    tracingContext?: TracingContext
+  ): Promise<EpisodePreparationResult>;
   inspectEpisode(state: EpisodeState): Promise<Record<string, unknown>>;
   proposeTurn(
     state: EpisodeState,
-    inspection: Record<string, unknown>
+    inspection: Record<string, unknown>,
+    tracingContext?: TracingContext
   ): Promise<TurnSelection>;
   repairTurn(
     state: EpisodeState,
@@ -129,12 +135,14 @@ export interface EpisodeWorkflowDependencies {
   forceClosingTurn(state: EpisodeState, reason: string): Promise<TurnSelection>;
   generateCandidate(
     state: EpisodeState,
-    selection: TurnSelection
+    selection: TurnSelection,
+    tracingContext?: TracingContext
   ): Promise<WorkflowCandidate>;
   reviewCandidate(
     state: EpisodeState,
     selection: TurnSelection,
-    candidate: WorkflowCandidate
+    candidate: WorkflowCandidate,
+    tracingContext?: TracingContext
   ): Promise<WorkflowReviewResult>;
   reviseCandidate?(
     state: EpisodeState,
@@ -145,7 +153,8 @@ export interface EpisodeWorkflowDependencies {
   validateIntegrity(
     state: EpisodeState,
     selection: TurnSelection,
-    candidate: WorkflowCandidate
+    candidate: WorkflowCandidate,
+    tracingContext?: TracingContext
   ): Promise<string | null>;
   validateRepetition(
     state: EpisodeState,
@@ -177,7 +186,10 @@ export interface EpisodeWorkflowDependencies {
     state: EpisodeState,
     acceptedSpeechId: string
   ): Promise<TurnSelection | null>;
-  isNaturallyComplete?(state: EpisodeState): Promise<boolean>;
+  isNaturallyComplete?(
+    state: EpisodeState,
+    tracingContext?: TracingContext
+  ): Promise<boolean>;
 }
 
 function apply(state: EpisodeState, event: EpisodeEvent): EpisodeState {
@@ -264,11 +276,12 @@ export function createTurnTransactionWorkflow(
     inputSchema: EpisodeWorkflowEnvelopeSchema,
     outputSchema: EpisodeWorkflowEnvelopeSchema,
     retries: 2,
-    execute: async ({ inputData }) => {
+    execute: async ({ inputData, tracingContext }) => {
       if (!inputData.selection) return inputData;
       const candidate = await dependencies.generateCandidate(
         inputData.state,
-        inputData.selection
+        inputData.selection,
+        tracingContext
       );
       const state = apply(inputData.state, {
         type: "TURN_GENERATED",
@@ -285,14 +298,15 @@ export function createTurnTransactionWorkflow(
     inputSchema: EpisodeWorkflowEnvelopeSchema,
     outputSchema: EpisodeWorkflowEnvelopeSchema,
     retries: 1,
-    execute: async ({ inputData }) => {
+    execute: async ({ inputData, tracingContext }) => {
       if (!inputData.selection || !inputData.candidate) return inputData;
       let reviewResult: WorkflowReviewResult;
       try {
         reviewResult = await dependencies.reviewCandidate(
           inputData.state,
           inputData.selection,
-          inputData.candidate
+          inputData.candidate,
+          tracingContext
         );
       } catch {
         reviewResult = {
@@ -380,7 +394,7 @@ export function createTurnTransactionWorkflow(
     inputSchema: EpisodeWorkflowEnvelopeSchema,
     outputSchema: EpisodeWorkflowEnvelopeSchema,
     retries: 1,
-    execute: async ({ inputData }) => {
+    execute: async ({ inputData, tracingContext }) => {
       if (
         !inputData.selection ||
         !inputData.candidate ||
@@ -393,7 +407,8 @@ export function createTurnTransactionWorkflow(
         reviewResult = await dependencies.reviewCandidate(
           inputData.state,
           inputData.selection,
-          inputData.candidate
+          inputData.candidate,
+          tracingContext
         );
       } catch {
         reviewResult = {
@@ -414,7 +429,7 @@ export function createTurnTransactionWorkflow(
     id: `${id}-validate`,
     inputSchema: EpisodeWorkflowEnvelopeSchema,
     outputSchema: EpisodeWorkflowEnvelopeSchema,
-    execute: async ({ inputData }) => {
+    execute: async ({ inputData, tracingContext }) => {
       const { selection, candidate, review: reviewResult } = inputData;
       if (!selection || !candidate || !reviewResult) return inputData;
       const rejectionReason =
@@ -429,7 +444,8 @@ export function createTurnTransactionWorkflow(
         (await dependencies.validateIntegrity(
           inputData.state,
           selection,
-          candidate
+          candidate,
+          tracingContext
         )) ||
         (await dependencies.validateRepetition(
           inputData.state,
@@ -614,7 +630,7 @@ export function createEpisodeWorkflow(
     id: "propose-turn",
     inputSchema: EpisodeWorkflowEnvelopeSchema,
     outputSchema: EpisodeWorkflowEnvelopeSchema,
-    execute: async ({ inputData }) => {
+    execute: async ({ inputData, tracingContext }) => {
       if (inputData.state.phase === "completed") return inputData;
       if (
         inputData.state.phase === "opening" &&
@@ -657,7 +673,10 @@ export function createEpisodeWorkflow(
         try {
           const naturallyComplete =
             inputData.state.phase === "discussion" &&
-            (await dependencies.isNaturallyComplete?.(inputData.state));
+            (await dependencies.isNaturallyComplete?.(
+              inputData.state,
+              tracingContext
+            ));
           selection = naturallyComplete
             ? await dependencies.forceClosingTurn(
                 inputData.state,
@@ -665,7 +684,8 @@ export function createEpisodeWorkflow(
               )
             : await dependencies.proposeTurn(
                 inputData.state,
-                inputData.inspection ?? {}
+                inputData.inspection ?? {},
+                tracingContext
               );
           if (
             inputData.state.phase === "discussion" &&
@@ -842,10 +862,11 @@ export function createEpisodeWorkflow(
     inputSchema: EpisodeWorkflowEnvelopeSchema,
     outputSchema: EpisodeWorkflowEnvelopeSchema,
     retries: 2,
-    execute: async ({ inputData }) => {
+    execute: async ({ inputData, tracingContext }) => {
       const assignments = await dependencies.assignSpeakerRoles(
         inputData.state.episodeId,
-        inputData.speakerIds
+        inputData.speakerIds,
+        tracingContext
       );
       const state = apply(inputData.state, {
         type: "ROLES_ASSIGNED",
@@ -861,8 +882,11 @@ export function createEpisodeWorkflow(
     inputSchema: EpisodeWorkflowEnvelopeSchema,
     outputSchema: EpisodeWorkflowEnvelopeSchema,
     retries: 2,
-    execute: async ({ inputData }) => {
-      const plan = await dependencies.createPlan(inputData.state.episodeId);
+    execute: async ({ inputData, tracingContext }) => {
+      const plan = await dependencies.createPlan(
+        inputData.state.episodeId,
+        tracingContext
+      );
       const state = apply(inputData.state, {
         type: "PLAN_CREATED",
         timestamp: timestamp(),

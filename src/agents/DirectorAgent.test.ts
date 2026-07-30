@@ -890,6 +890,127 @@ describe("DirectorAgent signposting", () => {
   });
 });
 
+describe("DirectorAgent fixed speaker note", () => {
+  it("tells the model who the deterministic next speaker is with exactly two speakers", async () => {
+    const script = makeScript();
+    const [s1, s2] = script.speakers;
+    script.speeches.push({
+      id: "sp1",
+      speaker: s1,
+      message: "Something substantive.",
+      instructions: "",
+      voice: s1.voice,
+      voiceStyle: s1.voiceStyle,
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.SPEAK,
+    });
+
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    const call = vi.spyOn(agent as any, "callModelForStructuredOutput");
+    call.mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Continue.",
+      coveredPointIds: [],
+    });
+
+    await agent.chooseNextSpeaker(script);
+
+    const promptContent = (call.mock.calls[0][1] as any)[0].content as string;
+    // s1 just spoke, so ping-pong fixes s2 as next regardless of the
+    // model's returned speakerId ("s1" above).
+    expect(promptContent).toContain(
+      `This turn's speaker is already fixed by production: ${s2.name} will deliver it`
+    );
+  });
+
+  it("omits the fixed-speaker note with more than two speakers", async () => {
+    const s3 = makeSpeaker("s3");
+    const script = makeScript({
+      speakers: [makeSpeaker("s1"), makeSpeaker("s2"), s3],
+    });
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    const call = vi.spyOn(agent as any, "callModelForStructuredOutput");
+    call.mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Continue.",
+      coveredPointIds: [],
+    });
+
+    await agent.chooseNextSpeaker(script);
+
+    const promptContent = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(promptContent).not.toContain("already fixed by production");
+  });
+});
+
+describe("DirectorAgent interjection acknowledgment", () => {
+  it("tells the resuming speaker to acknowledge a preceding brief reaction", async () => {
+    const script = makeScript();
+    const [s1, s2] = script.speakers;
+    script.speeches.push(
+      {
+        id: "sp1",
+        speaker: s1,
+        message: "So the key insight here is...",
+        instructions: "",
+        voice: s1.voice,
+        voiceStyle: s1.voiceStyle,
+        timestamp: new Date(),
+        tool: SpeakerAgentToolName.SPEAK,
+      },
+      {
+        id: "sp2",
+        speaker: s2,
+        message: "Wait, really?",
+        instructions: "",
+        voice: s2.voice,
+        voiceStyle: s2.voiceStyle,
+        timestamp: new Date(),
+        tool: SpeakerAgentToolName.INTERJECT,
+      }
+    );
+
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Continue explaining.",
+      coveredPointIds: [],
+    });
+
+    const result = await agent.chooseNextSpeaker(script);
+
+    expect(result.speaker.id).toBe("s1");
+    expect(result.direction).toContain("Wait, really?");
+    expect(result.direction).toMatch(/acknowledge it in the opening few words/i);
+  });
+
+  it("does not add the acknowledgment note when the last turn was substantive", async () => {
+    const script = makeScript();
+    const [s1, s2] = script.speakers;
+    script.speeches.push({
+      id: "sp1",
+      speaker: s2,
+      message: "Here's a full explanation of the concept.",
+      instructions: "",
+      voice: s2.voice,
+      voiceStyle: s2.voiceStyle,
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.SPEAK,
+    });
+
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValueOnce({
+      speakerId: "s1",
+      direction: "Continue.",
+      coveredPointIds: [],
+    });
+
+    const result = await agent.chooseNextSpeaker(script);
+
+    expect(result.direction).not.toMatch(/acknowledge it in the opening few words/i);
+  });
+});
+
 describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
   it("marks points covered from coveredPointIds and reflects it on the next call's prompt", async () => {
     const script = makeScript();
@@ -1452,6 +1573,47 @@ describe("DirectorAgent.reviewSpeech", () => {
     expect(result.message).toBe("A tighter, corrected version.");
     expect(result).not.toBe(speech);
     expect(turnReviewer.review).toHaveBeenCalledTimes(2);
+  });
+
+  it("tells the reviewer what problem its own revision is meant to fix, on re-review", async () => {
+    const script = makeScript();
+    const turnReviewer = {
+      review: vi
+        .fn()
+        .mockResolvedValueOnce({
+          accepted: false,
+          clear: true,
+          engaging: true,
+          grounded: true,
+          advancesBeat: false,
+          addsVariety: true,
+          revisedMessage: "A tighter, corrected version.",
+          feedback: "Doesn't advance the beat",
+        })
+        .mockResolvedValueOnce({
+          accepted: true,
+          clear: true,
+          engaging: true,
+          grounded: true,
+          advancesBeat: true,
+          addsVariety: true,
+          roleConsistent: true,
+          knowledgeConsistent: true,
+        }),
+    };
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      undefined,
+      { turnReviewer }
+    );
+
+    const speech = makeReviewSpeech();
+    await agent.reviewSpeech(speech, "Talk about X, briefly");
+
+    expect(turnReviewer.review.mock.calls[1][8]).toBe(
+      "Doesn't advance the beat"
+    );
   });
 
   it("returns the original as rejected when the proposed revision is visibly truncated", async () => {

@@ -14,24 +14,10 @@ export enum RoleRepairReason {
   IncompatibleMove = "incompatible_move",
   InaccessibleKnowledge = "inaccessible_knowledge",
   NoEligibleSpeaker = "no_eligible_speaker",
-  SelfTargetingDirection = "self_targeting_direction",
   UnexplainedTerminology = "unexplained_terminology",
 }
 
 const TERM_BOUNDARY = /[^a-z0-9]+/g;
-
-enum SelfTargetingCue {
-  Ask = "ask ",
-  BringIn = "bring in ",
-  Get = "get ",
-  HandOver = "hand over to ",
-  Invite = "invite ",
-  SetUp = "set up ",
-  SetsUp = "sets up ",
-  Tee = "tee ",
-  Tees = "tees ",
-  TurnTo = "turn to ",
-}
 
 export interface RoleAssignment {
   speaker: Speaker;
@@ -99,27 +85,6 @@ export class SpeakerRolePolicy {
     turnBrief: TurnBrief,
     direction: string
   ): RoleAssignment {
-    if (this.targetsProposedSpeaker(proposedSpeaker, turnBrief, direction)) {
-      const alternativeSpeaker = script.speakers.find(
-        (speaker) =>
-          speaker.id !== proposedSpeaker.id &&
-          this.isAssignmentValid(script, speaker, turnBrief)
-      );
-      if (alternativeSpeaker) {
-        return {
-          speaker: alternativeSpeaker,
-          direction,
-          turnBrief: {
-            ...turnBrief,
-            speakerId: alternativeSpeaker.id,
-            knowledgeSource: this.getKnowledgeSource(alternativeSpeaker),
-          },
-          repaired: true,
-          repairReason: RoleRepairReason.SelfTargetingDirection,
-        };
-      }
-    }
-
     const inaccessibleCardIds = this.getInaccessibleKnownCardIds(
       script,
       proposedSpeaker,
@@ -232,19 +197,7 @@ export class SpeakerRolePolicy {
       })
       .join("\n");
 
-    return `\n\nEpistemic role constraints:\n${speakerGuidance}\nAudience guides must not introduce unseen prepared cards or perform specialist explanations. Experts should introduce new technical material and must not feign ignorance of foundational material. Never select a speaker for a brief that asks them to ask, invite, tee up, or hand over to themselves.`;
-  }
-
-  private targetsProposedSpeaker(
-    proposedSpeaker: Speaker,
-    turnBrief: TurnBrief,
-    direction: string
-  ): boolean {
-    const assignmentText = `${turnBrief.goal} ${direction}`.toLocaleLowerCase();
-    const speakerName = proposedSpeaker.name.toLocaleLowerCase();
-    return Object.values(SelfTargetingCue).some((cue) =>
-      assignmentText.includes(`${cue}${speakerName}`)
-    );
+    return `\n\nEpistemic role constraints:\n${speakerGuidance}\nAudience guides must not introduce unseen prepared cards or perform specialist explanations. Experts should introduce new technical material and must not feign ignorance of foundational material. Never select a speaker for a brief that asks them to ask, invite, tee up, or hand over to themselves. Write the direction as an instruction to whoever you assign, not as third-person narration about them — say "Explain the mechanism" or "Ask about the mechanism", not "Archie should explain the mechanism" or "Ask Archie about the mechanism". Naming the assigned speaker inside their own direction is what causes them to lose track of whose voice they are writing in and address themselves by name.`;
   }
 
   private isAssignmentValid(

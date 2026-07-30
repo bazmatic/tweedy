@@ -15,6 +15,7 @@ import { EpisodeConclusionPolicy } from "../agents/EpisodeConclusionPolicy";
 import { KnowledgeLedgerPolicy } from "../agents/KnowledgeLedgerPolicy";
 import { SpeakerRoleProfileResolver } from "../agents/SpeakerRoleProfileResolver";
 import { TerminologyLedgerPolicy } from "../agents/TerminologyLedgerPolicy";
+import type { ObservabilityInstance } from "@mastra/core/observability";
 import { createTweedyMastra } from "../mastra";
 import {
   EpisodeWorkflowDependencies,
@@ -53,22 +54,78 @@ interface SelectedTurn {
   openingTurn: OpeningTurn | null;
 }
 
-function equivalentRejectionReasons(reasons: string[]): boolean {
-  if (reasons.length < 3) return false;
-  const tokenSets = reasons.map(
-    (reason) =>
-      new Set(
-        reason
-          .normalize("NFKC")
-          .toLocaleLowerCase()
-          .match(/[\p{L}\p{N}]+/gu) ?? []
-      )
+function tokenize(reason: string): Set<string> {
+  return new Set(
+    reason.normalize("NFKC").toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []
   );
-  const first = tokenSets[0];
-  return tokenSets.slice(1).every((tokens) => {
-    const shared = [...first].filter((token) => tokens.has(token)).length;
-    return shared / Math.max(1, Math.min(first.size, tokens.size)) >= 0.75;
+}
+
+/**
+ * The specific number or name a rejection is about ("108 suitors", "Archie")
+ * survives an LLM's rewording far more reliably than the sentence's overall
+ * wording does — two paraphrases of the same complaint can otherwise share
+ * almost no words in common. Numbers anchor regardless of position; a
+ * capitalised word not at the very start of the sentence is treated as a
+ * likely proper noun (the first word is excluded since ordinary sentence-
+ * initial capitalisation would otherwise false-positive on unrelated
+ * reasons).
+ */
+function extractAnchors(reason: string): Set<string> {
+  const words = reason.match(/[\p{L}\p{N}][\p{L}\p{N}'-]*/gu) ?? [];
+  const anchors = new Set<string>();
+  words.forEach((word, index) => {
+    if (/^\d+$/.test(word)) {
+      anchors.add(word);
+    } else if (index > 0 && /^[A-Z]/.test(word) && word.length >= 3) {
+      anchors.add(word.toLocaleLowerCase());
+    }
   });
+  return anchors;
+}
+
+function isEquivalentReason(a: string, b: string): boolean {
+  const anchorsA = extractAnchors(a);
+  const anchorsB = extractAnchors(b);
+  if (anchorsA.size > 0 && anchorsB.size > 0) {
+    return [...anchorsA].some((anchor) => anchorsB.has(anchor));
+  }
+  // Neither reason names a specific number or proper noun to anchor on —
+  // fall back to overall word overlap.
+  const tokensA = tokenize(a);
+  const tokensB = tokenize(b);
+  const shared = [...tokensA].filter((token) => tokensB.has(token)).length;
+  return shared / Math.max(1, Math.min(tokensA.size, tokensB.size)) >= 0.6;
+}
+
+const REJECTION_WINDOW_SIZE = 8;
+const REJECTION_RECURRENCE_THRESHOLD = 3;
+
+/**
+ * A stuck turn rarely fails for the exact same reason on 3 *consecutive*
+ * attempts — the model tries a few genuinely different fixes in between,
+ * each one addressing a distinct incidental issue, while the same
+ * substantive problem it can't actually solve keeps resurfacing between
+ * them. Scanning a wider recent window for a reason recurring often enough
+ * (regardless of what's interleaved) catches that pattern; requiring strict
+ * consecutive repeats does not.
+ */
+interface RecurringRejection {
+  reason: string;
+  occurrences: number;
+}
+
+export function findRecurringRejection(
+  reasons: string[]
+): RecurringRejection | undefined {
+  const window = reasons.slice(-REJECTION_WINDOW_SIZE);
+  if (window.length === 0) return undefined;
+  const mostRecent = window[window.length - 1];
+  const occurrences = window.filter((reason) =>
+    isEquivalentReason(mostRecent, reason)
+  ).length;
+  return occurrences >= REJECTION_RECURRENCE_THRESHOLD
+    ? { reason: mostRecent, occurrences }
+    : undefined;
 }
 
 /**
@@ -114,6 +171,10 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
     const verifiedDiscourseClaims = new Map<string, string[]>();
     const advancedAfterRepeatedRejection = new Set<string>();
     let planReady = false;
+    // Assigned once the Mastra runtime exists (below); closures created above
+    // this point (e.g. generateCandidate) capture the variable by reference,
+    // so it's populated by the time they actually run during workflow.start().
+    let observability: ObservabilityInstance | undefined;
 
     const keyFor = (selection: TurnSelection) =>
       `${selection.kind}:${selection.logicalTurn}`;
@@ -154,7 +215,8 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
       prepareMaterials: async () => {
         await this.ragService.addMaterials(script.materials);
       },
-      assignSpeakerRoles: async () => {
+      assignSpeakerRoles: async (_episodeId, _speakerIds, tracingContext) => {
+        director.attachObservability(tracingContext?.currentSpan);
         await ensurePlan();
         return Object.fromEntries(
           Object.entries(script.speakerRoleAssignments ?? {}).map(
@@ -162,7 +224,8 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           )
         );
       },
-      createPlan: async () => {
+      createPlan: async (_episodeId, tracingContext) => {
+        director.attachObservability(tracingContext?.currentSpan);
         await ensurePlan();
         return {
           discussionPointIds: (script.discussionPoints ?? []).map(
@@ -191,18 +254,16 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           orientationActive: script.orientation?.status === "active",
         } as unknown as Record<string, unknown>;
       },
-      proposeTurn: async (state) => {
+      proposeTurn: async (state, _inspection, tracingContext) => {
+        director.attachObservability(tracingContext?.currentSpan);
         if (state.consecutiveRejectedTurns >= 3) {
-          const recentReasons = state.warnings.slice(-3);
-          if (equivalentRejectionReasons(recentReasons)) {
+          const recurring = findRecurringRejection(state.warnings);
+          if (recurring) {
             const prior = selectedTurns.get(`speech:${state.turnsUsed}`);
             const claimIds =
               prior?.turnBrief?.targetDiscourseClaimIds ?? [];
             if (claimIds.length > 0) {
-              director.abandonDiscourseClaims(
-                claimIds,
-                state.warnings.at(-1) ?? "repeated rejection"
-              );
+              director.abandonDiscourseClaims(claimIds, recurring.reason);
               advancedAfterRepeatedRejection.add(
                 `speech:${state.turnsUsed}`
               );
@@ -230,7 +291,15 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
         const selected = selectedTurns.get(keyFor(proposal));
         const rejectionReason = state.warnings.at(-1);
         if (!selected || !rejectionReason) return proposal;
-        const retryGuidance = `Previous candidate rejected: ${rejectionReason}. Correct that specific problem while preserving the assigned goal.`;
+        // A single terse reason repeats every retry with no memory of past
+        // attempts, so the model often just rephrases the same failed fix.
+        // When the same problem is recurring, say so explicitly and demand
+        // a substantively different fix rather than another rewording.
+        const recurring = findRecurringRejection(state.warnings);
+        const retryGuidance =
+          recurring && recurring.reason === rejectionReason
+            ? `Previous candidate rejected: ${rejectionReason}. This same problem has now failed ${recurring.occurrences} attempts in a row, each time in different wording — rephrasing alone has not worked. Make a substantively different fix: change what information you lead with or how you frame it, not just the phrasing.`
+            : `Previous candidate rejected: ${rejectionReason}. Correct that specific problem while preserving the assigned goal.`;
         const direction = `${selected.direction}\n\n${retryGuidance}`;
         selectedTurns.set(keyFor(proposal), {
           ...selected,
@@ -270,7 +339,7 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           }
         );
       },
-      generateCandidate: async (state, selection) => {
+      generateCandidate: async (state, selection, tracingContext) => {
         const selected = selectedTurns.get(keyFor(selection));
         if (!selected) {
           throw new Error(
@@ -283,39 +352,35 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           if (!previous) {
             throw new Error("Cannot interject before an accepted speech");
           }
-          speech = await new SpeakerAgent(
+          const speakerAgent = new SpeakerAgent(
             selected.speaker,
             this.ragService
-          ).interject(previous);
+          );
+          speakerAgent.attachObservability(tracingContext?.currentSpan);
+          speech = await speakerAgent.interject(previous);
         } else {
-          speech = await new SpeakerAgent(
+          const speakerAgent = new SpeakerAgent(
             selected.speaker,
             this.ragService
-          ).speak(
-            script.speeches,
-            script.speakers,
-            script.materials,
-            script.title,
-            script.description,
-            selected.direction,
-            selected.timeStatus,
-            selected.forceNearlyOutOfTime,
-            selected.openingTurn?.forceColdOpen ?? false,
-            selected.requestSummary,
-            selection.isFinalTurn,
-            selected.turnBrief,
-            this.knowledgeLedgerPolicy.getAccessibleCards(
+          );
+          speakerAgent.attachObservability(tracingContext?.currentSpan);
+          speech = await speakerAgent.speak(script, selected.direction, {
+            timeStatus: selected.timeStatus,
+            forceNearlyOutOfTime: selected.forceNearlyOutOfTime,
+            forceColdOpen: selected.openingTurn?.forceColdOpen ?? false,
+            requestSummary: selected.requestSummary,
+            isFinalTurn: selection.isFinalTurn,
+            turnBrief: selected.turnBrief,
+            editorialCards: this.knowledgeLedgerPolicy.getAccessibleCards(
               selected.speaker,
               script.editorialCards ?? [],
               script.knowledgeLedger ??
                 this.knowledgeLedgerPolicy.createLedger(),
               selected.turnBrief?.cardIds ?? []
             ),
-            script.audienceProfile,
-            script.terminologyLedger,
-            script.centralAnalogy,
-            this.recapPolicy.buildRecap(script)
-          );
+            centralAnalogy: script.centralAnalogy,
+            episodeRecap: this.recapPolicy.buildRecap(script),
+          });
         }
         generatedSpeeches.set(keyFor(selection), speech);
         return {
@@ -326,7 +391,7 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           },
         };
       },
-      reviewCandidate: async (_state, selection, candidate) => {
+      reviewCandidate: async (_state, selection, candidate, tracingContext) => {
         const selected = selectedTurns.get(keyFor(selection));
         const speech = generatedSpeeches.get(keyFor(selection));
         if (!selected || !speech) {
@@ -335,6 +400,7 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
         if (selection.kind === "interjection") {
           return { approved: true, notes: "Interjection accepted" };
         }
+        director.attachObservability(tracingContext?.currentSpan);
         const reviewed = await director.reviewSpeech(
           speech,
           selected.direction,
@@ -353,7 +419,7 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           },
         };
       },
-      validateIntegrity: async (_state, selection) => {
+      validateIntegrity: async (_state, selection, _candidate, tracingContext) => {
         const speech = generatedSpeeches.get(keyFor(selection));
         if (!speech) return "Missing reviewed turn";
         const claimGate = await this.claimEditorialGate.evaluate(speech, script);
@@ -361,6 +427,7 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
         const targetClaimIds =
           speech.turnBrief?.targetDiscourseClaimIds ?? [];
         if (targetClaimIds.length === 0) return null;
+        director.attachObservability(tracingContext?.currentSpan);
         const verified = await director.verifyDiscourseClaims(
           script,
           targetClaimIds,
@@ -521,11 +588,17 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           { kind: "interjection" }
         );
       },
-      isNaturallyComplete: async (state) =>
-        state.phase === "discussion" &&
-        script.orientation?.status !== "active" &&
-        script.speeches.length > 0 &&
-        director.isConversationComplete(script),
+      isNaturallyComplete: async (state, tracingContext) => {
+        if (
+          state.phase !== "discussion" ||
+          script.orientation?.status === "active" ||
+          script.speeches.length === 0
+        ) {
+          return false;
+        }
+        director.attachObservability(tracingContext?.currentSpan);
+        return director.isConversationComplete(script);
+      },
     };
 
     const runtime = createTweedyMastra({
@@ -533,6 +606,14 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
       tracePath: this.runtimeConfig.tracePath,
       episodeWorkflowDependencies: dependencies,
     });
+    // Kept as a root-level fallback for the post-workflow audit pass below,
+    // which runs after run.start() returns and so has no active step span
+    // to nest under. Every in-workflow dependency call instead attaches the
+    // current step's own tracingContext.currentSpan (set just before each
+    // director/speakerAgent call above), so those spans nest correctly under
+    // their step in Studio's workflow trace view rather than becoming
+    // disconnected root traces.
+    observability = runtime.mastra.observability.getSelectedInstance({});
     const workflow = runtime.mastra.getWorkflow("episodeWorkflow");
     const run = await workflow.createRun({ runId: workflowRunId });
     const result = await run.start({
@@ -556,6 +637,7 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
         `Mastra episode workflow ended without a valid closing statement (${result.result.state.phase}): ${result.result.state.warnings.join("; ")}`
       );
     }
+    this.episodeAuditAgent.attachObservability(observability);
     await new EpisodeRepairService(
       this.speechRepository,
       this.episodeAuditAgent,

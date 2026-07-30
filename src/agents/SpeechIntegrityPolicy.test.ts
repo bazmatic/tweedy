@@ -29,4 +29,54 @@ describe("SpeechIntegrityPolicy", () => {
     expect(policy.isSpeakable("Well — that changes things.")).toBe(true);
     expect(policy.isSpeakable("Is 5 < 10? Obviously.")).toBe(true);
   });
+
+  describe("addressesSelfByName", () => {
+    it("flags a speaker vocatively asking themselves a question by name", () => {
+      expect(
+        policy.addressesSelfByName(
+          "Archie, do you think that's really true?",
+          "Archie"
+        )
+      ).toBe(true);
+      expect(
+        policy.addressesSelfByName(
+          "So Archie, what was the actual mechanism there?",
+          "Archie"
+        )
+      ).toBe(true);
+    });
+
+    it("uses only the first name when the speaker has a full name", () => {
+      expect(
+        policy.addressesSelfByName(
+          "Archie, is that even possible?",
+          "Archie Smith"
+        )
+      ).toBe(true);
+    });
+
+    it("does not flag a speaker referring to a co-host by name", () => {
+      expect(
+        policy.addressesSelfByName(
+          "Claire, do you think that's really true?",
+          "Archie"
+        )
+      ).toBe(false);
+    });
+
+    it("does not flag ordinary speech mentioning the speaker's own name without a question", () => {
+      expect(
+        policy.addressesSelfByName(
+          "Like I said, Archie's been studying this for years.",
+          "Archie"
+        )
+      ).toBe(false);
+    });
+
+    it("does not flag natural speech with no name at all", () => {
+      expect(
+        policy.addressesSelfByName("Wait, really? That's wild.", "Archie")
+      ).toBe(false);
+    });
+  });
 });

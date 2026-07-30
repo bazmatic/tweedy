@@ -75,14 +75,7 @@ describe("SpeakerAgent stopReason threading", () => {
     });
 
     const script = makeScript();
-    const speech = await agent.speak(
-      script.speeches,
-      script.speakers,
-      script.materials,
-      script.title,
-      script.description,
-      "talk about x"
-    );
+    const speech = await agent.speak(script, "talk about x");
 
     expect(speech.stopReason).toBe("max_tokens");
   });
@@ -159,14 +152,7 @@ describe("SpeakerAgent output integrity", () => {
       });
 
     const script = makeScript();
-    const speech = await agent.speak(
-      script.speeches,
-      script.speakers,
-      script.materials,
-      script.title,
-      script.description,
-      "talk about x"
-    );
+    const speech = await agent.speak(script, "talk about x");
 
     expect(speech.message).toBe("Here's my real answer.");
     expect(call).toHaveBeenCalledTimes(2);
@@ -184,19 +170,20 @@ describe("SpeakerAgent editorial context", () => {
     });
     const script = makeScript();
 
-    await agent.speak(
-      script.speeches,
-      script.speakers,
-      script.materials,
-      script.title,
-      script.description,
-      "Tell the story.",
-      "",
-      false,
-      false,
-      false,
-      false,
-      {
+    script.audienceProfile = AudienceProfile.General;
+    script.terminologyLedger = {
+      explainedTerms: [
+        {
+          term: "mycelium",
+          plainLanguageMeaning: "the underground fungal network",
+          explainedBySpeakerId: "s2",
+          explainedAtTurn: 1,
+        },
+      ],
+    };
+
+    await agent.speak(script, "Tell the story.", {
+      turnBrief: {
         speakerId: "s1",
         goal: "Humanise the subject.",
         move: EditorialMove.TellStory,
@@ -204,7 +191,7 @@ describe("SpeakerAgent editorial context", () => {
         audienceValue: AudienceValue.Connection,
         desiredEnergy: EnergyLevel.Warm,
       },
-      [
+      editorialCards: [
         {
           id: "card-1",
           materialId: "m1",
@@ -218,18 +205,7 @@ describe("SpeakerAgent editorial context", () => {
           storyValue: 5,
         },
       ],
-      AudienceProfile.General,
-      {
-        explainedTerms: [
-          {
-            term: "mycelium",
-            plainLanguageMeaning: "the underground fungal network",
-            explainedBySpeakerId: "s2",
-            explainedAtTurn: 1,
-          },
-        ],
-      }
-    );
+    });
 
     expect(call.mock.calls[0][0]).toBe(ModelTask.SpeechGeneration);
     const prompt = (call.mock.calls[0][1] as any)[0].content as string;
@@ -254,24 +230,9 @@ describe("SpeakerAgent central analogy", () => {
     });
     const script = makeScript();
 
-    await agent.speak(
-      script.speeches,
-      script.speakers,
-      script.materials,
-      script.title,
-      script.description,
-      "Tell the story.",
-      "",
-      false,
-      false,
-      false,
-      false,
-      undefined,
-      [],
-      AudienceProfile.General,
-      undefined,
-      "accounts are USB drives"
-    );
+    await agent.speak(script, "Tell the story.", {
+      centralAnalogy: "accounts are USB drives",
+    });
 
     const prompt = (call.mock.calls[0][1] as any)[0].content as string;
     expect(prompt).toContain("accounts are USB drives");
@@ -287,24 +248,10 @@ describe("SpeakerAgent central analogy", () => {
     });
     const script = makeScript();
 
-    await agent.speak(
-      script.speeches,
-      script.speakers,
-      script.materials,
-      script.title,
-      script.description,
-      "Wrap up.",
-      "",
-      false,
-      false,
-      false,
-      true,
-      undefined,
-      [],
-      AudienceProfile.General,
-      undefined,
-      "accounts are USB drives"
-    );
+    await agent.speak(script, "Wrap up.", {
+      isFinalTurn: true,
+      centralAnalogy: "accounts are USB drives",
+    });
 
     const prompt = (call.mock.calls[0][1] as any)[0].content as string;
     expect(prompt).toContain("call back to the analogy");
@@ -336,19 +283,7 @@ describe("SpeakerAgent central analogy", () => {
       [s1, s2]
     );
 
-    await agent.speak(
-      script.speeches,
-      script.speakers,
-      script.materials,
-      script.title,
-      script.description,
-      "Wrap up.",
-      "",
-      false,
-      false,
-      false,
-      true
-    );
+    await agent.speak(script, "Wrap up.", { isFinalTurn: true });
 
     const prompt = (call.mock.calls[0][1] as any)[0].content as string;
     expect(prompt).toContain("briefly answer the question");
@@ -379,14 +314,7 @@ describe("SpeakerAgent trail-off handoffs", () => {
     ];
     const script = makeScript(speeches);
 
-    await agent.speak(
-      speeches,
-      script.speakers,
-      script.materials,
-      script.title,
-      script.description,
-      "talk about x"
-    );
+    await agent.speak(script, "talk about x");
 
     const prompt = (call.mock.calls[0][1] as any)[0].content as string;
     expect(prompt).toMatch(/complete the sentence they started/i);
@@ -414,14 +342,7 @@ describe("SpeakerAgent trail-off handoffs", () => {
     ];
     const script = makeScript(speeches);
 
-    await agent.speak(
-      speeches,
-      script.speakers,
-      script.materials,
-      script.title,
-      script.description,
-      "talk about x"
-    );
+    await agent.speak(script, "talk about x");
 
     const prompt = (call.mock.calls[0][1] as any)[0].content as string;
     expect(prompt).not.toMatch(/complete the sentence they started/i);
@@ -449,17 +370,95 @@ describe("SpeakerAgent trail-off handoffs", () => {
     ];
     const script = makeScript(speeches);
 
-    await agent.speak(
-      speeches,
-      script.speakers,
-      script.materials,
-      script.title,
-      script.description,
-      "talk about x"
-    );
+    await agent.speak(script, "talk about x");
 
     const prompt = (call.mock.calls[0][1] as any)[0].content as string;
     expect(prompt).not.toMatch(/complete the sentence they started/i);
+  });
+
+  it("instructs bridging from a co-host's substantive setup before new material", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "Right, exactly.",
+      style: "calm",
+      stopReason: "stop",
+    });
+    const speeches = [
+      {
+        id: "sp1",
+        speaker: makeSpeaker("s2"),
+        message: "So the whole system runs on a feedback loop.",
+        instructions: "",
+        voice: makeSpeaker("s2").voice,
+        voiceStyle: "neutral",
+        timestamp: new Date(),
+        tool: SpeakerAgentToolName.SPEAK,
+      },
+    ];
+    const script = makeScript(speeches);
+
+    await agent.speak(script, "talk about x");
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).toMatch(/briefly connect to what .* just said/i);
+    expect(prompt).toContain("So the whole system runs on a feedback loop.");
+  });
+
+  it("does not instruct bridging when the previous speech was only a brief reaction", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "Right, exactly.",
+      style: "calm",
+      stopReason: "stop",
+    });
+    const speeches = [
+      {
+        id: "sp1",
+        speaker: makeSpeaker("s2"),
+        message: "Wait, really?",
+        instructions: "",
+        voice: makeSpeaker("s2").voice,
+        voiceStyle: "neutral",
+        timestamp: new Date(),
+        tool: SpeakerAgentToolName.INTERJECT,
+      },
+    ];
+    const script = makeScript(speeches);
+
+    await agent.speak(script, "talk about x");
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).not.toMatch(/briefly connect to what .* just said/i);
+  });
+
+  it("does not instruct bridging on the final (closing) turn", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.CLOSING_STATEMENT,
+      message: "Thanks for listening, see you next time!",
+      style: "warm",
+      stopReason: "stop",
+    });
+    const speeches = [
+      {
+        id: "sp1",
+        speaker: makeSpeaker("s2"),
+        message: "So the whole system runs on a feedback loop.",
+        instructions: "",
+        voice: makeSpeaker("s2").voice,
+        voiceStyle: "neutral",
+        timestamp: new Date(),
+        tool: SpeakerAgentToolName.SPEAK,
+      },
+    ];
+    const script = makeScript(speeches);
+
+    await agent.speak(script, "wrap up", { isFinalTurn: true });
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).not.toMatch(/briefly connect to what .* just said/i);
   });
 
   it("instructs a trail-off delivery when the device is trail_off", async () => {
@@ -472,19 +471,8 @@ describe("SpeakerAgent trail-off handoffs", () => {
     });
     const script = makeScript();
 
-    await agent.speak(
-      script.speeches,
-      script.speakers,
-      script.materials,
-      script.title,
-      script.description,
-      "Tell the story.",
-      "",
-      false,
-      false,
-      false,
-      false,
-      {
+    await agent.speak(script, "Tell the story.", {
+      turnBrief: {
         speakerId: "s1",
         goal: "Build anticipation.",
         move: EditorialMove.TellStory,
@@ -492,8 +480,8 @@ describe("SpeakerAgent trail-off handoffs", () => {
         audienceValue: AudienceValue.Momentum,
         desiredEnergy: EnergyLevel.Warm,
         device: ConversationalDevice.TrailOff,
-      }
-    );
+      },
+    });
 
     const prompt = (call.mock.calls[0][1] as any)[0].content as string;
     expect(prompt).toMatch(/end .*mid-clause.*em dash/i);
@@ -576,14 +564,7 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
     });
 
     const script1 = makeScript([], [makeSpeaker("s1")]);
-    await agent.speak(
-      script1.speeches,
-      script1.speakers,
-      script1.materials,
-      script1.title,
-      script1.description,
-      "talk about x"
-    );
+    await agent.speak(script1, "talk about x");
 
     const offeredTools = spy.mock.calls[0][2] as { name: string }[];
     expect(offeredTools.map((tool) => tool.name)).toEqual([
@@ -603,14 +584,7 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
     });
 
     const scriptMulti = makeScript();
-    await agent.speak(
-      scriptMulti.speeches,
-      scriptMulti.speakers,
-      scriptMulti.materials,
-      scriptMulti.title,
-      scriptMulti.description,
-      "talk about x"
-    );
+    await agent.speak(scriptMulti, "talk about x");
 
     const offeredTools = spy.mock.calls[0][2] as { name: string }[];
     expect(offeredTools.length).toBeGreaterThan(3);
@@ -629,14 +603,7 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
     });
 
     const scriptMulti = makeScript();
-    await agent.speak(
-      scriptMulti.speeches,
-      scriptMulti.speakers,
-      scriptMulti.materials,
-      scriptMulti.title,
-      scriptMulti.description,
-      "talk about x"
-    );
+    await agent.speak(scriptMulti, "talk about x");
 
     const offeredTools = spy.mock.calls[0][2] as { name: string }[];
     const toolNames = offeredTools.map((tool) => tool.name);
@@ -665,14 +632,7 @@ describe("SpeakerAgent.speak tool set for solo episodes", () => {
     });
 
     const script1 = makeScript([], [makeSpeaker("s1")]);
-    await agent.speak(
-      script1.speeches,
-      script1.speakers,
-      script1.materials,
-      script1.title,
-      script1.description,
-      "talk about x"
-    );
+    await agent.speak(script1, "talk about x");
 
     const prompt = (spy.mock.calls[0] as any)[1][0].content as string;
     expect(prompt).toContain(
@@ -692,14 +652,7 @@ describe("SpeakerAgent expertise nudge", () => {
     });
 
     const script2 = makeScript();
-    await agent.speak(
-      script2.speeches,
-      script2.speakers,
-      script2.materials,
-      script2.title,
-      script2.description,
-      "talk about x"
-    );
+    await agent.speak(script2, "talk about x");
 
     const prompt = (spy.mock.calls[0] as any)[1][0].content as string;
     expect(prompt).toContain("answer from the material with appropriate confidence");
@@ -716,14 +669,7 @@ describe("SpeakerAgent expertise nudge", () => {
     });
 
     const script2b = makeScript();
-    await agent.speak(
-      script2b.speeches,
-      script2b.speakers,
-      script2b.materials,
-      script2b.title,
-      script2b.description,
-      "talk about x"
-    );
+    await agent.speak(script2b, "talk about x");
 
     const prompt = (spy.mock.calls[0] as any)[1][0].content as string;
     expect(prompt).toContain("ask, react, challenge, reframe, illustrate");
@@ -742,18 +688,9 @@ describe("SpeakerAgent requestSummary", () => {
     });
 
     const script3 = makeScript();
-    await agent.speak(
-      script3.speeches,
-      script3.speakers,
-      script3.materials,
-      script3.title,
-      script3.description,
-      "catch up on remaining points",
-      "",
-      false,
-      false,
-      true
-    );
+    await agent.speak(script3, "catch up on remaining points", {
+      requestSummary: true,
+    });
 
     const offeredTools = spy.mock.calls[0][2] as { name: string }[];
     const offeredNames = offeredTools.map((tool) => tool.name);
@@ -772,18 +709,11 @@ describe("SpeakerAgent requestSummary", () => {
     });
 
     const script4 = makeScript();
-    await agent.speak(
-      script4.speeches,
-      script4.speakers,
-      script4.materials,
-      script4.title,
-      script4.description,
-      "wrap up",
-      "almost out of time",
-      true,
-      false,
-      true
-    );
+    await agent.speak(script4, "wrap up", {
+      timeStatus: "almost out of time",
+      forceNearlyOutOfTime: true,
+      requestSummary: true,
+    });
 
     const offeredTools = spy.mock.calls[0][2] as { name: string }[];
     expect(offeredTools.map((tool) => tool.name)).toEqual([
@@ -813,14 +743,7 @@ describe("SpeakerAgent expert material lookup via RAGService", () => {
       });
 
     const script5 = makeScript();
-    await agent.speak(
-      script5.speeches,
-      script5.speakers,
-      script5.materials,
-      script5.title,
-      script5.description,
-      "talk about bioluminescence"
-    );
+    await agent.speak(script5, "talk about bioluminescence");
 
     expect(searchRelevantContent).toHaveBeenCalledWith(
       "talk about bioluminescence",
@@ -854,14 +777,7 @@ describe("SpeakerAgent expert material lookup via RAGService", () => {
       },
     ];
 
-    await agent.speak(
-      script.speeches,
-      script.speakers,
-      script.materials,
-      script.title,
-      script.description,
-      "talk about x"
-    );
+    await agent.speak(script, "talk about x");
 
     const prompt = (spy.mock.calls[0] as any)[1][0].content as string;
     expect(prompt).toContain("Fallback Material: Naive content.");
@@ -895,14 +811,7 @@ describe("SpeakerAgent expert material lookup via RAGService", () => {
       },
     ];
 
-    await agent.speak(
-      script.speeches,
-      script.speakers,
-      script.materials,
-      script.title,
-      script.description,
-      "talk about x"
-    );
+    await agent.speak(script, "talk about x");
 
     const prompt = (spy.mock.calls[0] as any)[1][0].content as string;
     expect(prompt).toContain("Fallback Material: Naive content.");

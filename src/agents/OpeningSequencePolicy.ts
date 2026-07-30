@@ -63,7 +63,7 @@ export class OpeningSequencePolicy {
     if (stage === OpeningStage.Hook) {
       const host = orderedSpeakers[0];
       const goal =
-        "Open cold — before any welcome or introductions — with a short, vivid tease of the episode's subject. It must be independently intelligible to someone who knows nothing about the subject: identify the person, thing, or situation instead of opening with unresolved pronouns, and briefly gloss any proper noun needed to understand the tease. A hook may reveal a tension or consequence, but must not imply that its full setup has already been explained. If the tease's payoff only makes sense because of some earlier hidden action, choice, or fact (a disguise, a trick, a false name, a withheld detail), state that antecedent plainly in the same breath — do not make the listener infer what was hidden from the consequence alone. Ground it in the prepared editorial material below, not general knowledge. Do not greet listeners, name the show, introduce yourself, or introduce your co-host.";
+        "Open cold — before any welcome or introductions — with a short, vivid tease of the episode's subject, like the teaser at the top of a magazine article: intriguing, not confusing. A listener with zero context must be able to follow it on first hearing — nothing in it may depend on something the listener would need to already know to make sense of it. Ground it in the prepared editorial material below, not general knowledge. Do not greet listeners, name the show, introduce yourself, or introduce your co-host.";
       const hookCard = this.pickHookCard(script.editorialCards ?? []);
 
       return this.toOpeningTurn(

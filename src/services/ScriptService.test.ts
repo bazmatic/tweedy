@@ -790,9 +790,9 @@ describe("ScriptService opening sequence", () => {
       "Ada",
       "Miles",
     ]);
-    expect(speakMock.mock.calls[0][5]).toContain("Open cold");
-    expect(speakMock.mock.calls[1][5]).toContain("introduce Miles");
-    expect(speakMock.mock.calls[2][5]).toContain(
+    expect(speakMock.mock.calls[0][1]).toContain("Open cold");
+    expect(speakMock.mock.calls[1][1]).toContain("introduce Miles");
+    expect(speakMock.mock.calls[2][1]).toContain(
       "Respond directly to Ada's introduction"
     );
     expect(interjectMock).not.toHaveBeenCalled();
@@ -866,7 +866,7 @@ describe("ScriptService opening sequence", () => {
       maxDuration: 60,
     });
 
-    expect(speakMock.mock.calls[0][8]).toBe(true); // forceColdOpen
+    expect(speakMock.mock.calls[0][2].forceColdOpen).toBe(true);
     expect(script.speeches[0].tool).toBe(SpeakerAgentToolName.COLD_OPEN);
   });
 });

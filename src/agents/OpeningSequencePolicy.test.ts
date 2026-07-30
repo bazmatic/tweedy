@@ -83,8 +83,9 @@ describe("OpeningSequencePolicy", () => {
     expect(turn?.forceColdOpen).toBe(true);
     expect(turn?.direction).toContain("Open cold");
     expect(turn?.direction).toContain("Do not");
+    expect(turn?.direction).toContain("intriguing, not confusing");
     expect(turn?.direction).toContain(
-      "do not make the listener infer what was hidden from the consequence alone"
+      "nothing in it may depend on something the listener would need to already know"
     );
   });
 

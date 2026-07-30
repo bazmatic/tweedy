@@ -1,5 +1,6 @@
 import { Mastra } from "@mastra/core/mastra";
 import { LibSQLStore } from "@mastra/libsql";
+import { Observability, MastraStorageExporter } from "@mastra/observability";
 import { AiProviderName } from "../types";
 import { createMinimalWorkflow } from "./minimal-workflow";
 import { createModelTaskRoutes } from "./model-routes";
@@ -8,6 +9,8 @@ import {
   createEpisodeWorkflow,
   EpisodeWorkflowDependencies,
 } from "./episode-workflow";
+import { directorMastraAgent } from "./agents/director-agent";
+import { speakerMastraAgent } from "./agents/speaker-agent";
 
 export interface CreateTweedyMastraOptions {
   storagePath: string;
@@ -40,9 +43,21 @@ export function createTweedyMastra(options: CreateTweedyMastraOptions) {
   );
   const mastra = new Mastra({
     storage,
+    agents: {
+      directorAgent: directorMastraAgent,
+      speakerAgent: speakerMastraAgent,
+    },
     workflows: episodeWorkflow
       ? { minimalWorkflow, episodeWorkflow }
       : { minimalWorkflow },
+    observability: new Observability({
+      configs: {
+        default: {
+          serviceName: "tweedy",
+          exporters: [new MastraStorageExporter()],
+        },
+      },
+    }),
   });
 
   return { mastra, storage, traceSink, routes, episodeWorkflow };
@@ -59,3 +74,5 @@ export * from "./episode-workflow";
 export * from "./model-routes";
 export * from "./runtime-context";
 export * from "./tracing";
+export * from "./agents/director-agent";
+export * from "./agents/speaker-agent";

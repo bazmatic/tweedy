@@ -146,6 +146,188 @@ describe("TurnReviewerAgent", () => {
     expect(prompt).not.toContain("nearly out of time");
   });
 
+  it("omits the subject-identification and reference rules from a cold open's prompt entirely, rather than overriding them", async () => {
+    const agent = new TurnReviewerAgent();
+    const call = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({
+        accepted: true,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+        roleConsistent: true,
+        knowledgeConsistent: true,
+        audienceAccessible: true,
+        castConsistent: true,
+        introducedCardIds: [],
+        introducedTerms: [],
+        feedback: [],
+        revisedMessages: [],
+      });
+
+    await agent.review(
+      { ...speech, tool: SpeakerAgentToolName.COLD_OPEN },
+      {
+        speakerId: "s1",
+        goal: "Open cold with a vivid tease.",
+        move: EditorialMove.Humanise,
+        cardIds: [],
+        audienceValue: AudienceValue.Connection,
+        desiredEnergy: EnergyLevel.Warm,
+      },
+      [],
+      []
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    // The rules themselves must not appear at all — not appear-then-be-
+    // overridden by a countermanding note.
+    expect(prompt).not.toContain("resolve every necessary reference");
+    expect(prompt).not.toContain("paraphrase the turn's complete point");
+    expect(prompt).not.toContain(
+      "Reject and revise a turn when a definite reference or pronoun requires an unheard person"
+    );
+    expect(prompt).toContain("This is the cold open");
+    expect(prompt).toContain(
+      "do not require the subject, a pronoun, or a named person or place to already be identified"
+    );
+  });
+
+  it("does not exempt an ordinary turn from the comprehension audit", async () => {
+    const agent = new TurnReviewerAgent();
+    const call = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({
+        accepted: true,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+        roleConsistent: true,
+        knowledgeConsistent: true,
+        audienceAccessible: true,
+        castConsistent: true,
+        introducedCardIds: [],
+        introducedTerms: [],
+        feedback: [],
+        revisedMessages: [],
+      });
+
+    await agent.review(
+      speech,
+      {
+        speakerId: "s1",
+        goal: "Explain the point.",
+        move: EditorialMove.Explain,
+        cardIds: [],
+        audienceValue: AudienceValue.Understanding,
+        desiredEnergy: EnergyLevel.Curious,
+      },
+      [],
+      []
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).toContain("resolve every necessary reference");
+    expect(prompt).toContain(
+      "Reject and revise a turn when a definite reference or pronoun requires an unheard person"
+    );
+    expect(prompt).not.toContain("This is the cold open");
+  });
+
+  it("does not require a question-move turn to also explain the term it's asking about", async () => {
+    const agent = new TurnReviewerAgent();
+    const call = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({
+        accepted: true,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+        roleConsistent: true,
+        knowledgeConsistent: true,
+        audienceAccessible: true,
+        castConsistent: true,
+        introducedCardIds: [],
+        introducedTerms: [],
+        feedback: [],
+        revisedMessages: [],
+      });
+
+    await agent.review(
+      { ...speech, message: 'Claire, what does "metis" actually mean?' },
+      {
+        speakerId: "s1",
+        goal: 'Ask for a plain-language explanation of "metis".',
+        move: EditorialMove.Question,
+        cardIds: [],
+        audienceValue: AudienceValue.Understanding,
+        desiredEnergy: EnergyLevel.Curious,
+      },
+      [],
+      []
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).not.toContain(
+      "When a specialist concept carries the argument, reject unless its meaning is explained plainly"
+    );
+    expect(prompt).toContain(
+      "a turn whose job is to ask about the concept (this one) is not expected to explain it"
+    );
+  });
+
+  it("also exempts a question posed under a different editorial move, detected from the wording itself", async () => {
+    const agent = new TurnReviewerAgent();
+    const call = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({
+        accepted: true,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+        roleConsistent: true,
+        knowledgeConsistent: true,
+        audienceAccessible: true,
+        castConsistent: true,
+        introducedCardIds: [],
+        introducedTerms: [],
+        feedback: [],
+        revisedMessages: [],
+      });
+
+    await agent.review(
+      {
+        ...speech,
+        // Question mark appears mid-turn, not at the end — the check must
+        // not require the turn to end on it.
+        message: 'What is "metis"? I honestly have no idea.',
+      },
+      {
+        speakerId: "s1",
+        goal: "React with genuine curiosity.",
+        move: EditorialMove.React,
+        cardIds: [],
+        audienceValue: AudienceValue.Connection,
+        desiredEnergy: EnergyLevel.Curious,
+      },
+      [],
+      []
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).toContain(
+      "a turn whose job is to ask about the concept (this one) is not expected to explain it"
+    );
+  });
+
   it("adds the nearly-out-of-time guardrail note only for NEARLY_OUT_OF_TIME turns", async () => {
     const agent = new TurnReviewerAgent();
     const call = vi
@@ -302,6 +484,90 @@ describe("TurnReviewerAgent", () => {
     );
   });
 
+  it("tells the reviewer what problem a revision is meant to fix, when reviewing a revision", async () => {
+    const agent = new TurnReviewerAgent();
+    const call = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({
+        accepted: true,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+        roleConsistent: true,
+        knowledgeConsistent: true,
+        audienceAccessible: true,
+        castConsistent: true,
+        introducedCardIds: [],
+        introducedTerms: [],
+        feedback: [],
+      });
+
+    await agent.review(
+      speech,
+      {
+        speakerId: "s1",
+        goal: "Make the point clearly.",
+        move: EditorialMove.Explain,
+        cardIds: [],
+        audienceValue: AudienceValue.Understanding,
+        desiredEnergy: EnergyLevel.Curious,
+      },
+      [],
+      [],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "Missing listener context"
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).toContain(
+      'This is a corrected rewrite of an earlier candidate that you rejected for: "Missing listener context"'
+    );
+    expect(prompt).toContain("do not reject the turn again for a different, marginal reading");
+  });
+
+  it("omits the revision-context note on a first-pass review", async () => {
+    const agent = new TurnReviewerAgent();
+    const call = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({
+        accepted: true,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+        roleConsistent: true,
+        knowledgeConsistent: true,
+        audienceAccessible: true,
+        castConsistent: true,
+        introducedCardIds: [],
+        introducedTerms: [],
+        feedback: [],
+      });
+
+    await agent.review(
+      speech,
+      {
+        speakerId: "s1",
+        goal: "Make the point clearly.",
+        move: EditorialMove.Explain,
+        cardIds: [],
+        audienceValue: AudienceValue.Understanding,
+        desiredEnergy: EnergyLevel.Curious,
+      },
+      [],
+      []
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).not.toContain("corrected rewrite of an earlier candidate");
+  });
+
   it("preserves a valid rejection when the rewrite call fails", async () => {
     const agent = new TurnReviewerAgent();
     vi.spyOn(agent as any, "callModelForStructuredOutput")
@@ -381,5 +647,61 @@ describe("TurnReviewerAgent", () => {
     const prompt = (call.mock.calls[0][1] as any)[0].content as string;
     expect(prompt).toContain("This episode's actual speakers: Ada, Miles");
     expect(result.accepted).toBe(false);
+  });
+
+  it("checks repetition against everything said so far by any speaker, not just this speaker's own recent lines", async () => {
+    const agent = new TurnReviewerAgent();
+    const call = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({
+        accepted: true,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+        roleConsistent: true,
+        knowledgeConsistent: true,
+        audienceAccessible: true,
+        castConsistent: true,
+        introducedCardIds: [],
+        introducedTerms: [],
+      });
+
+    const coHost = { ...speaker, id: "s2", name: "Miles" };
+    const recentSpeeches: Speech[] = Array.from({ length: 8 }, (_, i) => ({
+      id: `sp-${i}`,
+      speaker: i === 0 ? coHost : speaker,
+      message:
+        i === 0
+          ? "The letter above her desk was actually a forgery."
+          : `filler turn ${i}`,
+      instructions: "",
+      voice: speaker.voice,
+      voiceStyle: speaker.voiceStyle,
+      timestamp: new Date(),
+    }));
+
+    await agent.review(
+      speech,
+      {
+        speakerId: "s1",
+        goal: "Reveal the forgery.",
+        move: EditorialMove.TellStory,
+        cardIds: [],
+        audienceValue: AudienceValue.Connection,
+        desiredEnergy: EnergyLevel.Reflective,
+      },
+      [],
+      recentSpeeches
+    );
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).toContain(
+      "What has already been said in the episode so far, by any speaker"
+    );
+    // The co-host's line from 7 turns back must still be visible, not just
+    // this speaker's (Ada's) own recent lines.
+    expect(prompt).toContain("Miles: The letter above her desk was actually a forgery.");
   });
 });

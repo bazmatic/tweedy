@@ -532,30 +532,22 @@ export class ScriptService implements IScriptService {
       //this.logTurn(turn, params, speaker, openingTurn, isFinalTurn, forceNearlyOutOfTime, timeStatus, direction, turnBrief);
       const speakerAgent = new SpeakerAgent(speaker, this.ragService);
 
-      const rawSpeech = await speakerAgent.speak(
-        script.speeches,
-        script.speakers,
-        script.materials,
-        script.title,
-        script.description,
-        direction,
+      const rawSpeech = await speakerAgent.speak(script, direction, {
         timeStatus,
         forceNearlyOutOfTime,
-        openingTurn?.forceColdOpen ?? false,
+        forceColdOpen: openingTurn?.forceColdOpen ?? false,
         requestSummary,
         isFinalTurn,
         turnBrief,
-        this.knowledgeLedgerPolicy.getAccessibleCards(
+        editorialCards: this.knowledgeLedgerPolicy.getAccessibleCards(
           speaker,
           script.editorialCards ?? [],
           script.knowledgeLedger ?? this.knowledgeLedgerPolicy.createLedger(),
           turnBrief?.cardIds ?? []
         ),
-        script.audienceProfile,
-        script.terminologyLedger,
-        script.centralAnalogy,
-        this.episodeRecapPolicy.buildRecap(script)
-      );
+        centralAnalogy: script.centralAnalogy,
+        episodeRecap: this.episodeRecapPolicy.buildRecap(script),
+      });
       this.logTurnSpeech(turn, speaker, rawSpeech);
       const speech = await directorAgent.reviewSpeech(
         rawSpeech,

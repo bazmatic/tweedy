@@ -9,6 +9,7 @@ import {
   Speech,
   Speaker,
   SourceAccess,
+  SpeakerTurnOptions,
   StopReason,
   TerminologyLedger,
   TurnBrief,
@@ -18,6 +19,7 @@ import { logger } from "../utils/logger";
 import { RAGService } from "../rag";
 import {
   INTERJECTION_TOOLS,
+  SHORT_REACTION_TOOLS,
   SpeakerAgentToolName,
   getToolMaxTokens,
   toLlmTools,
@@ -81,6 +83,35 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     return "";
   }
 
+  /**
+   * Without this, a speaker can jump straight into new facts right after a
+   * co-host's substantive setup, reading as if their turn hadn't happened.
+   * Quoting their exact preceding words and requiring an explicit bridge
+   * prevents that upfront rather than leaving transition-smoothness to be
+   * judged only after the fact by the reviewer. Skipped when the previous
+   * turn was only a brief reaction (that case gets its own acknowledgment
+   * guidance from the director) or already ends in a trailed-off "—" (that
+   * case is handled by getHandoffGuidance above), and for the closing turn,
+   * which already has its own tailored guidance.
+   */
+  private getBridgingGuidance(
+    previousSpeech: Speech | undefined,
+    isFinalTurn: boolean
+  ): string {
+    if (
+      !previousSpeech ||
+      isFinalTurn ||
+      previousSpeech.speaker.id === this.speaker.id ||
+      previousSpeech.message.trimEnd().endsWith("—") ||
+      SHORT_REACTION_TOOLS.includes(
+        previousSpeech.tool as SpeakerAgentToolName
+      )
+    ) {
+      return "";
+    }
+    return ` Before moving to your own point, briefly connect to what ${previousSpeech.speaker.name} just said ("${previousSpeech.message.slice(0, 160)}") — a short acknowledgment, reaction, or explicit link is enough; don't jump straight into new material as if their turn hadn't happened.`;
+  }
+
   private mannerismsLine(): string {
     return this.speaker.mannerisms
       ? `\n- Mannerisms (draw on these for filler comments/interjections, don't overuse): ${this.speaker.mannerisms}`
@@ -88,24 +119,21 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
   }
 
   async speak(
-    speeches: Speech[],
-    speakers: Speaker[],
-    materials: PodcastScript['materials'],
-    title: string,
-    description: string,
+    script: PodcastScript,
     direction: string,
-    timeStatus = "",
-    forceNearlyOutOfTime = false,
-    forceColdOpen = false,
-    requestSummary = false,
-    isFinalTurn = false,
-    turnBrief?: TurnBrief,
-    editorialCards: EditorialCard[] = [],
-    audienceProfile = AudienceProfile.General,
-    terminologyLedger = EMPTY_TERMINOLOGY_LEDGER,
-    centralAnalogy?: string,
-    episodeRecap?: string
+    options: SpeakerTurnOptions = {}
   ): Promise<Speech> {
+    const {
+      timeStatus = "",
+      forceNearlyOutOfTime = false,
+      forceColdOpen = false,
+      requestSummary = false,
+      isFinalTurn = false,
+      turnBrief,
+      editorialCards = [],
+      centralAnalogy,
+      episodeRecap,
+    } = options;
     let attempts = 0;
 
     while (attempts < this.maxAttempts) {
@@ -116,13 +144,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
         });
 
         const { toolName, message, style, stopReason } =
-          await this.generateSpeech(
-            speeches,
-            speakers,
-            materials,
-            title,
-            description,
-            direction,
+          await this.generateSpeech(script, direction, {
             timeStatus,
             forceNearlyOutOfTime,
             forceColdOpen,
@@ -130,11 +152,9 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
             isFinalTurn,
             turnBrief,
             editorialCards,
-            audienceProfile,
-            terminologyLedger,
             centralAnalogy,
-            episodeRecap
-          );
+            episodeRecap,
+          });
 
         const requiresCompleteDelivery =
           isFinalTurn || toolName === SpeakerAgentToolName.SUMMARIZE;
@@ -146,6 +166,16 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
         if (!this.speechIntegrityPolicy.isSpeakable(message)) {
           throw new Error(
             `${toolName} produced a non-speakable message (leaked model artifact or empty output)`
+          );
+        }
+        if (
+          this.speechIntegrityPolicy.addressesSelfByName(
+            message,
+            this.speaker.name
+          )
+        ) {
+          throw new Error(
+            `${toolName} produced a message that addresses ${this.speaker.name} by their own name as if asking themselves a question (speaker misattribution)`
           );
         }
 
@@ -213,6 +243,16 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
           `${result.toolName} interjection produced a non-speakable message (leaked model artifact or empty output)`
         );
       }
+      if (
+        this.speechIntegrityPolicy.addressesSelfByName(
+          result.message,
+          this.speaker.name
+        )
+      ) {
+        throw new Error(
+          `${result.toolName} interjection addresses ${this.speaker.name} by their own name as if asking themselves a question (speaker misattribution)`
+        );
+      }
 
       return {
         id: this.generateId(),
@@ -232,29 +272,34 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
   }
 
   private async generateSpeech(
-    speeches: Speech[],
-    speakers: Speaker[],
-    materials: PodcastScript['materials'],
-    title: string,
-    description: string,
+    script: PodcastScript,
     direction: string,
-    timeStatus: string,
-    forceNearlyOutOfTime: boolean,
-    forceColdOpen: boolean,
-    requestSummary: boolean,
-    isFinalTurn: boolean,
-    turnBrief?: TurnBrief,
-    editorialCards: EditorialCard[] = [],
-    audienceProfile = AudienceProfile.General,
-    terminologyLedger = EMPTY_TERMINOLOGY_LEDGER,
-    centralAnalogy?: string,
-    episodeRecap?: string
+    options: SpeakerTurnOptions
   ): Promise<{
     toolName: SpeakerAgentToolName;
     message: string;
     style: string;
     stopReason: StopReason;
   }> {
+    const {
+      timeStatus = "",
+      forceNearlyOutOfTime = false,
+      forceColdOpen = false,
+      requestSummary = false,
+      isFinalTurn = false,
+      turnBrief,
+      editorialCards = [],
+      centralAnalogy,
+      episodeRecap,
+    } = options;
+    const {
+      speeches,
+      speakers,
+      materials,
+      title,
+      audienceProfile = AudienceProfile.General,
+      terminologyLedger = EMPTY_TERMINOLOGY_LEDGER,
+    } = script;
     const isSolo = speakers.length <= 1;
     const conversationHistory = this.getConversationHistory(speeches);
     const roleProfile = this.roleProfileResolver.resolve(this.speaker);
@@ -366,7 +411,7 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
 - Audience Profile: ${audienceProfile}${this.mannerismsLine()}
 - You are speaking as ${this.speaker.name} ONLY — never refer to yourself in the second person or address yourself by your own name.${
           coHostNames
-            ? ` Your co-host${coHosts.length > 1 ? "s are" : " is"} ${coHostNames} — that is who "you" refers to whenever you address, question, or hand off to a co-host by name.`
+            ? ` Your co-host${coHosts.length > 1 ? "s are" : " is"} ${coHostNames}.`
             : ""
         }
 
@@ -376,7 +421,7 @@ Podcast Context:
 Conversation History (speaker: message [tool used]):
 ${conversationHistory}${materialsSection}
 
-${direction ? `Director's guidance: ${direction}` : "No specific director's guidance for this turn — continue the conversation naturally in character."}${this.getHandoffGuidance(speeches.at(-1))}${editorialSection}${analogySection}${
+${direction ? `Here is some guidance from the Director. Only you can hear him. Listen to what he says and incorporate it naturally into the conversation if you can. DIRECTOR GUIDANCE: ${direction}` : "No specific director's guidance for this turn — continue the conversation naturally in character."}${this.getHandoffGuidance(speeches.at(-1))}${this.getBridgingGuidance(speeches.at(-1), isFinalTurn)}${editorialSection}${analogySection}${
           timeStatus && !isFinalTurn
             ? forceNearlyOutOfTime
               ? `\n\nTime status: ${timeStatus} You must use the nearly_out_of_time tool this turn to tell your co-hosts you're running low on time.`

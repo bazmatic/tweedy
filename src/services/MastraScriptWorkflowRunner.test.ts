@@ -2,7 +2,10 @@ import { mkdtemp, rm } from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MastraScriptWorkflowRunner } from "./MastraScriptWorkflowRunner";
+import {
+  findRecurringRejection,
+  MastraScriptWorkflowRunner,
+} from "./MastraScriptWorkflowRunner";
 import {
   AudienceProfile,
   EpistemicRole,
@@ -55,12 +58,14 @@ vi.mock("../agents", async (importOriginal) => {
         recordAcceptedBeat: vi.fn(),
         recordAcceptedCoverage: vi.fn(),
         markRemainingPointsOmitted: vi.fn(),
+        attachObservability: vi.fn(),
       };
     }),
     SpeakerAgent: vi.fn().mockImplementation(function () {
       return {
       speak: speakerSpeak,
       interject: vi.fn(),
+      attachObservability: vi.fn(),
       };
     }),
   };
@@ -75,6 +80,47 @@ afterEach(async () => {
       .splice(0)
       .map((directory) => rm(directory, { recursive: true }))
   );
+});
+
+describe("findRecurringRejection", () => {
+  it("detects a problem recurring across a window even when other distinct problems are interleaved", () => {
+    // Reproduces a real stuck run: the same substantive problem ("108
+    // suitors" unintroduced) recurs several times in different wording,
+    // interleaved with unrelated one-off issues — never 3-in-a-row.
+    const reasons = [
+      "108 suitors appear without being introduced to the listener",
+      "Presents foundational facts clearly, but no definition for 'epic poem'.",
+      "108 suitors still appear without setup or explanation",
+      "Repeats structural point Claire already made about Ithaca.",
+      "No prior mention of 108 suitors — comes out of nowhere",
+    ];
+
+    const result = findRecurringRejection(reasons);
+
+    expect(result).toBeDefined();
+    expect(result?.reason).toBe(reasons[reasons.length - 1]);
+    expect(result?.occurrences).toBeGreaterThanOrEqual(3);
+  });
+
+  it("does not flag a handful of genuinely distinct rejection reasons", () => {
+    const reasons = [
+      "Talks past the interjection without acknowledging it.",
+      "Presents foundational facts clearly, but no definition for 'epic poem'.",
+      "Repeats structural point Claire already made about Ithaca.",
+    ];
+
+    expect(findRecurringRejection(reasons)).toBeUndefined();
+  });
+
+  it("only looks at the most recent window, not the entire history", () => {
+    const stale = Array(3).fill("Old unrelated problem from long ago");
+    const recent = [
+      "Talks past the interjection without acknowledging it.",
+      "Presents foundational facts clearly, but no definition for 'epic poem'.",
+    ];
+
+    expect(findRecurringRejection([...stale, ...recent])).toBeUndefined();
+  });
 });
 
 describe("MastraScriptWorkflowRunner", () => {
@@ -123,7 +169,7 @@ describe("MastraScriptWorkflowRunner", () => {
     };
     let generatedSpeechNumber = 0;
     speakerSpeak.mockImplementation(async (...args) => {
-      const isFinalTurn = args[10] === true;
+      const isFinalTurn = args[2]?.isFinalTurn === true;
       generatedSpeechNumber += 1;
       return {
         ...speech,
@@ -179,7 +225,11 @@ describe("MastraScriptWorkflowRunner", () => {
       },
       undefined,
       { evaluate: vi.fn().mockResolvedValue({ accepted: true }) } as any,
-      { audit: vi.fn().mockResolvedValue([]), rewrite: vi.fn() } as any
+      {
+        audit: vi.fn().mockResolvedValue([]),
+        rewrite: vi.fn(),
+        attachObservability: vi.fn(),
+      } as any
     );
 
     const result = await runner.run({

@@ -14,7 +14,13 @@ const AUDIENCE_GUIDANCE: Readonly<Record<AudienceProfile, string>> =
   });
 
 const REFERENT_GUIDANCE =
-  'Keep every reference recoverable from the spoken conversation. Before using shorthand such as "the others", "they", "the second group", or "that response", explicitly introduce the people, group, object, or event it refers to. Do not rely on prepared notes or a later claim to supply an antecedent the listener has not heard. The same rule applies when a payoff depends on an earlier hidden action, choice, or fact — such as a disguise, a trick, a false name, or a withheld detail — that has not itself been described aloud: state that antecedent plainly rather than only gesturing at its consequence. A listener must never have to infer what was hidden or done from the outcome alone.';
+  'Keep every reference recoverable from the spoken conversation. Before using shorthand such as "the others", "they", "the second group", or "that response", explicitly introduce the people, group, object, or event it refers to. Do not rely on prepared notes or a later claim to supply an antecedent the listener has not heard. This also covers a payoff that only makes sense because of some earlier hidden action or fact — a disguise, a trick, a withheld detail: say plainly what was hidden rather than leaving the listener to guess it from the consequence alone.';
+
+// Speaker-facing only, deliberately not part of REFERENT_GUIDANCE: this is a
+// generation-time habit to prevent the gap, not a new rejection ground for
+// the reviewer to apply after the fact.
+const PROPER_NOUN_GLOSS_GUIDANCE =
+  'When you introduce a new proper noun playing a substantive role in the point being made — a named person, people, place, or work central to what is being discussed (e.g. "Achilles", "the Phaeacians", "the other epic") that the audience has not yet heard — give it a brief gloss in the same breath ("Achilles, the greatest Greek warrior", "the Phaeacians, a seafaring people who take him in") rather than assuming the listener already knows who or what it is. A proper noun used only incidentally, to attribute or label something already understood, does not need this.';
 
 /** Defines listener accessibility without changing a speaker's expertise or delivery style. */
 export class AudienceAccessibilityPolicy {
@@ -26,13 +32,25 @@ export class AudienceAccessibilityPolicy {
       .map((entry) => entry.term)
       .join(", ");
 
-    return `${AUDIENCE_GUIDANCE[audienceProfile]} ${REFERENT_GUIDANCE} A term needs explanation only when it is likely unfamiliar to this audience, necessary to understand the point, and not already explained in the episode. Previously explained terms: ${
+    return `${AUDIENCE_GUIDANCE[audienceProfile]} ${REFERENT_GUIDANCE} ${PROPER_NOUN_GLOSS_GUIDANCE} A term needs explanation only when it is likely unfamiliar to this audience, necessary to understand the point, and not already explained in the episode. Previously explained terms: ${
       explainedTerms || "none"
     }.`;
   }
 
-  buildReviewerGuidance(audienceProfile: AudienceProfile): string {
-    return `${AUDIENCE_GUIDANCE[audienceProfile]} ${REFERENT_GUIDANCE} Reject and revise a turn when a definite reference or pronoun requires an unheard person, group, object, or event to make sense. For example, "the other Cyclopes" introduces a group, while "the others" does not if no group has previously been named. Identify terminology by what it asks the listener to know, not by spelling, capitalisation or suffixes. Pay particular attention to proper nouns and surnames: when a name is shorthand for a concept it may need explaining, while simple attribution does not. Mark the turn audience-accessible when listeners can understand every concept necessary to follow the argument; do not require optional historical or technical precision beyond that bar. A consequence or example appearing after a specialist label is not automatically a definition: listeners should be able to paraphrase what the concept means. Do not penalise incidental names or terms whose precise meaning is unnecessary to follow the point.`;
+  /**
+   * `omitReferentRule` drops the antecedent/reference requirement entirely —
+   * for a cold open, which deliberately withholds who or what it's about as
+   * a hook, that rule is simply the wrong rule rather than one to apply and
+   * then override.
+   */
+  buildReviewerGuidance(
+    audienceProfile: AudienceProfile,
+    options?: { omitReferentRule?: boolean }
+  ): string {
+    const referentSection = options?.omitReferentRule
+      ? ""
+      : ` ${REFERENT_GUIDANCE} Reject and revise a turn when a definite reference or pronoun requires an unheard person, group, object, or event to make sense. For example, "the other Cyclopes" introduces a group, while "the others" does not if no group has previously been named.`;
+    return `${AUDIENCE_GUIDANCE[audienceProfile]}${referentSection} Identify terminology by what it asks the listener to know, not by spelling, capitalisation or suffixes. Pay particular attention to proper nouns and surnames: when a name is shorthand for a concept it may need explaining, while simple attribution does not. Mark the turn audience-accessible when listeners can understand every concept necessary to follow the argument; do not require optional historical or technical precision beyond that bar. A consequence or example appearing after a specialist label is not automatically a definition: listeners should be able to paraphrase what the concept means. Do not penalise incidental names or terms whose precise meaning is unnecessary to follow the point.`;
   }
 
   buildDirectorGuidance(audienceProfile: AudienceProfile): string {

@@ -788,24 +788,24 @@ export interface IWhisperTranscriptionProvider {
   transcribe(audioFilePath: string): Promise<{ words: WordTimestamp[] }>;
 }
 
+export interface SpeakerTurnOptions {
+  timeStatus?: string;
+  forceNearlyOutOfTime?: boolean;
+  forceColdOpen?: boolean;
+  requestSummary?: boolean;
+  isFinalTurn?: boolean;
+  turnBrief?: TurnBrief;
+  editorialCards?: EditorialCard[];
+  centralAnalogy?: string;
+  episodeRecap?: string;
+}
+
 // Agent Interfaces
 export interface ISpeakerAgent {
   speak(
-    speeches: Speech[],
-    speakers: Speaker[],
-    materials: PodcastMaterial[],
-    title: string,
-    description: string,
+    script: PodcastScript,
     direction: string,
-    timeStatus?: string,
-    forceNearlyOutOfTime?: boolean,
-    forceColdOpen?: boolean,
-    requestSummary?: boolean,
-    isFinalTurn?: boolean,
-    turnBrief?: TurnBrief,
-    editorialCards?: EditorialCard[],
-    audienceProfile?: AudienceProfile,
-    terminologyLedger?: TerminologyLedger
+    options?: SpeakerTurnOptions
   ): Promise<Speech>;
 }
 
@@ -846,7 +846,8 @@ export interface ITurnReviewer {
     knowledgeLedger?: KnowledgeLedger,
     audienceProfile?: AudienceProfile,
     terminologyLedger?: TerminologyLedger,
-    speakers?: Speaker[]
+    speakers?: Speaker[],
+    priorRejectionReason?: string
   ): Promise<ReviewedTurn>;
 }
 
