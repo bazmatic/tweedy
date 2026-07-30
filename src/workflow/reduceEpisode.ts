@@ -47,6 +47,9 @@ function reducePreparing(state: EpisodeState, event: EpisodeEvent): EpisodeState
         conversationBeats:
           event.conversationBeatIds?.map((id) => ({ id, covered: false })) ??
           state.conversationBeats,
+        discourseClaims:
+          event.discourseClaimIds?.map((id) => ({ id, covered: false })) ??
+          state.discourseClaims,
         lastAppliedEvent: event.type,
       };
     case "WORKFLOW_WARNING_RECORDED":
@@ -166,6 +169,7 @@ function reduceTurnPipeline(
       return {
         ...state,
         pendingTurn: null,
+        consecutiveRejectedTurns: state.consecutiveRejectedTurns + 1,
         warnings: [...state.warnings, event.reason],
         lastAppliedEvent: event.type,
       };
@@ -179,6 +183,7 @@ function reduceTurnPipeline(
       return {
         ...state,
         pendingTurn: null,
+        consecutiveRejectedTurns: 0,
         acceptedSpeechIds: [...state.acceptedSpeechIds, event.speechId],
         turnsUsed: state.pendingTurn.kind === "speech" ? state.turnsUsed + 1 : state.turnsUsed,
         elapsedDurationEstimateSeconds: state.elapsedDurationEstimateSeconds + event.durationSeconds,
@@ -188,6 +193,17 @@ function reduceTurnPipeline(
         conversationBeats: state.conversationBeats.map((beat) =>
           coveredBeatIds.has(beat.id) ? { ...beat, covered: true } : beat
         ),
+        discourseClaims: state.discourseClaims.map((claim) =>
+          (event.establishedDiscourseClaimIds ?? []).includes(claim.id)
+            ? { ...claim, covered: true }
+            : claim
+        ),
+        teasedDiscourseClaimIds: [
+          ...new Set([
+            ...state.teasedDiscourseClaimIds,
+            ...(event.teasedDiscourseClaimIds ?? []),
+          ]),
+        ],
         knowledgeLedger: [
           ...new Set([...state.knowledgeLedger, ...(event.introducedKnowledgeIds ?? [])]),
         ],
@@ -228,6 +244,23 @@ function reduceTurnPipeline(
         phase: "closing",
         terminationRequested: true,
         terminationReason: event.reason,
+        lastAppliedEvent: event.type,
+      };
+    }
+    case "CLOSING_ADVANCED": {
+      if (phase !== "closing") {
+        throw new InvalidTransitionError(phase, event.type);
+      }
+      if (state.pendingTurn !== null) {
+        throw new InvalidTransitionError(
+          phase,
+          event.type,
+          "cannot advance while a closing turn is pending"
+        );
+      }
+      return {
+        ...state,
+        closingCursor: state.closingCursor + 1,
         lastAppliedEvent: event.type,
       };
     }

@@ -66,6 +66,17 @@ export class SpeechRepository
     return await this.getRecord(id);
   }
 
+  async update(
+    id: string,
+    changes: Partial<Omit<SpeechRecord, "id" | "idempotencyKey">>
+  ): Promise<SpeechRecord | null> {
+    const existing = await this.getRecord(id);
+    if (!existing) return null;
+    const updated = { ...existing, ...changes, id: existing.id };
+    await this.replaceRecordAtomically(id, updated);
+    return updated;
+  }
+
   async getAll(): Promise<SpeechRecord[]> {
     return await this.getAllRecords();
   }

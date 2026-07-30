@@ -46,10 +46,29 @@ describe("editorial structured-output schemas", () => {
         { term: "hypha", plainLanguageMeaning: "a fungal thread" },
       ],
       feedback: [],
-      revisedMessages: [],
     };
 
     expect(reviewTurnSchema.parse(review)).toEqual(review);
     expect(() => reviewTurnSchema.parse({ accepted: true })).toThrow();
+  });
+
+  it("normalises singular reviewer feedback into an array", () => {
+    const parsed = reviewTurnSchema.parse({
+      accepted: false,
+      clear: false,
+      engaging: true,
+      grounded: true,
+      advancesBeat: false,
+      addsVariety: true,
+      roleConsistent: true,
+      knowledgeConsistent: true,
+      audienceAccessible: false,
+      castConsistent: true,
+      introducedCardIds: [],
+      introducedTerms: [],
+      feedback: "Add the missing listener context.",
+    });
+
+    expect(parsed.feedback).toEqual(["Add the missing listener context."]);
   });
 });

@@ -25,6 +25,7 @@ export const PlanCreatedEventSchema = z.object({
   timestamp: z.string(),
   discussionPointIds: z.array(z.string()).optional(),
   conversationBeatIds: z.array(z.string()).optional(),
+  discourseClaimIds: z.array(z.string()).optional(),
 });
 export type PlanCreatedEvent = z.infer<typeof PlanCreatedEventSchema>;
 
@@ -34,6 +35,13 @@ export const OpeningAdvancedEventSchema = z.object({
   isFinalOpeningTurn: z.boolean(),
 });
 export type OpeningAdvancedEvent = z.infer<typeof OpeningAdvancedEventSchema>;
+
+export const ClosingAdvancedEventSchema = z.object({
+  type: z.literal("CLOSING_ADVANCED"),
+  timestamp: z.string(),
+  isFinalClosingTurn: z.boolean(),
+});
+export type ClosingAdvancedEvent = z.infer<typeof ClosingAdvancedEventSchema>;
 
 export const TurnDirectedEventSchema = z.object({
   type: z.literal("TURN_DIRECTED"),
@@ -86,6 +94,8 @@ export const TurnAcceptedEventSchema = z.object({
   coveredConversationBeatIds: z.array(z.string()),
   introducedKnowledgeIds: z.array(z.string()).optional(),
   introducedTerms: z.array(z.string()).optional(),
+  establishedDiscourseClaimIds: z.array(z.string()).optional(),
+  teasedDiscourseClaimIds: z.array(z.string()).optional(),
 });
 export type TurnAcceptedEvent = z.infer<typeof TurnAcceptedEventSchema>;
 
@@ -125,6 +135,7 @@ export const EpisodeEventSchema = z.discriminatedUnion("type", [
   RolesAssignedEventSchema,
   PlanCreatedEventSchema,
   OpeningAdvancedEventSchema,
+  ClosingAdvancedEventSchema,
   TurnDirectedEventSchema,
   TurnGeneratedEventSchema,
   TurnReviewedEventSchema,

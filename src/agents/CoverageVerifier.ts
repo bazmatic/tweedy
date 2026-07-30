@@ -1,4 +1,4 @@
-import { DiscussionPoint } from "../types";
+import { DiscussionPoint, OrientationClaim } from "../types";
 import {
   VerifyCoveredPointsInput,
   verifyCoveredPointsSchema,
@@ -60,6 +60,53 @@ Return only the ids of points that were genuinely, substantively covered.`,
   } catch (error) {
     logger.error(
       "Failed to verify covered points; treating claims as unconfirmed:",
+      error
+    );
+    return [];
+  }
+}
+
+/**
+ * Orientation claims are deliberately atomic and stricter than editorial
+ * points. Keywords or separately scattered details do not establish a usable
+ * listener mental model; the complete meaning of each claim must be stated.
+ */
+export async function verifyOrientationClaimCoverage(
+  callModel: StructuredModelCaller<VerifyCoveredPointsInput>,
+  recentHistory: string,
+  candidateClaims: OrientationClaim[]
+): Promise<string[]> {
+  if (candidateClaims.length === 0) return [];
+
+  const claimsList = candidateClaims
+    .map((claim) => `- ${claim.id}: ${claim.text}`)
+    .join("\n");
+  const messages = [
+    {
+      role: "user" as const,
+      content: `Verify whether each foundational orientation claim is clearly established by the accepted podcast transcript. A new listener must be able to recover the claim's complete meaning from the transcript. Mere keyword mentions, implications, scattered fragments, or assumed prior knowledge do NOT count.
+
+Accepted transcript:
+${recentHistory || "(nothing said yet)"}
+
+Orientation claims:
+${claimsList}
+
+Return only the ids of claims whose complete meaning was explicitly established.`,
+    },
+  ];
+
+  try {
+    const { confirmedPointIds } = await callModel(
+      ModelTask.CoverageVerification,
+      messages,
+      verifyCoveredPointsSchema,
+      150
+    );
+    return confirmedPointIds;
+  } catch (error) {
+    logger.error(
+      "Failed to verify orientation claims; treating claims as unconfirmed:",
       error
     );
     return [];

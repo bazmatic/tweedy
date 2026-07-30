@@ -39,6 +39,8 @@ function selection(
     direction: "continue the episode",
     isOpeningTurn: state.phase === "opening",
     isFinalOpeningTurn: state.phase === "opening",
+    isClosingTurn: overrides.isFinalTurn ?? false,
+    isFinalClosingTurn: overrides.isFinalTurn ?? false,
     isFinalTurn: false,
     wasRepaired: false,
     modelTask: ModelTask.DirectionSelection,

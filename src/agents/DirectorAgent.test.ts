@@ -288,6 +288,7 @@ describe("DirectorAgent editorial turn briefs", () => {
     call.mockResolvedValueOnce({ assignments: [] });
     call.mockResolvedValueOnce({ narrative: "plan", points: [] });
     await agent.createPodcastPlan();
+    script.orientation!.status = "complete";
     call.mockResolvedValueOnce({
       speakerId: "s1",
       direction: "Tell the short backstage story.",
@@ -415,6 +416,432 @@ describe("DirectorAgent editorial turn briefs", () => {
 
     expect(script.conversationBeats?.[0]).toEqual(
       expect.objectContaining({ covered: true, coveredAtTurn: 1 })
+    );
+    expect(script.discussionPoints[0].covered).toBe(false);
+  });
+
+  it("does not complete a discourse-contract beat from a generic advancesBeat review", () => {
+    const script = makeScript();
+    script.conversationBeats = [
+      {
+        id: "b1",
+        purpose: BeatPurpose.Illustrate,
+        goal: "Tell the sequence in order.",
+        cardIds: [],
+        prerequisiteBeatIds: [],
+        desiredEnergy: EnergyLevel.Energetic,
+        targetTurns: 3,
+        pointIds: ["p1"],
+        covered: false,
+        discourseClaims: [
+          {
+            id: "b1-c1",
+            beatId: "b1",
+            text: "Establish the setup.",
+            role: "context",
+            prerequisiteClaimIds: [],
+            state: "unheard",
+            evidenceSpeechIds: [],
+            attemptedTurns: 0,
+          },
+          {
+            id: "b1-c2",
+            beatId: "b1",
+            text: "Deliver the consequence.",
+            role: "implication",
+            prerequisiteClaimIds: ["b1-c1"],
+            state: "unheard",
+            evidenceSpeechIds: [],
+            attemptedTurns: 0,
+          },
+        ],
+        completionClaimIds: ["b1-c1", "b1-c2"],
+      },
+    ];
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+
+    agent.recordAcceptedBeat({
+      id: "speech-1",
+      speaker: script.speakers[0],
+      message: "The setup.",
+      instructions: "",
+      voice: script.speakers[0].voice,
+      voiceStyle: script.speakers[0].voiceStyle,
+      timestamp: new Date(),
+      turnBrief: {
+        speakerId: script.speakers[0].id,
+        beatId: "b1",
+        targetDiscourseClaimIds: ["b1-c1"],
+        goal: "Establish the setup.",
+        move: EditorialMove.Explain,
+        cardIds: [],
+        audienceValue: AudienceValue.Understanding,
+        desiredEnergy: EnergyLevel.Curious,
+      },
+      review: {
+        accepted: true,
+        clear: true,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+      },
+    });
+
+    expect(script.conversationBeats[0].covered).toBe(false);
+  });
+});
+
+describe("DirectorAgent listener orientation", () => {
+  it.each([
+    {
+      subject: "The Odyssey",
+      scope: "A beginner's guide to the epic",
+      centralQuestion: "What does it mean to come home?",
+      claim: "Odysseus is trying to return to Ithaca after the Trojan War.",
+    },
+    {
+      subject: "Fungal signalling",
+      scope: "Evidence and uncertainty around fungal communication",
+      centralQuestion: "When does signalling count as language?",
+      claim: "Researchers measure chemical and electrical signals in fungi.",
+    },
+  ])("stores a domain-neutral contract for $subject", async (orientation) => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, {
+      maxTurns: 10,
+      maxDuration: 600,
+    });
+    vi.spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValueOnce({ assignments: [] })
+      .mockResolvedValueOnce({
+        narrative: "plan",
+        points: [],
+        orientation: {
+          ...orientation,
+          requiredClaims: [orientation.claim, "Explain why the question matters."],
+          maxTurns: 2,
+        },
+      });
+
+    await agent.createPodcastPlan();
+
+    expect(script.orientation).toEqual(
+      expect.objectContaining({
+        subject: orientation.subject,
+        scope: orientation.scope,
+        centralQuestion: orientation.centralQuestion,
+        maxTurns: 2,
+        status: "active",
+      })
+    );
+    expect(script.orientation?.requiredClaims[0].text).toBe(orientation.claim);
+  });
+
+  it("targets orientation before a higher-story-value payoff", async () => {
+    const script = makeScript({
+      orientation: {
+        subject: "The Odyssey",
+        scope: "A beginner introduction",
+        centralQuestion: "What is this poem about?",
+        requiredClaims: [
+          {
+            id: "o1",
+            text: "Odysseus is trying to return home after the Trojan War.",
+            required: true,
+            covered: false,
+          },
+        ],
+        maxTurns: 2,
+        attemptedTurns: 0,
+        status: "active",
+      },
+      discussionPoints: [
+        {
+          id: "p1",
+          text: "Penelope's rooted bed is the emotional payoff.",
+          priority: DiscussionPointPriority.Essential,
+          storyValue: 10,
+          estimatedTurns: 2,
+          prerequisiteClaimIds: ["o1"],
+          covered: false,
+        },
+      ],
+    });
+    const agent = new DirectorAgent(script, {
+      maxTurns: 10,
+      maxDuration: 600,
+    });
+    (agent as any).points = script.discussionPoints;
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
+      speakerId: "s1",
+      direction: "Set the scene.",
+      coveredPointIds: [],
+    });
+
+    const turn = await agent.chooseNextSpeaker(script);
+
+    expect(turn.turnBrief.targetOrientationClaimIds).toEqual(["o1"]);
+    expect(turn.turnBrief.targetPointId).toBeUndefined();
+    expect(turn.direction).toContain("Odysseus is trying to return home");
+    expect(turn.direction).not.toContain("rooted bed");
+  });
+
+  it("marks unresolved orientation incomplete after its bounded attempts", async () => {
+    const script = makeScript({
+      orientation: {
+        subject: "A difficult subject",
+        scope: "An introduction",
+        centralQuestion: "What is it?",
+        requiredClaims: [
+          {
+            id: "o1",
+            text: "Establish the basic subject.",
+            required: true,
+            covered: false,
+          },
+        ],
+        maxTurns: 1,
+        attemptedTurns: 0,
+        status: "active",
+      },
+    });
+    const agent = new DirectorAgent(script, {
+      maxTurns: 10,
+      maxDuration: 600,
+    });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
+      confirmedPointIds: [],
+    });
+    const speech = {
+      id: "orientation-attempt",
+      speaker: script.speakers[0],
+      message: "A vague introduction.",
+      instructions: "",
+      voice: script.speakers[0].voice,
+      voiceStyle: script.speakers[0].voiceStyle,
+      timestamp: new Date(),
+      turnBrief: {
+        speakerId: "s1",
+        goal: "Orient",
+        move: EditorialMove.Explain,
+        cardIds: [],
+        audienceValue: AudienceValue.Understanding,
+        desiredEnergy: EnergyLevel.Curious,
+        targetOrientationClaimIds: ["o1"],
+      },
+    } as Speech;
+    script.speeches.push(speech);
+
+    await agent.recordAcceptedCoverage(script, speech);
+
+    expect(script.orientation).toEqual(
+      expect.objectContaining({
+        attemptedTurns: 1,
+        status: "incomplete",
+        unresolvedClaimIds: ["o1"],
+      })
+    );
+  });
+
+  it("hides beats until their prerequisite beats are covered", () => {
+    const script = makeScript({
+      conversationBeats: [
+        {
+          id: "b1",
+          purpose: BeatPurpose.Orient,
+          goal: "Establish the subject.",
+          cardIds: [],
+          prerequisiteBeatIds: [],
+          desiredEnergy: EnergyLevel.Curious,
+          targetTurns: 1,
+          covered: false,
+        },
+        {
+          id: "b2",
+          purpose: BeatPurpose.Payoff,
+          goal: "Deliver the advanced payoff.",
+          cardIds: [],
+          prerequisiteBeatIds: ["b1"],
+          desiredEnergy: EnergyLevel.Reflective,
+          targetTurns: 1,
+          covered: false,
+        },
+      ],
+    });
+    const agent = new DirectorAgent(script, {
+      maxTurns: 10,
+      maxDuration: 600,
+    });
+
+    const before = (agent as any).getEditorialSection(script);
+    expect(before).toContain("Establish the subject");
+    expect(before).not.toContain("advanced payoff");
+
+    script.conversationBeats![0].covered = true;
+    const after = (agent as any).getEditorialSection(script);
+    expect(after).toContain("advanced payoff");
+  });
+});
+
+describe("DirectorAgent local discourse contracts", () => {
+  function cyclopsScript(): PodcastScript {
+    return makeScript({
+      orientation: {
+        subject: "The Odyssey",
+        scope: "A beginner introduction",
+        centralQuestion: "How does Odysseus get home?",
+        requiredClaims: [],
+        maxTurns: 2,
+        attemptedTurns: 0,
+        status: "complete",
+      },
+      discussionPoints: [
+        {
+          id: "p1",
+          text: "Odysseus's cunning and pride in the Cyclops episode.",
+          priority: DiscussionPointPriority.Essential,
+          storyValue: 10,
+          estimatedTurns: 3,
+          covered: false,
+        },
+      ],
+      conversationBeats: [
+        {
+          id: "b1",
+          purpose: BeatPurpose.Illustrate,
+          goal: "Explain the Cyclops episode.",
+          cardIds: ["cyclops-card"],
+          prerequisiteBeatIds: [],
+          desiredEnergy: EnergyLevel.Tense,
+          targetTurns: 3,
+          pointIds: ["p1"],
+          covered: false,
+          discourseClaims: [
+            {
+              id: "b1-c1",
+              beatId: "b1",
+              text: "Odysseus and his crew are trapped by the Cyclops Polyphemus.",
+              role: "context",
+              prerequisiteClaimIds: [],
+              state: "unheard",
+              evidenceSpeechIds: [],
+              attemptedTurns: 0,
+            },
+            {
+              id: "b1-c2",
+              beatId: "b1",
+              text: "Odysseus calls himself Nobody, blinds Polyphemus, and escapes.",
+              role: "example",
+              prerequisiteClaimIds: ["b1-c1"],
+              state: "unheard",
+              evidenceSpeechIds: [],
+              attemptedTurns: 0,
+            },
+            {
+              id: "b1-c3",
+              beatId: "b1",
+              text: "Once safe, Odysseus reveals his name because he wants credit.",
+              role: "complication",
+              prerequisiteClaimIds: ["b1-c2"],
+              state: "unheard",
+              evidenceSpeechIds: [],
+              attemptedTurns: 0,
+            },
+          ],
+          completionClaimIds: ["b1-c1", "b1-c2", "b1-c3"],
+        },
+      ],
+    });
+  }
+
+  it("schedules the Cyclops setup before the tempting complication", async () => {
+    const script = cyclopsScript();
+    const agent = new DirectorAgent(script, {
+      maxTurns: 10,
+      maxDuration: 600,
+    });
+    (agent as any).points = script.discussionPoints;
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
+      speakerId: "s1",
+      direction: "How does he blow it with the Cyclops?",
+      coveredPointIds: [],
+    });
+
+    const turn = await agent.chooseNextSpeaker(script);
+
+    expect(turn.turnBrief.targetDiscourseClaimIds).toEqual(["b1-c1"]);
+    expect(turn.turnBrief.requiredListenerClaimIds).toEqual([]);
+    expect(turn.direction).toContain("trapped by the Cyclops Polyphemus");
+    expect(turn.direction).not.toContain("How does he blow it");
+    expect(turn.direction).toContain("Do not ask a question");
+    expect(turn.direction).toContain(
+      "Every pronoun or shorthand reference must point to"
+    );
+  });
+
+  it("does not let point-level coverage bypass an incomplete discourse contract", async () => {
+    const script = cyclopsScript();
+    const agent = new DirectorAgent(script, {
+      maxTurns: 10,
+      maxDuration: 600,
+    });
+    (agent as any).points = script.discussionPoints;
+    const call = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValueOnce({
+        speakerId: "s1",
+        direction: "Move on.",
+        coveredPointIds: ["p1"],
+      });
+
+    await agent.chooseNextSpeaker(script);
+
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(script.discussionPoints[0].covered).toBe(false);
+    expect(script.conversationBeats![0].covered).toBe(false);
+  });
+
+  it("advances only after accepted transcript evidence establishes a claim", async () => {
+    const script = cyclopsScript();
+    const agent = new DirectorAgent(script, {
+      maxTurns: 10,
+      maxDuration: 600,
+    });
+    (agent as any).points = script.discussionPoints;
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
+      confirmedPointIds: ["b1-c1"],
+    });
+    const speech = {
+      id: "setup-speech",
+      speaker: script.speakers[0],
+      message:
+        "Odysseus and his crew enter Polyphemus's cave and become trapped by the one-eyed giant.",
+      instructions: "",
+      voice: script.speakers[0].voice,
+      voiceStyle: script.speakers[0].voiceStyle,
+      timestamp: new Date(),
+      turnBrief: {
+        speakerId: "s1",
+        goal: "Establish the setup.",
+        move: EditorialMove.Explain,
+        cardIds: [],
+        audienceValue: AudienceValue.Understanding,
+        desiredEnergy: EnergyLevel.Tense,
+        targetPointId: "p1",
+        targetDiscourseClaimIds: ["b1-c1"],
+        requiredListenerClaimIds: [],
+      },
+    } as Speech;
+    script.speeches.push(speech);
+
+    await agent.recordAcceptedCoverage(script, speech);
+
+    expect(script.conversationBeats![0].discourseClaims![0]).toEqual(
+      expect.objectContaining({
+        state: "established",
+        evidenceSpeechIds: ["setup-speech"],
+      })
     );
     expect(script.discussionPoints[0].covered).toBe(false);
   });
@@ -640,6 +1067,7 @@ describe("DirectorAgent progress / wrap-up pacing", () => {
       });
     callModelSpy.mockResolvedValueOnce({ narrative: "plan", points: [] });
     await agent.createPodcastPlan();
+    script.orientation!.status = "complete";
 
     // Consume turns up to (but not including) the maxTurns safety ceiling.
     let result;
@@ -664,6 +1092,7 @@ describe("DirectorAgent progress / wrap-up pacing", () => {
       });
     callModelSpy.mockResolvedValueOnce({ narrative: "plan", points: [] });
     await agent.createPodcastPlan();
+    script.orientation!.status = "complete";
 
     let result;
     for (let i = 0; i < 3; i++) {
@@ -1025,7 +1454,7 @@ describe("DirectorAgent.reviewSpeech", () => {
     expect(turnReviewer.review).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps the original when the proposed revision is visibly truncated", async () => {
+  it("returns the original as rejected when the proposed revision is visibly truncated", async () => {
     const script = makeScript();
     const turnReviewer = {
       review: vi.fn().mockResolvedValue({
@@ -1049,7 +1478,47 @@ describe("DirectorAgent.reviewSpeech", () => {
     const result = await agent.reviewSpeech(speech, "Talk about X");
 
     expect(result.message).toBe(speech.message);
+    expect(result.review?.accepted).toBe(false);
     expect(turnReviewer.review).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the original rejected when the reviewer's revision also fails review", async () => {
+    const script = makeScript();
+    const turnReviewer = {
+      review: vi
+        .fn()
+        .mockResolvedValueOnce({
+          accepted: false,
+          clear: false,
+          engaging: true,
+          grounded: true,
+          advancesBeat: false,
+          addsVariety: true,
+          revisedMessage: "A proposed correction.",
+          feedback: "Missing listener context",
+        })
+        .mockResolvedValueOnce({
+          accepted: false,
+          clear: false,
+          engaging: true,
+          grounded: true,
+          advancesBeat: false,
+          addsVariety: true,
+          feedback: "Still missing listener context",
+        }),
+    };
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      undefined,
+      { turnReviewer }
+    );
+
+    const result = await agent.reviewSpeech(makeReviewSpeech(), "Talk about X");
+
+    expect(result.message).toBe("Original message.");
+    expect(result.review?.accepted).toBe(false);
+    expect(turnReviewer.review).toHaveBeenCalledTimes(2);
   });
 
   it("returns the speech unchanged if the review call fails", async () => {
@@ -1100,6 +1569,70 @@ describe("DirectorAgent velocity / pacing", () => {
       "essential",
       "optional",
     ]);
+  });
+
+  it("reserves closing capacity and omits only lower-ranked work that cannot fit", () => {
+    const script = makeScript();
+    script.speeches = [
+      {
+        id: "elapsed",
+        speaker: script.speakers[0],
+        message: Array(600).fill("word").join(" "),
+        instructions: "",
+        voice: script.speakers[0].voice,
+        voiceStyle: script.speakers[0].voiceStyle,
+        timestamp: new Date(),
+      },
+    ];
+    script.discussionPoints = [
+      {
+        id: "essential",
+        text: "Essential foundation",
+        covered: false,
+        priority: DiscussionPointPriority.Essential,
+        storyValue: 9,
+        estimatedTurns: 2,
+      },
+      {
+        id: "supporting",
+        text: "Supporting explanation",
+        covered: false,
+        priority: DiscussionPointPriority.Supporting,
+        storyValue: 8,
+        estimatedTurns: 8,
+      },
+      {
+        id: "optional",
+        text: "Optional anecdote",
+        covered: false,
+        priority: DiscussionPointPriority.Optional,
+        storyValue: 10,
+        estimatedTurns: 8,
+      },
+    ];
+    const agent = new DirectorAgent(script, {
+      maxTurns: 20,
+      maxDuration: 600,
+    });
+    (agent as any).points = script.discussionPoints;
+    (agent as any).turnsUsed = 5;
+
+    (agent as any).pruneOpenPointsToBudget(script, {
+      coveredCount: 0,
+      openCount: 3,
+      elapsedMinutes: 4,
+      remainingMinutes: 6,
+      paceStatus: "behind",
+    });
+
+    expect(script.discussionPoints[0].omitted).not.toBe(true);
+    expect(script.discussionPoints[1].omitted).not.toBe(true);
+    expect(script.discussionPoints[2]).toEqual(
+      expect.objectContaining({
+        omitted: true,
+        omissionReason: "budget_priority",
+      })
+    );
   });
 
   it("makes the highest-ranked open point the next turn's explicit target", async () => {

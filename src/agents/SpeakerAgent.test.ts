@@ -239,6 +239,7 @@ describe("SpeakerAgent editorial context", () => {
     expect(prompt).toContain("Audience Profile: general");
     expect(prompt).toContain("everyday language before naming the term");
     expect(prompt).toContain("Previously explained terms: mycelium");
+    expect(prompt).toContain('Before using shorthand such as "the others"');
   });
 });
 

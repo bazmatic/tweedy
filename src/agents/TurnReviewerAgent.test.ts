@@ -77,11 +77,29 @@ describe("TurnReviewerAgent", () => {
     const prompt = (call.mock.calls[0][1] as any)[0].content as string;
     expect(prompt).toContain("Humanise the subject");
     expect(prompt).toContain("Do not demand analysis from a story");
-    expect(prompt).toContain("Australian/British spelling");
+    expect(prompt).toContain("First perform a listener-comprehension audit");
+    expect(prompt).toContain(
+      "You cannot see the director's goal, prepared cards, source notes, or future turns"
+    );
+    expect(prompt).toContain(
+      "set clear, audienceAccessible, and accepted to false"
+    );
+    expect(prompt).toContain(
+      "should normally acknowledge the co-host's contribution"
+    );
+    expect(prompt).toContain("simply talks past the interjection");
+    expect(prompt).toContain("This call judges only");
+    expect(prompt).toContain("at most 12 words");
+    expect(prompt).toContain("proposed candidate that has NOT been heard");
     expect(prompt).toContain("Speaker epistemic role: audience_guide");
     expect(prompt).toContain("Natural fillers, pauses, hesitations");
+    expect(prompt).toContain('phrases such as "where we left off"');
+    expect(prompt).toContain("uninterrupted adjacent exchange");
     expect(prompt).toContain("Audience profile: general");
     expect(prompt).toContain("likely unfamiliar to this audience");
+    expect(prompt).toContain(
+      '"the other Cyclopes" introduces a group, while "the others" does not'
+    );
     expect(result.accepted).toBe(true);
     expect(result.feedback).toBe("");
     expect(result.revisedMessage).toBe("");
@@ -236,24 +254,26 @@ describe("TurnReviewerAgent", () => {
     expect(result.accepted).toBe(false);
   });
 
-  it("treats a supplied revision as evidence that the original needs revision", async () => {
+  it("separates a rejected verdict from its small rewrite call", async () => {
     const agent = new TurnReviewerAgent();
-    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
-      accepted: true,
-      clear: true,
-      engaging: true,
-      grounded: true,
-      advancesBeat: true,
-      addsVariety: true,
-      roleConsistent: true,
-      knowledgeConsistent: true,
-      audienceAccessible: true,
-      castConsistent: true,
-      introducedCardIds: [],
-      introducedTerms: [],
-      feedback: ["Make the explanation clearer."],
-      revisedMessages: ["A clearer version."],
-    });
+    const call = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValueOnce({
+        accepted: false,
+        clear: false,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+        roleConsistent: true,
+        knowledgeConsistent: true,
+        audienceAccessible: false,
+        castConsistent: true,
+        introducedCardIds: [],
+        introducedTerms: [],
+        feedback: ["Missing listener context"],
+      })
+      .mockResolvedValueOnce({ message: "A clearer version." });
 
     const result = await agent.review(
       speech,
@@ -270,6 +290,55 @@ describe("TurnReviewerAgent", () => {
     );
 
     expect(result.accepted).toBe(false);
+    expect(result.feedback).toBe("Missing listener context");
+    expect(result.revisedMessage).toBe("A clearer version.");
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(call.mock.calls[1][2]).toHaveProperty("shape");
+    expect((call.mock.calls[1][1] as any)[0].content).toContain(
+      "Return only one complete corrected spoken turn"
+    );
+    expect((call.mock.calls[1][1] as any)[0].content).toContain(
+      "Relevant prepared material"
+    );
+  });
+
+  it("preserves a valid rejection when the rewrite call fails", async () => {
+    const agent = new TurnReviewerAgent();
+    vi.spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValueOnce({
+        accepted: false,
+        clear: false,
+        engaging: true,
+        grounded: true,
+        advancesBeat: true,
+        addsVariety: true,
+        roleConsistent: true,
+        knowledgeConsistent: true,
+        audienceAccessible: false,
+        castConsistent: true,
+        introducedCardIds: [],
+        introducedTerms: [],
+        feedback: ["Missing listener context"],
+      })
+      .mockRejectedValueOnce(new Error("malformed rewrite"));
+
+    const result = await agent.review(
+      speech,
+      {
+        speakerId: "s1",
+        goal: "Make the point clearly.",
+        move: EditorialMove.Explain,
+        cardIds: [],
+        audienceValue: AudienceValue.Understanding,
+        desiredEnergy: EnergyLevel.Curious,
+      },
+      [],
+      []
+    );
+
+    expect(result.accepted).toBe(false);
+    expect(result.feedback).toBe("Missing listener context");
+    expect(result.revisedMessage).toBe("");
   });
 
   it("passes the real speaker roster to the reviewer and rejects a cast-inconsistent turn", async () => {

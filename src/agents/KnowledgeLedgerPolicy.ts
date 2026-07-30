@@ -40,7 +40,7 @@ export class KnowledgeLedgerPolicy {
     if (profile.sourceAccess === SourceAccess.Full) return true;
 
     const introduced = ledger.introducedCards.some(
-      (entry) => entry.cardId === cardId
+      (entry) => entry.cardId === cardId && entry.state !== "teased"
     );
     if (introduced) return true;
 
@@ -80,7 +80,17 @@ export class KnowledgeLedgerPolicy {
         : KnowledgeSource.PreparedCard);
 
     for (const cardId of cardIds) {
-      if (ledger.introducedCards.some((entry) => entry.cardId === cardId)) {
+      const state = speech.turnBrief?.knowledgeState ?? "established";
+      const existing = ledger.introducedCards.find(
+        (entry) => entry.cardId === cardId
+      );
+      if (existing) {
+        if (existing.state === "teased" && state !== "teased") {
+          existing.state = state;
+          existing.introducedBySpeakerId = speech.speaker.id;
+          existing.introducedAtTurn = script.speeches.length + 1;
+          existing.source = source;
+        }
         continue;
       }
       ledger.introducedCards.push({
@@ -88,6 +98,7 @@ export class KnowledgeLedgerPolicy {
         introducedBySpeakerId: speech.speaker.id,
         introducedAtTurn: script.speeches.length + 1,
         source,
+        state,
       });
     }
   }

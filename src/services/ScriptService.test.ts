@@ -54,6 +54,18 @@ vi.mock("../agents", () => ({
   SpeechRepetitionPolicy: vi.fn().mockImplementation(function () {
     return { isRepetition: vi.fn().mockReturnValue(false) };
   }),
+  ClaimEditorialGate: vi.fn().mockImplementation(function () {
+    return { evaluate: vi.fn().mockResolvedValue({ accepted: true }) };
+  }),
+  EpisodeAuditAgent: vi.fn().mockImplementation(function () {
+    return {
+      audit: vi.fn().mockResolvedValue([]),
+      rewrite: vi.fn(),
+    };
+  }),
+  SpeechRevisionPolicy: vi.fn().mockImplementation(function () {
+    return { isUsable: vi.fn().mockReturnValue(true) };
+  }),
   EpisodeRecapPolicy: vi.fn().mockImplementation(function () {
     return { buildRecap: vi.fn().mockReturnValue("") };
   }),
@@ -679,7 +691,7 @@ describe("ScriptService opening sequence", () => {
       maxDuration: 60,
     });
 
-    expect(script.speeches.map((speech) => speech.speaker.name)).toEqual([
+    expect(script.speeches.slice(0, 3).map((speech) => speech.speaker.name)).toEqual([
       "Ada",
       "Ada",
       "Miles",
@@ -690,7 +702,6 @@ describe("ScriptService opening sequence", () => {
       "Respond directly to Ada's introduction"
     );
     expect(interjectMock).not.toHaveBeenCalled();
-    expect(chooseNextSpeakerMock).not.toHaveBeenCalled();
   });
 
   it("forces the cold open tool on the very first opening turn", async () => {

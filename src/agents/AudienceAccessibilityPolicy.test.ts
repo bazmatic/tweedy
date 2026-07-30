@@ -12,6 +12,9 @@ describe("AudienceAccessibilityPolicy", () => {
 
     expect(guidance).toContain("everyday language before naming the term");
     expect(guidance).toContain("likely unfamiliar");
+    expect(guidance).toContain("familiar format labels such as book or chapter");
+    expect(guidance).toContain('Before using shorthand such as "the others"');
+    expect(guidance).toContain("explicitly introduce");
   });
 
   it("shows terms that listeners have already heard explained", () => {
@@ -27,5 +30,14 @@ describe("AudienceAccessibilityPolicy", () => {
     });
 
     expect(guidance).toContain("Previously explained terms: Shannon entropy");
+  });
+
+  it("requires reviewers to reject references with unheard antecedents", () => {
+    const guidance = policy.buildReviewerGuidance(AudienceProfile.General);
+
+    expect(guidance).toContain("requires an unheard person, group, object, or event");
+    expect(guidance).toContain(
+      '"the other Cyclopes" introduces a group, while "the others" does not'
+    );
   });
 });

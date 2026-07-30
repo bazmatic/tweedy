@@ -37,6 +37,22 @@ export abstract class BaseRepository<T> {
     }
   }
 
+  protected async replaceRecordAtomically(id: string, record: T): Promise<void> {
+    await this.ensureCollectionDirectory();
+    const recordPath = this.getRecordPath(id);
+    const temporaryPath = `${recordPath}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      await fs.writeFile(temporaryPath, JSON.stringify(record, null, 2));
+      await fs.rename(temporaryPath, recordPath);
+    } catch (error) {
+      if (await fs.pathExists(temporaryPath)) {
+        await fs.remove(temporaryPath);
+      }
+      logger.error(`Failed to atomically replace record ${id}:`, error);
+      throw error;
+    }
+  }
+
   protected async deleteRecord(id: string): Promise<void> {
     try {
       const recordPath = this.getRecordPath(id);
@@ -78,4 +94,3 @@ export abstract class BaseRepository<T> {
     return uuidv4();
   }
 }
-

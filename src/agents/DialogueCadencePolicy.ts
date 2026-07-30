@@ -64,7 +64,9 @@ export class DialogueCadencePolicy {
       return {
         ...assignment,
         speaker: interruptedSpeech.speaker,
-        direction: `${lastSpeech.speaker.name} just reacted briefly — you still have the floor. Continue the thought you were developing ("${interruptedSpeech.message.slice(-80)}") from where you left off, without restarting or re-summarising it. Then continue this goal: ${assignment.turnBrief.goal}`,
+        direction: `${lastSpeech.speaker.name} just reacted briefly (${JSON.stringify(
+          lastSpeech.message
+        )}) — you still have the floor, and this is one continuous exchange. Normally acknowledge the reaction in your opening few words with a short, natural response suited to what they said, such as "Exactly", "Right?", "I know", or "That's the point", then advance the thought. Vary the wording; do not mechanically use the same acknowledgement every time, and do not pretend to agree if the reaction was sceptical or challenging. Continue the thought you were developing ("${interruptedSpeech.message.slice(-80)}") without restarting, re-summarising, or verbally announcing a resumption. Do not say "where we left off", "to recap", "as we were saying", or anything that implies a break occurred. Then continue this goal: ${assignment.turnBrief.goal}`,
         turnBrief: {
           ...assignment.turnBrief,
           speakerId: interruptedSpeech.speaker.id,

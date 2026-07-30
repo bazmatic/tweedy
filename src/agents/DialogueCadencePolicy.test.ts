@@ -196,6 +196,15 @@ describe("DialogueCadencePolicy", () => {
         CadenceRepairReason.ResumeAfterBackchannel
       );
       expect(result.direction).toMatch(/continue/i);
+      expect(result.direction).toContain("one continuous exchange");
+      expect(result.direction).toContain('Do not say "where we left off"');
+      expect(result.direction).toContain(
+        "acknowledge the reaction in your opening few words"
+      );
+      expect(result.direction).toContain('"Oh, wow."');
+      expect(result.direction).toContain(
+        "do not pretend to agree if the reaction was sceptical or challenging"
+      );
     });
 
     it("does not repair when the director already picked the interrupted speaker", () => {

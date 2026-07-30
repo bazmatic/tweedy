@@ -62,6 +62,17 @@ const introducedTermSchema = z.object({
     .describe("The plain-language meaning given to the listener."),
 });
 
+const singleItemArraySchema = (description: string) =>
+  z.preprocess(
+    (value) =>
+      typeof value === "string"
+        ? value.trim().length > 0
+          ? [value]
+          : []
+        : value,
+    z.array(z.string()).max(1).describe(description)
+  );
+
 export const reviewTurnSchema = z
   .object({
     accepted: z.boolean(),
@@ -88,22 +99,62 @@ export const reviewTurnSchema = z
       .describe(
         "Necessary technical terms first explained in this speech. Exclude incidental names and terms explained earlier."
       ),
-    feedback: z
-      .array(z.string())
-      .max(1)
-      .describe(
-        "Focused revision guidance: empty when accepted, otherwise exactly one item."
-      ),
-    revisedMessages: z
-      .array(z.string())
-      .max(1)
-      .describe(
-        "Complete corrected speech: empty when accepted, otherwise exactly one item. Natural spoken dialogue only — never include card ids, citation markers, or any other bookkeeping text; report card and term usage only via introducedCardIds and introducedTerms."
-      ),
+    feedback: singleItemArraySchema(
+      "One short, plain-language reason fragment when rejected; empty when accepted. Use at most 12 words, with no quotations or detailed rewrite."
+    ),
   })
   .describe("An editorial and role-consistency review of one podcast turn.");
 
 export type ReviewTurnInput = z.infer<typeof reviewTurnSchema>;
+
+export const rewriteRejectedTurnSchema = z
+  .object({
+    message: z
+      .string()
+      .min(1)
+      .describe(
+        "The complete corrected spoken turn as one unbroken line. Natural dialogue only; no analysis, labels, markdown, citations, or bookkeeping."
+      ),
+  })
+  .describe("A corrected replacement for a rejected podcast turn.");
+
+export type RewriteRejectedTurnInput = z.infer<
+  typeof rewriteRejectedTurnSchema
+>;
+
+export const episodeAuditSchema = z
+  .object({
+    issues: z
+      .array(
+        z.object({
+          speechId: z.string(),
+          category: z.enum([
+            "listener_context",
+            "dependency_order",
+            "substantial_repetition",
+            "speaker_role",
+            "continuity",
+            "closing_accuracy",
+            "duration_language",
+            "malformed_speech",
+          ]),
+          reason: z
+            .string()
+            .describe(
+              "A plain-language reason fragment of at most 12 words, with no quotation."
+            ),
+        })
+      )
+      .max(3),
+  })
+  .describe(
+    "At most three localised, repairable defects in a completed spoken episode."
+  );
+
+export type EpisodeAuditInput = z.infer<typeof episodeAuditSchema>;
+export type EpisodeAuditIssue = EpisodeAuditInput["issues"][number] & {
+  id: string;
+};
 
 export const condenseSpeechSchema = z
   .object({

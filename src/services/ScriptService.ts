@@ -26,13 +26,19 @@ import {
   SpeakerAgent,
   SpeakerAgentToolName,
   SpeechRepetitionPolicy,
+  ClaimEditorialGate,
   EpisodeRecapPolicy,
   SpeakerRoleProfileResolver,
+  EpisodeAuditAgent,
 } from "../agents";
 import { logger } from "../utils/logger";
 import { shouldInterject } from "./interjection-policy";
 import { RAGService } from "../rag";
 import { OpeningSequencePolicy, OpeningTurn } from "../agents/OpeningSequencePolicy";
+import {
+  ClosingSequencePolicy,
+  ClosingTurn,
+} from "../agents/ClosingSequencePolicy";
 import { KnowledgeLedgerPolicy } from "../agents/KnowledgeLedgerPolicy";
 import { TerminologyLedgerPolicy } from "../agents/TerminologyLedgerPolicy";
 import {
@@ -51,6 +57,7 @@ import {
   MastraConversationWorkflowEngine,
 } from "./conversation-engine";
 import { MastraScriptWorkflowRunner } from "./MastraScriptWorkflowRunner";
+import { EpisodeRepairService } from "./EpisodeRepairService";
 
 export class ScriptService implements IScriptService {
   private readonly conversationEngineSelector: ConversationEngineSelector;
@@ -68,7 +75,9 @@ export class ScriptService implements IScriptService {
     private readonly scriptEditPlanner = new ScriptEditPlanner(),
     private readonly episodeRecapPolicy = new EpisodeRecapPolicy(),
     private readonly roleProfileResolver = new SpeakerRoleProfileResolver(),
-    conversationEngineSelector?: ConversationEngineSelector
+    conversationEngineSelector?: ConversationEngineSelector,
+    private readonly claimEditorialGate = new ClaimEditorialGate(),
+    private readonly episodeAuditAgent = new EpisodeAuditAgent()
   ) {
     this.conversationEngineSelector =
       conversationEngineSelector ??
@@ -85,7 +94,11 @@ export class ScriptService implements IScriptService {
             this.terminologyLedgerPolicy,
             this.speechRepetitionPolicy,
             this.episodeRecapPolicy,
-            this.roleProfileResolver
+            this.roleProfileResolver,
+            undefined,
+            undefined,
+            this.claimEditorialGate,
+            this.episodeAuditAgent
           )
         ),
       ]);
@@ -428,25 +441,30 @@ export class ScriptService implements IScriptService {
     workflowRunId = script.createdAt.toISOString()
   ): Promise<void> {
     const episodeId = script.id || encodeURIComponent(script.title);
+    const openingTurnCount = script.speakers.length + 2;
+    const closingTurnCount = script.speakers.length > 1 ? 3 : 2;
+    const productionTurnLimit = Math.max(
+      params.maxTurns,
+      openingTurnCount + closingTurnCount + 1
+    );
     const directorAgent = new DirectorAgent(
       script,
       {
-        // The opening sequence consumes speakers.length + 1 turns (one cold
-        // open, one welcome from the host, then one acknowledgement from
-        // each guest) before the director ever gets a turn — budget the
-        // director's own maxTurns off what's actually left, not off
-        // speakers.length alone, or the outer turn loop's hard ceiling cuts
-        // generation off before the director ever gets to declare a final
-        // turn and force a proper closing statement.
+        // Opening and closing are bounded production phases. Reserve their
+        // turns so the editorial discussion cannot consume the social
+        // opening or ending budget.
         maxTurns: Math.max(
           1,
-          params.maxTurns - (script.speakers.length + 1)
+          productionTurnLimit - openingTurnCount - closingTurnCount
         ),
         maxDuration: params.maxDuration,
       },
       params.guidance
     );
     const openingSequence = new OpeningSequencePolicy();
+    const closingSequence = new ClosingSequencePolicy();
+    let closingStarted = false;
+    let closingCursor = 0;
     await directorAgent.createPodcastPlan();
     try {
       await this.ragService.addMaterials(script.materials);
@@ -457,21 +475,43 @@ export class ScriptService implements IScriptService {
       );
     }
 
-    for (let turn = 0; turn < params.maxTurns; turn++) {
+    for (let turn = 0; turn < productionTurnLimit; turn++) {
       const openingTurn = openingSequence.nextTurn(script);
-      if (
-        !openingTurn &&
+      let closingTurn: ClosingTurn | null = null;
+      let selectedTurn;
+
+      if (openingTurn) {
+        selectedTurn = openingTurn;
+      } else if (closingStarted) {
+        closingTurn = closingSequence.nextTurn(script, closingCursor);
+        if (!closingTurn) break;
+        selectedTurn = closingTurn;
+      } else if (
         script.speeches.length > 0 &&
+        script.orientation?.status !== "active" &&
         (await directorAgent.isConversationComplete(script))
       ) {
         logger.info(
-          'Director judged the conversation naturally concluded; stopping production early'
+          "Director judged the discussion naturally concluded; beginning the ending phase"
         );
-        break;
+        closingStarted = true;
+        closingTurn = closingSequence.nextTurn(script, closingCursor);
+        if (!closingTurn) break;
+        selectedTurn = closingTurn;
+      } else {
+        const directorTurn = await directorAgent.chooseNextSpeaker(script);
+        if (directorTurn.isFinalTurn) {
+          closingStarted = true;
+          closingTurn = closingSequence.nextTurn(script, closingCursor);
+          if (!closingTurn) break;
+          selectedTurn = closingTurn;
+        } else {
+          selectedTurn = directorTurn;
+        }
       }
 
       const { speaker, direction, timeStatus, forceNearlyOutOfTime, requestSummary, isFinalTurn, turnBrief } =
-        openingTurn ?? await directorAgent.chooseNextSpeaker(script);
+        selectedTurn;
       //this.logTurn(turn, params, speaker, openingTurn, isFinalTurn, forceNearlyOutOfTime, timeStatus, direction, turnBrief);
       const speakerAgent = new SpeakerAgent(speaker, this.ragService);
 
@@ -507,6 +547,38 @@ export class ScriptService implements IScriptService {
         script.editorialCards ?? [],
         script.speeches
       );
+      if (speech.review?.accepted === false) {
+        logger.warn(
+          `Discarded rejected speech from ${speech.speaker.name}; asking the director for a fresh turn`
+        );
+        continue;
+      }
+      const claimGate = await this.claimEditorialGate.evaluate(speech, script);
+      if (!claimGate.accepted) {
+        logger.warn(
+          `Discarded speech from ${speech.speaker.name}: ${claimGate.reason}`
+        );
+        continue;
+      }
+      const targetDiscourseClaimIds =
+        speech.turnBrief?.targetDiscourseClaimIds ?? [];
+      const verifiedDiscourseClaimIds =
+        targetDiscourseClaimIds.length > 0
+          ? await directorAgent.verifyDiscourseClaims(
+              script,
+              targetDiscourseClaimIds,
+              speech.message
+            )
+          : [];
+      if (
+        targetDiscourseClaimIds.length > 0 &&
+        verifiedDiscourseClaimIds.length === 0
+      ) {
+        logger.warn(
+          `Discarded speech from ${speech.speaker.name}: targeted claim was not established`
+        );
+        continue;
+      }
       // if (speech.review) {
       //   logger.info(
       //     `Turn ${turn + 1}: director review for ${speech.speaker.name}: ${JSON.stringify(speech.review)}`
@@ -526,7 +598,11 @@ export class ScriptService implements IScriptService {
         `${episodeId}/${workflowRunId}/${turn}/speech`
       );
       directorAgent.recordAcceptedBeat(speech);
-      await directorAgent.recordAcceptedCoverage(script, speech);
+      await directorAgent.recordAcceptedCoverage(
+        script,
+        speech,
+        verifiedDiscourseClaimIds
+      );
       this.knowledgeLedgerPolicy.recordAcceptedTurn(script, speech);
       this.terminologyLedgerPolicy.recordAcceptedTurn(script, speech);
 
@@ -539,6 +615,9 @@ export class ScriptService implements IScriptService {
       if (openingTurn && openingSequence.nextTurn(script) === null) {
         this.markOpeningBeatsCovered(script);
       }
+      if (closingTurn) {
+        closingCursor += 1;
+      }
 
       // If that turn ran long — or was cut off by the token limit — let a
       // different speaker chime in with a quick reaction before the director
@@ -548,6 +627,7 @@ export class ScriptService implements IScriptService {
       // thing said rather than a context-blind reaction.
       if (
         !openingTurn &&
+        !closingTurn &&
         !isFinalTurn &&
         shouldInterject(speech, script.speakers.length, Math.random())
       ) {
@@ -583,14 +663,17 @@ export class ScriptService implements IScriptService {
         }
       }
 
-      // The director declares final turn either at the maxTurns safety
-      // ceiling or once the estimated duration budget is exhausted — stop
-      // here rather than looping until maxTurns regardless of pacing.
-      if (isFinalTurn) {
+      // Only the final stage of the explicit ending phase is terminal.
+      if (closingTurn?.isFinalTurn) {
         break;
       }
     }
 
+    await new EpisodeRepairService(
+      this.speechRepository,
+      this.episodeAuditAgent,
+      this.claimEditorialGate
+    ).auditAndRepair(script, params.maxDuration, directorAgent);
     this.logUncoveredPoints(script);
   }
 
@@ -599,8 +682,7 @@ export class ScriptService implements IScriptService {
       if (
         !beat.covered &&
         (beat.purpose === BeatPurpose.Welcome ||
-          beat.purpose === BeatPurpose.Hook ||
-          beat.purpose === BeatPurpose.Orient)
+          beat.purpose === BeatPurpose.Hook)
       ) {
         beat.covered = true;
         beat.coveredAtTurn = script.speeches.length;
@@ -742,6 +824,7 @@ export class ScriptService implements IScriptService {
       speeches,
       materials,
       discussionPoints: record.discussionPoints ?? [],
+      orientation: record.orientation,
       editorialCards: record.editorialCards ?? [],
       conversationBeats: record.conversationBeats ?? [],
       knowledgeLedger:
@@ -767,6 +850,7 @@ export class ScriptService implements IScriptService {
       speechIds: script.speeches.map((s) => s.id),
       materialIds: script.materials.map((m) => m.id),
       discussionPoints: script.discussionPoints ?? [],
+      orientation: script.orientation,
       editorialCards: script.editorialCards ?? [],
       conversationBeats: script.conversationBeats ?? [],
       knowledgeLedger:

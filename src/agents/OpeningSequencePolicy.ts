@@ -1,6 +1,7 @@
 import {
   AudienceValue,
   EditorialCard,
+  EditorialCardKind,
   EditorialMove,
   EnergyLevel,
   EpistemicRole,
@@ -62,7 +63,7 @@ export class OpeningSequencePolicy {
     if (stage === OpeningStage.Hook) {
       const host = orderedSpeakers[0];
       const goal =
-        "Open cold — before any welcome or introductions — with a short, vivid tease of the episode's subject. Ground it in the prepared editorial material below, not general knowledge. Do not greet listeners, name the show, introduce yourself, or introduce your co-host.";
+        "Open cold — before any welcome or introductions — with a short, vivid tease of the episode's subject. It must be independently intelligible to someone who knows nothing about the subject: identify the person, thing, or situation instead of opening with unresolved pronouns, and briefly gloss any proper noun needed to understand the tease. A hook may reveal a tension or consequence, but must not imply that its full setup has already been explained. Ground it in the prepared editorial material below, not general knowledge. Do not greet listeners, name the show, introduce yourself, or introduce your co-host.";
       const hookCard = this.pickHookCard(script.editorialCards ?? []);
 
       return this.toOpeningTurn(
@@ -91,9 +92,7 @@ export class OpeningSequencePolicy {
 
     if (stage === OpeningStage.Frame) {
       const host = orderedSpeakers[0];
-      const goal = script.narrative
-        ? `Step back before diving into any specific story and briefly frame why this episode's whole topic matters, in your own words: ${script.narrative} Keep it to 2-3 sentences — state the overall premise, don't tell any single story yet, and don't ask a question or hand off to your co-host.`
-        : "Step back before diving into any specific story and briefly frame why this episode's topic matters as a whole, in 2-3 sentences, without telling any single story yet.";
+      const goal = `Complete the opening phase with a compact listener promise for "${script.title}". In 1-2 sentences, say what central question or experience the episode will help the listener understand and why it matters. Do not summarise the planned sequence, list examples, tell a specific story, introduce terminology, thank listeners, sign off, or ask a question.`;
 
       return this.toOpeningTurn(host, goal, EditorialMove.AddContext, false);
     }
@@ -116,7 +115,11 @@ export class OpeningSequencePolicy {
   }
 
   private pickHookCard(cards: EditorialCard[]): EditorialCard | undefined {
-    return [...cards].sort((a, b) => b.storyValue - a.storyValue)[0];
+    return [...cards].sort((a, b) => {
+      const aStandalone = a.kind === EditorialCardKind.BigPicture ? 1 : 0;
+      const bStandalone = b.kind === EditorialCardKind.BigPicture ? 1 : 0;
+      return bStandalone - aStandalone || b.storyValue - a.storyValue;
+    })[0];
   }
 
   private toOpeningTurn(
@@ -143,6 +146,7 @@ export class OpeningSequencePolicy {
         audienceValue: AudienceValue.Connection,
         desiredEnergy: EnergyLevel.Warm,
         knowledgeSource,
+        knowledgeState: forceColdOpen ? "teased" : "established",
       },
     };
   }

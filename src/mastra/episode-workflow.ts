@@ -47,6 +47,8 @@ export const TurnSelectionSchema = z.object({
   direction: z.string(),
   isOpeningTurn: z.boolean(),
   isFinalOpeningTurn: z.boolean(),
+  isClosingTurn: z.boolean().default(false),
+  isFinalClosingTurn: z.boolean().default(false),
   isFinalTurn: z.boolean(),
   wasRepaired: z.boolean().default(false),
   modelTask: z.nativeEnum(ModelTask).default(ModelTask.DirectionSelection),
@@ -104,6 +106,7 @@ export const EpisodeWorkflowOutputSchema = z.object({
 export interface EpisodePreparationResult {
   discussionPointIds?: string[];
   conversationBeatIds?: string[];
+  discourseClaimIds?: string[];
 }
 
 export interface EpisodeWorkflowDependencies {
@@ -215,7 +218,7 @@ export function createTurnTransactionWorkflow(
       if (!selection) return inputData;
       let state = inputData.state;
       if (
-        selection.isFinalTurn &&
+        selection.isClosingTurn &&
         state.phase === "discussion" &&
         !state.terminationRequested
       ) {
@@ -496,6 +499,9 @@ export function createTurnTransactionWorkflow(
           persisted.coveredConversationBeatIds ?? [],
         introducedKnowledgeIds: persisted.introducedKnowledgeIds ?? [],
         introducedTerms: persisted.introducedTerms ?? [],
+        establishedDiscourseClaimIds:
+          persisted.establishedDiscourseClaimIds ?? [],
+        teasedDiscourseClaimIds: persisted.teasedDiscourseClaimIds ?? [],
       });
       await dependencies.acceptCandidate?.(
         state,
@@ -510,18 +516,14 @@ export function createTurnTransactionWorkflow(
           isFinalOpeningTurn: selection.isFinalOpeningTurn,
         });
       }
-      if (
-        selection.isFinalTurn &&
-        state.phase === "discussion" &&
-        !state.terminationRequested
-      ) {
+      if (selection.isClosingTurn && state.phase === "closing") {
         state = apply(state, {
-          type: "CLOSING_REQUESTED",
+          type: "CLOSING_ADVANCED",
           timestamp: timestamp(),
-          reason: "final turn selected",
+          isFinalClosingTurn: selection.isFinalClosingTurn,
         });
       }
-      if (selection.isFinalTurn && state.phase === "closing") {
+      if (selection.isFinalClosingTurn && state.phase === "closing") {
         state = apply(state, {
           type: "EPISODE_COMPLETED",
           timestamp: timestamp(),
@@ -545,7 +547,7 @@ export function createTurnTransactionWorkflow(
         accepted: true,
         lastAcceptedSpeechId: persisted.speechId,
         lastTurnWasOpening: selection.isOpeningTurn,
-        lastTurnWasFinal: selection.isFinalTurn,
+        lastTurnWasFinal: selection.isFinalClosingTurn,
       };
     },
   });
@@ -614,6 +616,14 @@ export function createEpisodeWorkflow(
     outputSchema: EpisodeWorkflowEnvelopeSchema,
     execute: async ({ inputData }) => {
       if (inputData.state.phase === "completed") return inputData;
+      if (
+        inputData.state.phase === "opening" &&
+        inputData.state.consecutiveRejectedTurns >= 5
+      ) {
+        throw new Error(
+          `Logical turn rejected ${inputData.state.consecutiveRejectedTurns} consecutive times`
+        );
+      }
       const hitTurnLimit =
         inputData.state.turnsUsed >= inputData.limits.maxTurns;
       const hitDurationLimit =
@@ -621,8 +631,14 @@ export function createEpisodeWorkflow(
         inputData.limits.maxDurationSeconds;
       const hitIterationLimit =
         inputData.iteration >= inputData.limits.maxIterations - 1;
+      const orientationActive =
+        inputData.inspection?.orientationActive === true;
       let selection: TurnSelection;
-      if (hitTurnLimit || hitDurationLimit || hitIterationLimit) {
+      if (
+        inputData.state.phase !== "opening" &&
+        !orientationActive &&
+        (hitTurnLimit || hitDurationLimit || hitIterationLimit)
+      ) {
         const reason = hitTurnLimit
           ? "turn limit"
           : hitDurationLimit
@@ -632,40 +648,40 @@ export function createEpisodeWorkflow(
           inputData.state,
           reason
         );
-        selection = { ...selection, isFinalTurn: true };
       } else if (inputData.state.phase === "closing") {
-        selection = {
-          ...(await dependencies.forceClosingTurn(
-            inputData.state,
-            "closing phase"
-          )),
-          isFinalTurn: true,
-        };
+        selection = await dependencies.forceClosingTurn(
+          inputData.state,
+          "closing phase"
+        );
       } else {
         try {
           const naturallyComplete =
             inputData.state.phase === "discussion" &&
             (await dependencies.isNaturallyComplete?.(inputData.state));
           selection = naturallyComplete
-            ? {
-                ...(await dependencies.forceClosingTurn(
-                  inputData.state,
-                  "natural conclusion"
-                )),
-                isFinalTurn: true,
-              }
+            ? await dependencies.forceClosingTurn(
+                inputData.state,
+                "natural conclusion"
+              )
             : await dependencies.proposeTurn(
                 inputData.state,
                 inputData.inspection ?? {}
               );
-        } catch {
-          selection = {
-            ...(await dependencies.forceClosingTurn(
+          if (
+            inputData.state.phase === "discussion" &&
+            selection.isFinalTurn &&
+            !selection.isClosingTurn
+          ) {
+            selection = await dependencies.forceClosingTurn(
               inputData.state,
-              "turn selection failed"
-            )),
-            isFinalTurn: true,
-          };
+              "director requested close"
+            );
+          }
+        } catch {
+          selection = await dependencies.forceClosingTurn(
+            inputData.state,
+            "turn selection failed"
+          );
         }
       }
       if (
@@ -779,7 +795,7 @@ export function createEpisodeWorkflow(
           maxIterations:
             inputData.maxTurns * 3 +
             inputData.definition.speakerIds.length +
-            4,
+            10,
         },
         iteration: 0,
         inspection: null,
@@ -852,6 +868,7 @@ export function createEpisodeWorkflow(
         timestamp: timestamp(),
         discussionPointIds: plan.discussionPointIds,
         conversationBeatIds: plan.conversationBeatIds,
+        discourseClaimIds: plan.discourseClaimIds,
       });
       return { ...inputData, state };
     },

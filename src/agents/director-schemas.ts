@@ -28,6 +28,22 @@ function fallbackWithWarning<T>(field: string, fallback: T) {
   };
 }
 
+const discourseClaimSchema = z.object({
+  text: z.string().describe("One atomic meaning the listener must understand."),
+  role: z
+    .string()
+    .min(1)
+    .describe(
+      "A concise subject-neutral discourse role. Prefer context, proposition, action, mechanism, explanation, evidence, example, surprise, complication, implication, or payoff; other labels are accepted and matched semantically."
+    ),
+  prerequisiteClaimIndexes: z
+    .array(z.number().int().nonnegative())
+    .optional()
+    .describe(
+      "Zero-based indexes of earlier claims in this same beat that listeners must understand first."
+    ),
+});
+
 export const conversationBeatSchema = z.object({
   purpose: z
     .nativeEnum(BeatPurpose)
@@ -57,6 +73,14 @@ export const conversationBeatSchema = z.object({
     .describe(
       "Discussion point ids this beat advances, using the point order as p1, p2, and so on."
     ),
+  claims: z
+    .array(discourseClaimSchema)
+    .min(1)
+    .max(8)
+    .optional()
+    .describe(
+      "Ordered atomic claims for this beat. Context and propositions must precede dependent evidence, complications, implications, and payoffs."
+    ),
 });
 
 export type ConversationBeatInput = z.infer<typeof conversationBeatSchema>;
@@ -77,6 +101,33 @@ const rankedDiscussionPointSchema = z.object({
     .min(1)
     .max(6)
     .describe("Substantive speaking turns needed to cover it naturally."),
+  prerequisiteClaimIds: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Orientation claim ids that listeners must understand before this point is eligible."
+    ),
+});
+
+const orientationContractSchema = z.object({
+  subject: z.string().describe("The thing, question, person, event, or idea being discussed."),
+  scope: z.string().describe("The specific aspect and boundaries of the episode."),
+  centralQuestion: z.string().describe("The organising listener-facing question."),
+  requiredClaims: z
+    .array(z.string())
+    .min(2)
+    .max(6)
+    .describe(
+      "Atomic, domain-neutral facts a new listener must understand before deeper discussion. They receive ids o1, o2, and so on in this order."
+    ),
+  maxTurns: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      "Suggested orientation turn budget. Runtime policy safely clamps this to its supported range."
+    ),
 });
 
 export const createPodcastPlanSchema = z
@@ -102,6 +153,11 @@ export const createPodcastPlanSchema = z
       .optional()
       .describe(
         "One concrete, physical, everyday analogy for the episode's core concept (e.g. 'programs are public library terminals; accounts are USB drives you bring'). Both speakers will reuse and extend this analogy throughout the episode, so make it extensible."
+      ),
+    orientation: orientationContractSchema
+      .optional()
+      .describe(
+        "A subject-neutral orientation contract that establishes what is being discussed before exploration."
       ),
   })
   .describe("A complete editorial plan for the podcast episode.");

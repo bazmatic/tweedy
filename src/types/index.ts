@@ -160,6 +160,27 @@ export interface DiscussionPoint {
   /** Explicit graceful-degradation outcome; omitted is not the same as missed. */
   omitted?: boolean;
   omissionReason?: string;
+  /** Foundational orientation claims that must be established first. */
+  prerequisiteClaimIds?: string[];
+}
+
+export interface OrientationClaim {
+  id: string;
+  text: string;
+  required: boolean;
+  covered: boolean;
+  coveredAtTurn?: number;
+}
+
+export interface OrientationContract {
+  subject: string;
+  scope: string;
+  centralQuestion: string;
+  requiredClaims: OrientationClaim[];
+  maxTurns: number;
+  attemptedTurns: number;
+  status: "active" | "complete" | "incomplete";
+  unresolvedClaimIds?: string[];
 }
 
 export interface ProductionOutcome {
@@ -167,6 +188,13 @@ export interface ProductionOutcome {
   completionReason: string;
   omittedPointIds: string[];
   omissionSeverity?: "none" | "optional_only" | "supporting" | "essential";
+  orientationStatus?: "complete" | "incomplete";
+  unresolvedOrientationClaimIds?: string[];
+  audit?: {
+    inspected: boolean;
+    repairedSpeechIds: string[];
+    unresolvedIssueIds: string[];
+  };
 }
 
 /** Subject-neutral editorial ingredients prepared from source material. */
@@ -208,6 +236,8 @@ export interface IntroducedKnowledge {
   introducedBySpeakerId: string;
   introducedAtTurn: number;
   source: KnowledgeSource;
+  /** A teaser is audible but does not establish listener knowledge. */
+  state?: "teased" | "established" | "developed";
 }
 
 export interface KnowledgeLedger {
@@ -295,6 +325,33 @@ export interface ConversationBeat {
   pointIds?: string[];
   covered: boolean;
   coveredAtTurn?: number;
+  /** Ordered, atomic listener-knowledge claims for this beat. */
+  discourseClaims?: DiscourseClaim[];
+  completionClaimIds?: string[];
+}
+
+export type DiscourseRole =
+  | "context"
+  | "proposition"
+  | "action"
+  | "mechanism"
+  | "explanation"
+  | "evidence"
+  | "example"
+  | "surprise"
+  | "complication"
+  | "implication"
+  | "payoff";
+
+export interface DiscourseClaim {
+  id: string;
+  beatId: string;
+  text: string;
+  role: DiscourseRole;
+  prerequisiteClaimIds: string[];
+  state: "unheard" | "teased" | "established" | "developed" | "unresolved";
+  evidenceSpeechIds: string[];
+  attemptedTurns: number;
 }
 
 export enum EditorialMove {
@@ -347,6 +404,11 @@ export interface TurnBrief {
   knowledgeSource?: KnowledgeSource;
   /** Deterministically scheduled editorial point for this accepted turn. */
   targetPointId?: string;
+  /** Atomic listener-orientation claims targeted before ranked exploration. */
+  targetOrientationClaimIds?: string[];
+  targetDiscourseClaimIds?: string[];
+  requiredListenerClaimIds?: string[];
+  knowledgeState?: "teased" | "established" | "developed";
 }
 
 export interface TurnReview {
@@ -378,6 +440,7 @@ export interface PodcastScript {
   speeches: Speech[];
   materials: PodcastMaterial[];
   discussionPoints: DiscussionPoint[];
+  orientation?: OrientationContract;
   editorialCards?: EditorialCard[];
   conversationBeats?: ConversationBeat[];
   knowledgeLedger?: KnowledgeLedger;
@@ -500,6 +563,7 @@ export interface ScriptRecord {
   speechIds: string[];
   materialIds: string[];
   discussionPoints: DiscussionPoint[];
+  orientation?: OrientationContract;
   editorialCards?: EditorialCard[];
   conversationBeats?: ConversationBeat[];
   knowledgeLedger?: KnowledgeLedger;
@@ -507,6 +571,7 @@ export interface ScriptRecord {
   terminologyLedger?: TerminologyLedger;
   speakerRoleAssignments?: Record<string, SpeakerRoleProfile>;
   productionOutcome?: ProductionOutcome;
+  centralAnalogy?: string;
   conversationRun?: {
     engine: "legacy" | "mastra";
     flowVersion: string;
@@ -614,6 +679,10 @@ export interface ISpeechRepository {
     acceptedSpeechIds: readonly string[]
   ): Promise<boolean>;
   getById(id: string): Promise<SpeechRecord | null>;
+  update(
+    id: string,
+    changes: Partial<Omit<SpeechRecord, "id" | "idempotencyKey">>
+  ): Promise<SpeechRecord | null>;
   getAll(): Promise<SpeechRecord[]>;
   delete(id: string): Promise<boolean>;
 }

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { verifyCoveredPointClaims } from "./CoverageVerifier";
-import { DiscussionPoint } from "../types";
+import {
+  verifyCoveredPointClaims,
+  verifyOrientationClaimCoverage,
+} from "./CoverageVerifier";
+import { DiscussionPoint, OrientationClaim } from "../types";
 
 function makePoint(id: string, text: string): DiscussionPoint {
   return { id, text, covered: false };
@@ -28,5 +31,29 @@ describe("verifyCoveredPointClaims", () => {
     const result = await verifyCoveredPointClaims(callModel, "some history", []);
     expect(result).toEqual([]);
     expect(callModel).not.toHaveBeenCalled();
+  });
+});
+
+describe("verifyOrientationClaimCoverage", () => {
+  it("asks for complete claim meaning rather than keyword matching", async () => {
+    const claims: OrientationClaim[] = [
+      {
+        id: "o1",
+        text: "Odysseus is returning to Ithaca after the Trojan War.",
+        required: true,
+        covered: false,
+      },
+    ];
+    const callModel = vi.fn().mockResolvedValue({ confirmedPointIds: [] });
+
+    await verifyOrientationClaimCoverage(
+      callModel,
+      "Odysseus. Ithaca. The Trojan War.",
+      claims
+    );
+
+    const prompt = callModel.mock.calls[0][1][0].content;
+    expect(prompt).toContain("Mere keyword mentions");
+    expect(prompt).toContain("complete meaning");
   });
 });

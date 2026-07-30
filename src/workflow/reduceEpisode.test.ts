@@ -218,6 +218,7 @@ describe("reduceEpisode: discussion phase turn pipeline", () => {
     expect(state.pendingTurn).toBeNull();
     expect(state.acceptedSpeechIds).toEqual([]);
     expect(state.warnings).toEqual(["too repetitive"]);
+    expect(state.consecutiveRejectedTurns).toBe(1);
   });
 
   it("rejects TURN_GENERATED with no pendingTurn", () => {
@@ -405,6 +406,22 @@ describe("reduceEpisode: interjections, closing and completion", () => {
     expect(completed.phase).toBe("completed");
   });
 
+  it("CLOSING_ADVANCED increments the closing cursor after an accepted stage", () => {
+    const state = discussionState();
+    const closing = reduceEpisode(state, {
+      type: "CLOSING_REQUESTED",
+      timestamp,
+      reason: "time",
+    });
+    const advanced = reduceEpisode(closing, {
+      type: "CLOSING_ADVANCED",
+      timestamp,
+      isFinalClosingTurn: false,
+    });
+    expect(advanced.phase).toBe("closing");
+    expect(advanced.closingCursor).toBe(1);
+  });
+
   it("the turn pipeline still works from closing (final sign-off turn)", () => {
     const state = discussionState();
     let closing = reduceEpisode(state, { type: "CLOSING_REQUESTED", timestamp, reason: "time" });
@@ -429,6 +446,49 @@ describe("reduceEpisode: interjections, closing and completion", () => {
 
     const completed = reduceEpisode(closing, { type: "EPISODE_COMPLETED", timestamp });
     expect(completed.phase).toBe("completed");
+  });
+
+  it("projects established and teased discourse state only on TURN_ACCEPTED", () => {
+    let state = discussionState();
+    state.discourseClaims = [
+      { id: "b1-c1", covered: false },
+      { id: "b1-c2", covered: false },
+    ];
+    state = reduceEpisode(state, {
+      type: "TURN_DIRECTED",
+      timestamp,
+      speakerId: "speaker-1",
+      direction: "establish context",
+      kind: "speech",
+    });
+    state = reduceEpisode(state, {
+      type: "TURN_GENERATED",
+      timestamp,
+      message: "context",
+      stopReason: "stop",
+    });
+    state = reduceEpisode(state, {
+      type: "TURN_REVIEWED",
+      timestamp,
+      approved: true,
+      notes: "ok",
+    });
+    state = reduceEpisode(state, {
+      type: "TURN_ACCEPTED",
+      timestamp,
+      speechId: "speech-context",
+      durationSeconds: 4,
+      coveredDiscussionPointIds: [],
+      coveredConversationBeatIds: [],
+      establishedDiscourseClaimIds: ["b1-c1"],
+      teasedDiscourseClaimIds: ["b1-c2"],
+    });
+
+    expect(state.discourseClaims).toEqual([
+      { id: "b1-c1", covered: true },
+      { id: "b1-c2", covered: false },
+    ]);
+    expect(state.teasedDiscourseClaimIds).toEqual(["b1-c2"]);
   });
 
   it.each(["completed", "failed"] as const)(
@@ -501,6 +561,7 @@ describe("reduceEpisode: round-trip, immutability and event coverage", () => {
       "TURN_ACCEPTED",
       "INTERJECTION_REQUESTED",
       "CLOSING_REQUESTED",
+      "CLOSING_ADVANCED",
       "EPISODE_COMPLETED",
       "WORKFLOW_WARNING_RECORDED",
     ]);

@@ -21,9 +21,12 @@ describe("EpisodeEventSchema", () => {
         durationSeconds: 12.5,
         coveredDiscussionPointIds: ["dp-1"],
         coveredConversationBeatIds: [],
+        establishedDiscourseClaimIds: ["b1-c1"],
+        teasedDiscourseClaimIds: ["b2-c3"],
       },
       { type: "INTERJECTION_REQUESTED", timestamp, speakerId: "speaker-2", direction: "push back" },
       { type: "CLOSING_REQUESTED", timestamp, reason: "duration limit reached" },
+      { type: "CLOSING_ADVANCED", timestamp, isFinalClosingTurn: false },
       { type: "EPISODE_COMPLETED", timestamp },
       { type: "WORKFLOW_WARNING_RECORDED", timestamp, message: "reviewer failed open" },
     ];

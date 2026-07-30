@@ -140,6 +140,50 @@ describe("KnowledgeLedgerPolicy", () => {
     ).toHaveLength(1);
   });
 
+  it("does not treat a cold-open teaser as established listener knowledge", () => {
+    const script = makeScript(expert, guide);
+    script.knowledgeLedger = policy.createLedger();
+    const teaser = makeSpeech(expert, true);
+    teaser.turnBrief = {
+      ...teaser.turnBrief!,
+      knowledgeState: "teased",
+    };
+
+    policy.recordAcceptedTurn(script, teaser);
+
+    expect(script.knowledgeLedger.introducedCards[0]).toEqual(
+      expect.objectContaining({ cardId: "card-1", state: "teased" })
+    );
+    expect(
+      policy.getAccessibleCards(
+        guide,
+        script.editorialCards ?? [],
+        script.knowledgeLedger,
+        []
+      )
+    ).toHaveLength(0);
+  });
+
+  it("upgrades a teased card when a later accepted turn establishes it", () => {
+    const script = makeScript(expert, guide);
+    script.knowledgeLedger = policy.createLedger();
+    const teaser = makeSpeech(expert, true);
+    teaser.turnBrief = { ...teaser.turnBrief!, knowledgeState: "teased" };
+    policy.recordAcceptedTurn(script, teaser);
+
+    const explanation = makeSpeech(expert, true);
+    explanation.turnBrief = {
+      ...explanation.turnBrief!,
+      knowledgeState: "established",
+    };
+    policy.recordAcceptedTurn(script, explanation);
+
+    expect(script.knowledgeLedger.introducedCards).toHaveLength(1);
+    expect(script.knowledgeLedger.introducedCards[0].state).toBe(
+      "established"
+    );
+  });
+
   it("does not learn knowledge from a rejected turn", () => {
     const script = makeScript(expert, guide);
     script.knowledgeLedger = policy.createLedger();

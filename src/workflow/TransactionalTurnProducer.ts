@@ -19,6 +19,8 @@ export interface PersistedTurn {
   coveredConversationBeatIds?: string[];
   introducedKnowledgeIds?: string[];
   introducedTerms?: string[];
+  establishedDiscourseClaimIds?: string[];
+  teasedDiscourseClaimIds?: string[];
 }
 
 export interface ProduceTurnOperations<TCandidate extends TurnCandidate> {

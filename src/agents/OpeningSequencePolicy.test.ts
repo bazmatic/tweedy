@@ -120,6 +120,41 @@ describe("OpeningSequencePolicy", () => {
     expect(turn?.turnBrief.knowledgeSource).toBe(KnowledgeSource.PreparedCard);
   });
 
+  it("prefers a standalone big-picture card over a context-dependent payoff", () => {
+    const policy = new OpeningSequencePolicy();
+    const script = makeScript();
+    script.editorialCards = [
+      {
+        id: "payoff",
+        materialId: "m1",
+        kind: EditorialCardKind.Story,
+        content: "A consequence that needs prior setup.",
+        significance: "",
+        evidence: [],
+        relatedCardIds: [],
+        tags: [],
+        keyTerms: [],
+        storyValue: 10,
+      },
+      {
+        id: "big-picture",
+        materialId: "m1",
+        kind: EditorialCardKind.BigPicture,
+        content: "A standalone framing of the subject.",
+        significance: "",
+        evidence: [],
+        relatedCardIds: [],
+        tags: [],
+        keyTerms: [],
+        storyValue: 8,
+      },
+    ];
+
+    expect(policy.nextTurn(script)?.turnBrief.cardIds).toEqual([
+      "big-picture",
+    ]);
+  });
+
   it("falls back to common knowledge when no editorial cards are prepared", () => {
     const policy = new OpeningSequencePolicy();
     const script = makeScript();
@@ -196,10 +231,9 @@ describe("OpeningSequencePolicy", () => {
     const turn = policy.nextTurn(script);
 
     expect(turn?.speaker.name).toBe("Ada");
-    expect(turn?.direction).toContain(
-      "1953 was a hinge year because science, geopolitics, and culture all lurched at once."
-    );
-    expect(turn?.direction).toContain("don't tell any single story yet");
+    expect(turn?.direction).toContain("compact listener promise");
+    expect(turn?.direction).toContain("1-2 sentences");
+    expect(turn?.direction).not.toContain(script.narrative);
   });
 
   it("falls back to a generic framing goal when no narrative was generated", () => {
@@ -211,7 +245,7 @@ describe("OpeningSequencePolicy", () => {
 
     const turn = policy.nextTurn(script);
 
-    expect(turn?.direction).toContain("matters as a whole");
+    expect(turn?.direction).toContain("why it matters");
   });
 
   it("hands control to the editorial director after the premise has been framed", () => {

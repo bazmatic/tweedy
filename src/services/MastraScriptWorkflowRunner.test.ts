@@ -121,13 +121,15 @@ describe("MastraScriptWorkflowRunner", () => {
       stopReason: "stop" as const,
       tool: SpeakerAgentToolName.CLOSING_STATEMENT,
     };
+    let generatedSpeechNumber = 0;
     speakerSpeak.mockImplementation(async (...args) => {
       const isFinalTurn = args[10] === true;
+      generatedSpeechNumber += 1;
       return {
         ...speech,
         message: isFinalTurn
-          ? "A distinct closing thought."
-          : "A concise opening thought.",
+          ? `A distinct closing thought ${generatedSpeechNumber}.`
+          : `A distinct production thought ${generatedSpeechNumber}.`,
         tool: isFinalTurn
           ? SpeakerAgentToolName.CLOSING_STATEMENT
           : SpeakerAgentToolName.SPEAK,
@@ -137,8 +139,8 @@ describe("MastraScriptWorkflowRunner", () => {
       ...candidate,
       message:
         candidate.tool === SpeakerAgentToolName.CLOSING_STATEMENT
-          ? "A reviewer-improved final thought. Thanks for listening, and until next time."
-          : "A reviewer-improved opening thought.",
+          ? `${candidate.message} Thanks for listening, and until next time.`
+          : `Reviewer improved: ${candidate.message}`,
     }));
     directorComplete.mockResolvedValue(false);
     directorChoose.mockResolvedValue({
@@ -174,7 +176,10 @@ describe("MastraScriptWorkflowRunner", () => {
       {
         storagePath: path.join(directory, "workflow.db"),
         tracePath: path.join(directory, "traces.jsonl"),
-      }
+      },
+      undefined,
+      { evaluate: vi.fn().mockResolvedValue({ accepted: true }) } as any,
+      { audit: vi.fn().mockResolvedValue([]), rewrite: vi.fn() } as any
     );
 
     const result = await runner.run({
@@ -192,15 +197,15 @@ describe("MastraScriptWorkflowRunner", () => {
     });
 
     expect(result).toBe(script);
-    expect(result.speeches.length).toBeGreaterThan(0);
+    expect(result.speeches).toHaveLength(5);
     expect(createOrReturn).toHaveBeenCalledWith(
       expect.objectContaining({
         message:
-          "A reviewer-improved final thought. Thanks for listening, and until next time.",
+          "A distinct closing thought 5. Thanks for listening, and until next time.",
       }),
       expect.stringContaining("/run-14/")
     );
-    expect(speechesVisibleWhenLedgerRecorded).toBe(1);
+    expect(speechesVisibleWhenLedgerRecorded).toBe(result.speeches.length - 1);
     expect(directorCreatePlan).toHaveBeenCalledOnce();
   });
 });

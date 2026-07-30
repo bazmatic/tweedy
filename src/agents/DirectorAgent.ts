@@ -5,6 +5,7 @@ import {
   ConversationBeat,
   DiscussionPoint,
   DiscussionPointPriority,
+  DiscourseRole,
   EditorialCard,
   EditorialMove,
   EnergyLevel,
@@ -12,11 +13,13 @@ import {
   IDirectorAgent,
   IMaterialPreparer,
   ITurnReviewer,
+  OrientationContract,
   PodcastScript,
   Speaker,
   Speech,
   TurnBrief,
 } from '../types';
+import { LocalEmbeddingService } from '../rag/LocalEmbeddingService';
 import { BaseAgent } from './BaseAgent';
 import { MaterialPreparerAgent } from './MaterialPreparerAgent';
 import { ConversationRhythmPolicy } from './ConversationRhythmPolicy';
@@ -42,6 +45,7 @@ import { SpeakerRoleProfileFactory } from './SpeakerRoleProfileFactory';
 import { DialogueCadencePolicy } from './DialogueCadencePolicy';
 import { AudienceAccessibilityPolicy } from './AudienceAccessibilityPolicy';
 import { EpisodeConclusionPolicy } from './EpisodeConclusionPolicy';
+import { DiscourseRoleMatcher } from './DiscourseRoleMatcher';
 import { SpeakerAgentToolName } from './speaker-tools';
 import { ModelTask } from '../providers/ModelRoutingPolicy';
 
@@ -71,6 +75,7 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private dialogueCadencePolicy: DialogueCadencePolicy;
   private audienceAccessibilityPolicy: AudienceAccessibilityPolicy;
   private episodeConclusionPolicy: EpisodeConclusionPolicy;
+  private discourseRoleMatcher: DiscourseRoleMatcher;
   private guidance?: string;
 
   constructor(
@@ -87,6 +92,7 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
       dialogueCadencePolicy?: DialogueCadencePolicy;
       audienceAccessibilityPolicy?: AudienceAccessibilityPolicy;
       episodeConclusionPolicy?: EpisodeConclusionPolicy;
+      discourseRoleMatcher?: DiscourseRoleMatcher;
     } = {}
   ) {
     super();
@@ -112,6 +118,9 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
       new AudienceAccessibilityPolicy();
     this.episodeConclusionPolicy =
       dependencies.episodeConclusionPolicy ?? new EpisodeConclusionPolicy();
+    this.discourseRoleMatcher =
+      dependencies.discourseRoleMatcher ??
+      new DiscourseRoleMatcher(new LocalEmbeddingService());
   }
 
   async createPodcastPlan(): Promise<string> {
@@ -180,13 +189,17 @@ spelling.
 
 Also provide a separate list of at least ${minDiscussionPoints} ranked discussion points — editorial opportunities rather than a rigid checklist. For each point provide a short text, priority (essential, supporting, or optional), storyValue from 1-10, and estimatedTurns from 1-6. Essential means the episode would fail its central promise without it; supporting deepens that promise; optional is worthwhile only if time permits. The production team will use this ranking to adapt gracefully to the duration.
 
-Also provide a sequence of conversation beats. Each beat must have a listener-centred purpose and goal, suitable energy, useful prepared card ids, realistic target turn count, and pointIds naming the ranked points it advances (p1, p2, and so on). Vary the beat purposes so the episode has shape rather than becoming a run of explanations.
+Also provide a subject-neutral orientation contract: name what is being discussed, define this episode's scope and central question, and list 2-6 atomic facts a completely new listener must understand before deeper material will make sense. These are not necessarily story facts: adapt them to a scientific concept, technology, historical event, person, argument, cultural object, or other subject. Keep them factual and testable against a transcript. The claims receive ids o1, o2, and so on in their listed order; use those ids in prerequisiteClaimIds.
+
+Also provide a sequence of conversation beats. Each beat must have a listener-centred purpose and goal, suitable energy, useful prepared card ids, realistic target turn count, and pointIds naming the ranked points it advances (p1, p2, and so on). Vary the beat purposes so the episode has shape rather than becoming a run of explanations. Use prerequisiteBeatIds where a payoff or advanced explanation depends on earlier context. Discussion points may name prerequisiteClaimIds from the orientation contract when they require that foundation.
+
+For every beat provide ordered atomic claims. Each claim has a subject-neutral role (context, proposition, action, mechanism, explanation, evidence, example, surprise, complication, implication, or payoff) and zero-based prerequisiteClaimIndexes referring only to earlier claims in that beat. Decompose causal examples so setup is established before action, complication, consequence, interpretation or payoff. For non-narrative subjects, establish the phenomenon or proposition before mechanism, evidence and implication. A teaser or memorable consequence does not eliminate the need to establish its prerequisites later.
 
 Also nominate one central analogy — a concrete, physical, everyday comparison for the episode's core concept. Choose something both speakers can return to and extend as new aspects of the topic appear, the way a good explainer keeps one metaphor alive for a whole episode.`,
         }
       ];
 
-      const { narrative, points, beats, centralAnalogy } = await this.callModelForStructuredOutput<CreatePodcastPlanInput>(
+      const { narrative, points, beats, centralAnalogy, orientation } = await this.callModelForStructuredOutput<CreatePodcastPlanInput>(
         ModelTask.EpisodePlanning,
         messages,
         createPodcastPlanSchema,
@@ -210,16 +223,27 @@ Also nominate one central analogy — a concrete, physical, everyday comparison 
           priority: ranked.priority,
           storyValue: ranked.storyValue,
           estimatedTurns: ranked.estimatedTurns,
+          prerequisiteClaimIds: ranked.prerequisiteClaimIds,
           covered: false,
         };
       });
       this.script.discussionPoints = this.points;
+      const normalisedBeats = await this.normaliseDiscourseRoles(beats);
       this.script.conversationBeats = this.toConversationBeats(
-        beats,
+        normalisedBeats,
         this.points
       );
       this.script.centralAnalogy = centralAnalogy;
       this.script.narrative = this.podcastPlan;
+      this.script.orientation = this.toOrientationContract(orientation);
+      const orientationClaimIds = new Set(
+        this.script.orientation.requiredClaims.map((claim) => claim.id)
+      );
+      for (const point of this.points) {
+        point.prerequisiteClaimIds = point.prerequisiteClaimIds?.filter((id) =>
+          orientationClaimIds.has(id)
+        );
+      }
 
       logger.info(
         `Podcast plan created successfully with ${this.points.length} discussion points`
@@ -326,10 +350,12 @@ Default to "informed_host" for any speaker whose personality doesn't say otherwi
       // progress is still in the late-stage zone on a later turn, force the
       // close instead of nudging again — otherwise speakers repeatedly
       // thank listeners and say goodbye without the episode ever ending.
+      const orientationClaims = this.getOpenOrientationClaims();
       const isFinalTurn =
-        this.turnsUsed >= this.maxTurns ||
-        progress >= 100 ||
-        this.lateStageTurns >= MAX_LATE_STAGE_TURNS;
+        (orientationClaims.length === 0 &&
+          (this.turnsUsed >= this.maxTurns ||
+            progress >= 100 ||
+            this.lateStageTurns >= MAX_LATE_STAGE_TURNS));
       const hasAnnouncedTimePressure = script.speeches.some(
         (speech) =>
           speech.tool === SpeakerAgentToolName.NEARLY_OUT_OF_TIME
@@ -340,9 +366,15 @@ Default to "informed_host" for any speaker whose personality doesn't say otherwi
         hasAnnouncedTimePressure
       );
       const velocityBeforeThisTurn = this.calculateVelocity(script);
-      const targetPoint = isFinalTurn
+      if (orientationClaims.length === 0) {
+        this.pruneOpenPointsToBudget(script, velocityBeforeThisTurn);
+      }
+      const targetPoint = isFinalTurn || orientationClaims.length > 0
         ? undefined
         : this.selectScheduledPoint();
+      const targetDiscourseClaim = targetPoint
+        ? this.selectNextDiscourseClaim(targetPoint.id)
+        : undefined;
       const velocityNote = this.getVelocityNote(velocityBeforeThisTurn);
       const openPointsSection = this.getOpenPointsSection();
       const balanceNote = this.getBalanceNote(script);
@@ -355,6 +387,18 @@ Default to "informed_host" for any speaker whose personality doesn't say otherwi
       const schedulingNote = targetPoint
         ? `\n\nProduction scheduling decision: advance ${targetPoint.id} [${targetPoint.priority ?? DiscussionPointPriority.Supporting}] — ${targetPoint.text}. This target was selected deterministically from the ranked open points. Shape the next turn around it; a brief reaction or necessary answer may bridge into it, but do not substitute a lower-ranked new topic.`
         : '';
+      const discourseNote = targetDiscourseClaim
+        ? `\n\nLocal discourse requirement: establish this next eligible meaning before asking listeners to interpret, react to, or remember dependent material:\n- ${targetDiscourseClaim.id} [${targetDiscourseClaim.role}]: ${targetDiscourseClaim.text}\nIts prerequisites are established. Do not presuppose a later claim or jump to a complication, consequence, implication, or payoff. Do not foreshadow later material using people, groups, objects, or events that have not yet been explicitly introduced aloud.`
+        : "";
+      const orientationTargets = orientationClaims.slice(0, 2);
+      const orientationNote =
+        orientationTargets.length > 0
+          ? `\n\nMandatory listener orientation: before opening any ranked topic, clearly establish these foundational claims in plain language during this turn:\n${orientationTargets
+              .map((claim) => `- ${claim.id}: ${claim.text}`)
+              .join(
+                "\n"
+              )}\nState their complete meaning; do not merely mention keywords. This is a conversational orientation turn, not a list or a full episode summary.`
+          : "";
       const guidanceNote = this.guidance
         ? ` Keep steering the conversation in line with the producer's guidance for this episode: ${this.guidance}`
         : '';
@@ -389,7 +433,7 @@ Speakers:
 ${speakerDescriptions}
 
 Conversation so far (each line tagged with the tool used to deliver it — "speak" is substantive content; "interject", "filler_comment", "one_liner", and "short_question" are brief reactions, not real answers or new points):
-${history || '(nothing said yet — this is the opening of the episode)'}
+${history || '(nothing said yet — this is the opening of the episode)'}${orientationNote}${discourseNote}
 
 Decide which speaker should talk next. Only give them direction if it's actually needed — a brief goal or topic, not a script. If the conversation is flowing well and the next speaker can naturally carry it forward, leave direction empty rather than inventing something for them to say. When you do give direction, tell them what to address, not what to say; leave the wording, phrasing and specific angle to the speaker so they sound like themselves rather than reciting your lines. Also choose a subject-neutral editorial move, the primary audience value, desired energy, relevant beat and prepared card ids. Every turn should help the listener understand, entertain them, reveal something meaningful, create connection, or move the conversation forwards; it need not do all of these. Don't force analysis onto a story or humour onto an explanation. Don't mistake a brief reaction tag (interject/filler_comment/one_liner/short_question) for a substantive point — if the last speaker only reacted, direct the next speaker to actually answer or continue, not to react to the reaction. A challenge creates a right of reply: direct the speaker who was challenged to respond before the challenger speaks again. A good challenge can open a short segment: after the challenged speaker's first answer, it is fine to let the exchange continue for another turn or two until the objection is genuinely resolved, rather than moving straight to a new point. Respect the chronological order shown above; a remark made before a challenge cannot be described as a response to that challenge. The episode's welcome and speaker introductions are already handled before you are ever consulted — never direct anyone to (re)welcome listeners or (re)introduce themselves or a co-host, no matter how far into the episode this is. Before assigning a goal or direction, check the conversation so far for any fact, comparison, analogy, illustrative example, or question already used — even if worded differently than you'd phrase it — and never direct a speaker to re-explain, re-derive, or re-ask about it; point them toward new ground instead. This applies just as much to a brief handoff (invite, short_question) as to a full explanation: don't reach for an already-settled topic just because the move calls for something short. Choose the beat this proposed turn should advance; beat completion is recorded only after the resulting speech is accepted and reviewed. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention (e.g. mentioning an oxygen tank explosion does NOT cover a point about a CO2 scrubber duct-tape hack). Use Australian/British spelling.${this.getPacingNote(
             script
@@ -406,8 +450,14 @@ Decide which speaker should talk next. Only give them direction if it's actually
         );
       const { speakerId, coveredPointIds } = result;
       const direction = targetPoint
-        ? `${result.direction ?? ''} Advance the scheduled point ${targetPoint.id}: ${targetPoint.text}.`.trim()
-        : result.direction ?? '';
+        ? targetDiscourseClaim
+          ? `Establish ${targetDiscourseClaim.id} directly and declaratively: ${targetDiscourseClaim.text} Give the minimum context a new listener needs. Do not ask a question that presupposes this claim, and do not mention dependent material until this is clear. Every pronoun or shorthand reference must point to a person, group, object, or event already named aloud in the conversation or explicitly introduced in this turn.`
+          : `${result.direction ?? ""} Advance the scheduled point ${targetPoint.id}: ${targetPoint.text}.`.trim()
+        : orientationTargets.length > 0
+          ? `${result.direction ?? ""} Establish this listener foundation before deeper discussion: ${orientationTargets
+              .map((claim) => claim.text)
+              .join(" ")} Do not introduce a payoff or advanced detail yet.`.trim()
+          : result.direction ?? '';
       if (result.moveRationale) {
         logger.debug(
           `Director move rationale (${result.move ?? 'unspecified'}): ${result.moveRationale}`
@@ -415,7 +465,7 @@ Decide which speaker should talk next. Only give them direction if it's actually
       }
 
       const confirmedPointIds = await this.verifyCoveredPoints(
-        coveredPointIds,
+        this.pointIdsEligibleForDirectCoverage(coveredPointIds),
         script
       );
       this.applyCoveredPoints(confirmedPointIds);
@@ -429,6 +479,25 @@ Decide which speaker should talk next. Only give them direction if it's actually
       const turnBrief = this.toTurnBrief(result, direction);
       if (targetPoint) {
         turnBrief.targetPointId = targetPoint.id;
+        turnBrief.goal = direction;
+      }
+      if (targetDiscourseClaim) {
+        turnBrief.beatId = targetDiscourseClaim.beatId;
+        turnBrief.targetDiscourseClaimIds = [targetDiscourseClaim.id];
+        turnBrief.requiredListenerClaimIds = [
+          ...targetDiscourseClaim.prerequisiteClaimIds,
+        ];
+        turnBrief.move =
+          targetDiscourseClaim.role === "example"
+            ? EditorialMove.Illustrate
+            : EditorialMove.Explain;
+        turnBrief.audienceValue = AudienceValue.Understanding;
+        turnBrief.goal = direction;
+      }
+      if (orientationTargets.length > 0) {
+        turnBrief.targetOrientationClaimIds = orientationTargets.map(
+          (claim) => claim.id
+        );
         turnBrief.goal = direction;
       }
 
@@ -564,10 +633,9 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
   }
 
   /**
-   * The reviewer is shown card ids in its prompt for its own bookkeeping
-   * (introducedCardIds) but can occasionally echo one back into
-   * revisedMessages as if it were a citation. Strip any such artifact
-   * before the message ever reaches the transcript or audio pipeline.
+   * The reviewer is shown card ids for bookkeeping and can occasionally
+   * echo one into a replacement message as if it were a citation. Strip
+   * any such artifact before it reaches the transcript or audio pipeline.
    */
   private stripCardIdArtifacts(message: string): string {
     return message
@@ -636,10 +704,10 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
           this.script.speakers
         );
         if (!revisedReview.accepted) {
-          // Step 5a: the revision failed review too, so fall back to the
-          // original speech rather than ship an unvetted rewrite.
+          // Step 5a: preserve the rejection. Callers discard this candidate
+          // and request a fresh turn rather than ship known-bad speech.
           logger.warn(
-            `Turn reviewer rejected its revision for ${speech.speaker.name}; keeping the original speech`
+            `Turn reviewer rejected its revision for ${speech.speaker.name}; discarding the candidate`
           );
           return { ...speech, turnBrief, review };
         }
@@ -653,8 +721,8 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
           review: revisedReview,
         };
       }
-      // Step 6: reviewer accepted the original (or no usable revision was
-      // offered) — return the original speech annotated with its review.
+      // Step 6: return the original annotated with its verdict. A rejected
+      // result with no usable repair remains rejected for callers to discard.
       return { ...speech, turnBrief, review };
     } catch (error) {
       // Step 7: review is best-effort — any failure (model error, etc.)
@@ -725,6 +793,26 @@ Return only the ids of points that were genuinely, substantively covered.`,
     }
   }
 
+  private pointIdsEligibleForDirectCoverage(
+    coveredPointIds: string[] | undefined
+  ): string[] | undefined {
+    if (!coveredPointIds) return coveredPointIds;
+    return coveredPointIds.filter((pointId) => {
+      const contractedBeats = (this.script.conversationBeats ?? []).filter(
+        (beat) =>
+          (beat.pointIds ?? []).includes(pointId) &&
+          ((beat.completionClaimIds?.length ?? 0) > 1 ||
+            (beat.discourseClaims ?? []).some(
+              (claim) => claim.prerequisiteClaimIds.length > 0
+            ))
+      );
+      return (
+        contractedBeats.length === 0 ||
+        contractedBeats.every((beat) => beat.covered)
+      );
+    });
+  }
+
   private applyCoveredPoints(coveredPointIds?: string[]): void {
     if (!coveredPointIds || coveredPointIds.length === 0) {
       return;
@@ -769,6 +857,18 @@ Return only the ids of points that were genuinely, substantively covered.`,
         this.script.productionOutcome?.completionReason ?? reason,
       omittedPointIds: allOmitted.map((point) => point.id),
       omissionSeverity,
+      ...(this.script.orientation
+        ? {
+            orientationStatus:
+              this.script.orientation.status === "complete"
+                ? ("complete" as const)
+                : ("incomplete" as const),
+            unresolvedOrientationClaimIds:
+              this.script.orientation.requiredClaims
+                .filter((claim) => claim.required && !claim.covered)
+                .map((claim) => claim.id),
+          }
+        : {}),
     };
     return omitted;
   }
@@ -802,7 +902,95 @@ Return only the ids of points that were genuinely, substantively covered.`,
   }
 
   private selectScheduledPoint(): DiscussionPoint | undefined {
-    return this.rankedOpenPoints()[0];
+    const ranked = this.rankedOpenPoints();
+    const hasDiscourseContracts = (this.script.conversationBeats ?? []).some(
+      (beat) => (beat.discourseClaims?.length ?? 0) > 0
+    );
+    const eligible = ranked.filter(
+      (point) =>
+        this.areOrientationPrerequisitesMet(point) &&
+        (!hasDiscourseContracts || this.hasEligibleDiscourseForPoint(point.id))
+    );
+    // Once a bounded orientation attempt has failed, continue with the best
+    // comprehensible work rather than deadlocking production.
+    return eligible[0] ?? (hasDiscourseContracts ? undefined : ranked[0]);
+  }
+
+  private hasEligibleDiscourseForPoint(pointId: string): boolean {
+    const beats = this.script.conversationBeats ?? [];
+    return beats.some(
+      (beat) =>
+        !beat.covered &&
+        (beat.pointIds ?? []).includes(pointId) &&
+        beat.prerequisiteBeatIds.every((id) =>
+          beats.some((candidate) => candidate.id === id && candidate.covered)
+        ) &&
+        (beat.discourseClaims ?? []).some(
+          (claim) =>
+            claim.state !== "established" &&
+            claim.state !== "developed" &&
+            claim.state !== "unresolved" &&
+            claim.prerequisiteClaimIds.every((id) =>
+              this.isDiscourseClaimEstablished(id)
+            )
+        )
+    );
+  }
+
+  private areOrientationPrerequisitesMet(point: DiscussionPoint): boolean {
+    const ids = point.prerequisiteClaimIds ?? [];
+    if (ids.length === 0) return true;
+    const claims = this.script.orientation?.requiredClaims ?? [];
+    return ids.every((id) => claims.some((claim) => claim.id === id && claim.covered));
+  }
+
+  private getOpenOrientationClaims() {
+    const orientation = this.script.orientation;
+    if (!orientation || orientation.status !== "active") return [];
+    return orientation.requiredClaims.filter(
+      (claim) => claim.required && !claim.covered
+    );
+  }
+
+  private allDiscourseClaims() {
+    return (this.script.conversationBeats ?? []).flatMap(
+      (beat) => beat.discourseClaims ?? []
+    );
+  }
+
+  private isDiscourseClaimEstablished(claimId: string): boolean {
+    return this.allDiscourseClaims().some(
+      (claim) =>
+        claim.id === claimId &&
+        (claim.state === "established" || claim.state === "developed")
+    );
+  }
+
+  private selectNextDiscourseClaim(
+    targetPointId: string
+  ) {
+    const beats = this.script.conversationBeats ?? [];
+    const eligibleBeats = beats.filter(
+      (beat) =>
+        !beat.covered &&
+        (beat.pointIds ?? []).includes(targetPointId) &&
+        beat.prerequisiteBeatIds.every((id) =>
+          beats.some((candidate) => candidate.id === id && candidate.covered)
+        )
+    );
+    for (const beat of eligibleBeats) {
+      const claim = (beat.discourseClaims ?? []).find(
+        (candidate) =>
+          candidate.state !== "established" &&
+          candidate.state !== "developed" &&
+          candidate.state !== "unresolved" &&
+          candidate.prerequisiteClaimIds.every((id) =>
+            this.isDiscourseClaimEstablished(id)
+          )
+      );
+      if (claim) return claim;
+    }
+    return undefined;
   }
 
   private remainingWorkExceedsCapacity(
@@ -821,6 +1009,52 @@ Return only the ids of points that were genuinely, substantively covered.`,
     return requiredTurns > availableTurns;
   }
 
+  /**
+   * Once meaningful production time has elapsed, reserve two turns for the
+   * multi-turn closing and retain only the highest-ranked work that can still
+   * fit. This is explicit graceful degradation, not inferred coverage.
+   */
+  private pruneOpenPointsToBudget(
+    script: PodcastScript,
+    velocity: ReturnType<DirectorAgent["calculateVelocity"]>
+  ): void {
+    const progress = this.calculateProgress(script);
+    if (progress < 35 || velocity.paceStatus !== "behind") return;
+    const remainingTurnCapacity = Math.max(
+      0,
+      this.maxTurns - this.turnsUsed - 2
+    );
+    const durationTurnCapacity = Math.max(
+      0,
+      Math.floor(velocity.remainingMinutes * 2.5) - 2
+    );
+    const capacity = Math.min(remainingTurnCapacity, durationTurnCapacity);
+    const ranked = this.rankedOpenPoints();
+    const required = ranked.reduce(
+      (sum, point) => sum + Math.max(1, point.estimatedTurns ?? 2),
+      0
+    );
+    if (required <= capacity) return;
+
+    let used = 0;
+    const omitted: DiscussionPoint[] = [];
+    for (const point of ranked) {
+      const cost = Math.max(1, point.estimatedTurns ?? 2);
+      if (used + cost <= capacity) {
+        used += cost;
+      } else {
+        point.omitted = true;
+        point.omissionReason = "budget_priority";
+        omitted.push(point);
+      }
+    }
+    if (omitted.length > 0) {
+      logger.warn(
+        `Budget triage omitted ${omitted.length} lower-ranked point(s); reserved ${capacity} substantive turn(s) plus closing capacity`
+      );
+    }
+  }
+
   private applyCoveredBeats(coveredBeatIds?: string[]): void {
     if (!coveredBeatIds || coveredBeatIds.length === 0) return;
     for (const beat of this.script.conversationBeats ?? []) {
@@ -836,6 +1070,12 @@ Return only the ids of points that were genuinely, substantively covered.`,
    * from the direction model's prediction about what a future turn may cover.
    */
   recordAcceptedBeat(speech: Speech): void {
+    // A reviewer saying that one turn advances a beat is not evidence that an
+    // ordered multi-claim discourse contract is complete. Claim-targeted turns
+    // can complete their beat only through verified claim coverage.
+    if ((speech.turnBrief?.targetDiscourseClaimIds?.length ?? 0) > 0) {
+      return;
+    }
     const beatId = speech.turnBrief?.beatId;
     if (beatId && speech.review?.advancesBeat === true) {
       this.applyCoveredBeats([beatId]);
@@ -844,12 +1084,258 @@ Return only the ids of points that were genuinely, substantively covered.`,
 
   async recordAcceptedCoverage(
     script: PodcastScript,
-    speech: Speech
+    speech: Speech,
+    verifiedDiscourseClaimIds?: string[]
   ): Promise<void> {
+    const orientationClaimIds =
+      speech.turnBrief?.targetOrientationClaimIds ?? [];
+    if (orientationClaimIds.length > 0) {
+      await this.recordAcceptedOrientationCoverage(
+        script,
+        orientationClaimIds
+      );
+    }
+    const discourseClaimIds =
+      speech.turnBrief?.targetDiscourseClaimIds ?? [];
+    if (discourseClaimIds.length > 0) {
+      await this.recordAcceptedDiscourseCoverage(
+        script,
+        speech,
+        discourseClaimIds,
+        verifiedDiscourseClaimIds
+      );
+    }
     const targetPointId = speech.turnBrief?.targetPointId;
     if (!targetPointId) return;
+    if (discourseClaimIds.length > 0) {
+      this.applyPointCoverageFromDiscourse(targetPointId);
+      return;
+    }
     const confirmed = await this.verifyCoveredPoints([targetPointId], script);
     this.applyCoveredPoints(confirmed);
+  }
+
+  private async recordAcceptedDiscourseCoverage(
+    script: PodcastScript,
+    speech: Speech,
+    targetClaimIds: string[],
+    preverifiedClaimIds?: string[]
+  ): Promise<void> {
+    const candidates = this.allDiscourseClaims().filter((claim) =>
+      targetClaimIds.includes(claim.id)
+    );
+    if (candidates.length === 0) return;
+    for (const claim of candidates) claim.attemptedTurns += 1;
+    const confirmedPointIds =
+      preverifiedClaimIds ??
+      (await this.verifyDiscourseClaims(script, targetClaimIds));
+    this.applyVerifiedDiscourseClaims(speech, targetClaimIds, confirmedPointIds);
+    this.propagateUnresolvedDiscourse();
+    this.updateBeatCoverageFromDiscourse();
+  }
+
+  async verifyDiscourseClaims(
+    script: PodcastScript,
+    targetClaimIds: string[],
+    candidateMessage?: string
+  ): Promise<string[]> {
+    const candidates = this.allDiscourseClaims().filter((claim) =>
+      targetClaimIds.includes(claim.id)
+    );
+    if (candidates.length === 0) return [];
+    const messages = [
+      {
+        role: "user" as const,
+        content: `Verify whether each atomic discourse claim is clearly established by the accepted podcast transcript. The complete causal or explanatory meaning must be recoverable by a new listener. A teaser, keyword, unexplained proper noun, consequence without its cause, or question that assumes the answer does NOT establish a claim.
+
+Accepted transcript:
+${this.getConversationHistory(script) || "(nothing said yet)"}
+${candidateMessage ? `\nCandidate accepted turn:\n${candidateMessage}` : ""}
+
+Target claims:
+${candidates.map((claim) => `- ${claim.id}: ${claim.text}`).join("\n")}
+
+Return only the ids whose complete meaning is established.`,
+      },
+    ];
+    try {
+      const { confirmedPointIds } =
+        await this.callModelForStructuredOutput<VerifyCoveredPointsInput>(
+          ModelTask.CoverageVerification,
+          messages,
+          verifyCoveredPointsSchema,
+          150
+        );
+      return confirmedPointIds;
+    } catch (error) {
+      logger.error(
+        "Failed to verify discourse claims; treating claims as unconfirmed:",
+        error
+      );
+      return [];
+    }
+  }
+
+  applyVerifiedDiscourseClaims(
+    speech: Speech,
+    targetClaimIds: string[],
+    verifiedClaimIds: string[]
+  ): void {
+    const candidates = this.allDiscourseClaims().filter((claim) =>
+      targetClaimIds.includes(claim.id)
+    );
+    for (const claim of candidates) {
+      if (verifiedClaimIds.includes(claim.id)) {
+        claim.state = "established";
+        if (!claim.evidenceSpeechIds.includes(speech.id)) {
+          claim.evidenceSpeechIds.push(speech.id);
+        }
+      } else if (claim.attemptedTurns >= 2) {
+        claim.state = "unresolved";
+      }
+    }
+    this.propagateUnresolvedDiscourse();
+    this.updateBeatCoverageFromDiscourse();
+  }
+
+  abandonDiscourseClaims(claimIds: string[], reason: string): void {
+    const abandoned = this.allDiscourseClaims().filter((claim) =>
+      claimIds.includes(claim.id)
+    );
+    for (const claim of abandoned) {
+      claim.state = "unresolved";
+      claim.attemptedTurns = Math.max(claim.attemptedTurns, 2);
+    }
+    if (abandoned.length > 0) {
+      logger.warn(
+        `Abandoned unresolved discourse claim(s) after repeated rejection (${reason}): ${abandoned
+          .map((claim) => claim.id)
+          .join(", ")}`
+      );
+      this.propagateUnresolvedDiscourse();
+      this.updateBeatCoverageFromDiscourse();
+    }
+  }
+
+  private propagateUnresolvedDiscourse(): void {
+    for (const beat of this.script.conversationBeats ?? []) {
+      const claims = beat.discourseClaims ?? [];
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const claim of claims) {
+          if (
+            claim.state !== "unresolved" &&
+            claim.prerequisiteClaimIds.some((id) =>
+              claims.some(
+                (candidate) =>
+                  candidate.id === id && candidate.state === "unresolved"
+              )
+            )
+          ) {
+            claim.state = "unresolved";
+            changed = true;
+          }
+        }
+      }
+      if (claims.some((claim) => claim.state === "unresolved")) {
+        for (const pointId of beat.pointIds ?? []) {
+          const point = this.points.find((candidate) => candidate.id === pointId);
+          if (point && !point.covered) {
+            point.omitted = true;
+            point.omissionReason = "unresolved_discourse_prerequisite";
+          }
+        }
+      }
+    }
+  }
+
+  private updateBeatCoverageFromDiscourse(): void {
+    for (const beat of this.script.conversationBeats ?? []) {
+      const completionIds = beat.completionClaimIds ?? [];
+      if (
+        completionIds.length > 0 &&
+        completionIds.every((id) => this.isDiscourseClaimEstablished(id))
+      ) {
+        beat.covered = true;
+        beat.coveredAtTurn ??= this.turnsUsed;
+      }
+    }
+  }
+
+  private applyPointCoverageFromDiscourse(pointId: string): void {
+    const relatedBeats = (this.script.conversationBeats ?? []).filter((beat) =>
+      (beat.pointIds ?? []).includes(pointId)
+    );
+    if (
+      relatedBeats.length > 0 &&
+      relatedBeats.every((beat) => beat.covered)
+    ) {
+      this.applyCoveredPoints([pointId]);
+    }
+  }
+
+  private async recordAcceptedOrientationCoverage(
+    script: PodcastScript,
+    targetClaimIds: string[]
+  ): Promise<void> {
+    const orientation = script.orientation;
+    if (!orientation || orientation.status !== "active") return;
+    orientation.attemptedTurns += 1;
+    const candidates = orientation.requiredClaims.filter((claim) =>
+      targetClaimIds.includes(claim.id)
+    );
+    const claimsList = candidates
+      .map((claim) => `- ${claim.id}: ${claim.text}`)
+      .join("\n");
+    const messages = [
+      {
+        role: "user" as const,
+        content: `Verify whether each foundational orientation claim is clearly established by the accepted podcast transcript. A new listener must be able to recover the claim's complete meaning. Mere keyword mentions, implications, scattered fragments, or assumed prior knowledge do NOT count.
+
+Accepted transcript:
+${this.getConversationHistory(script) || "(nothing said yet)"}
+
+Orientation claims:
+${claimsList}
+
+Return only the ids of claims whose complete meaning was explicitly established.`,
+      },
+    ];
+    try {
+      const { confirmedPointIds } =
+        await this.callModelForStructuredOutput<VerifyCoveredPointsInput>(
+          ModelTask.CoverageVerification,
+          messages,
+          verifyCoveredPointsSchema,
+          150
+        );
+      for (const claim of candidates) {
+        if (confirmedPointIds.includes(claim.id) && !claim.covered) {
+          claim.covered = true;
+          claim.coveredAtTurn = this.turnsUsed;
+        }
+      }
+    } catch (error) {
+      logger.error(
+        "Failed to verify orientation claims; treating claims as unconfirmed:",
+        error
+      );
+    }
+
+    const unresolved = orientation.requiredClaims.filter(
+      (claim) => claim.required && !claim.covered
+    );
+    if (unresolved.length === 0) {
+      orientation.status = "complete";
+      orientation.unresolvedClaimIds = [];
+    } else if (orientation.attemptedTurns >= orientation.maxTurns) {
+      orientation.status = "incomplete";
+      orientation.unresolvedClaimIds = unresolved.map((claim) => claim.id);
+      logger.warn(
+        `Orientation remained incomplete after ${orientation.maxTurns} turns; continuing gracefully with unresolved claims: ${orientation.unresolvedClaimIds.join(", ")}`
+      );
+    }
   }
 
   /**
@@ -1123,20 +1609,112 @@ Return only the ids of points that were genuinely, substantively covered.`,
         targetTurns: 2,
         pointIds: [point.id],
         covered: false,
+        discourseClaims: [
+          {
+            id: `b${index + 1}-c1`,
+            beatId: `b${index + 1}`,
+            text: point.text,
+            role: "proposition" as const,
+            prerequisiteClaimIds: [],
+            state: "unheard",
+            evidenceSpeechIds: [],
+            attemptedTurns: 0,
+          },
+        ],
+        completionClaimIds: [`b${index + 1}-c1`],
       }));
     }
 
-    return inputs.map((input, index) => ({
-      id: `b${index + 1}`,
-      purpose: input.purpose,
-      goal: input.goal,
-      cardIds: input.cardIds ?? [],
-      prerequisiteBeatIds: input.prerequisiteBeatIds ?? [],
-      desiredEnergy: input.desiredEnergy ?? EnergyLevel.Curious,
-      targetTurns: Math.max(1, input.targetTurns ?? 1),
-      pointIds: input.pointIds ?? [],
-      covered: false,
-    }));
+    return inputs.map((input, index) => {
+      const beatId = `b${index + 1}`;
+      const rawClaims =
+        input.claims?.length
+          ? input.claims
+          : [{ text: input.goal, role: "proposition" as const }];
+      const discourseClaims = rawClaims.map((claim, claimIndex) => ({
+        id: `${beatId}-c${claimIndex + 1}`,
+        beatId,
+        text: claim.text,
+        role: claim.role as DiscourseRole,
+        prerequisiteClaimIds: (claim.prerequisiteClaimIndexes ?? [])
+          .filter(
+            (prerequisiteIndex) =>
+              prerequisiteIndex >= 0 && prerequisiteIndex < claimIndex
+          )
+          .map(
+            (prerequisiteIndex) => `${beatId}-c${prerequisiteIndex + 1}`
+          ),
+        state: "unheard" as const,
+        evidenceSpeechIds: [],
+        attemptedTurns: 0,
+      }));
+      return {
+        id: beatId,
+        purpose: input.purpose,
+        goal: input.goal,
+        cardIds: input.cardIds ?? [],
+        prerequisiteBeatIds: input.prerequisiteBeatIds ?? [],
+        desiredEnergy: input.desiredEnergy ?? EnergyLevel.Curious,
+        targetTurns: Math.max(1, input.targetTurns ?? 1),
+        pointIds: input.pointIds ?? [],
+        covered: false,
+        discourseClaims,
+        completionClaimIds: discourseClaims.map((claim) => claim.id),
+      };
+    });
+  }
+
+  private async normaliseDiscourseRoles(
+    beats: CreatePodcastPlanInput["beats"]
+  ): Promise<CreatePodcastPlanInput["beats"]> {
+    if (!beats) return beats;
+    return Promise.all(
+      beats.map(async (beat) => ({
+        ...beat,
+        claims: beat.claims
+          ? await Promise.all(
+              beat.claims.map(async (claim) => ({
+                ...claim,
+                role: (await this.discourseRoleMatcher.match(
+                  claim.role
+                )) as DiscourseRole,
+              }))
+            )
+          : beat.claims,
+      }))
+    );
+  }
+
+  private toOrientationContract(
+    input: CreatePodcastPlanInput["orientation"]
+  ): OrientationContract {
+    const fallbackSubject = this.script.title.trim() || "this episode's subject";
+    const fallbackScope =
+      this.script.description.trim() ||
+      `A clear introduction to ${fallbackSubject} for a new listener.`;
+    const claims =
+      input?.requiredClaims?.length
+        ? input.requiredClaims
+        : [
+            `Clearly identify what ${fallbackSubject} is.`,
+            `Establish the essential context needed to understand this episode's focus: ${fallbackScope}`,
+          ];
+    return {
+      subject: input?.subject?.trim() || fallbackSubject,
+      scope: input?.scope?.trim() || fallbackScope,
+      centralQuestion:
+        input?.centralQuestion?.trim() ||
+        `What should a new listener understand about ${fallbackSubject}?`,
+      requiredClaims: claims.slice(0, 6).map((text, index) => ({
+        id: `o${index + 1}`,
+        text,
+        required: true,
+        covered: false,
+      })),
+      maxTurns: Math.min(3, Math.max(1, input?.maxTurns ?? 3)),
+      attemptedTurns: 0,
+      status: "active",
+    };
   }
 
   private toTurnBrief(
@@ -1170,8 +1748,17 @@ Return only the ids of points that were genuinely, substantively covered.`,
     script: PodcastScript,
     targetPointId?: string
   ): string {
-    const beats = (script.conversationBeats ?? [])
-      .filter((beat) => !beat.covered)
+    const allBeats = script.conversationBeats ?? [];
+    const beats = allBeats
+      .filter(
+        (beat) =>
+          !beat.covered &&
+          beat.prerequisiteBeatIds.every((id) =>
+            allBeats.some(
+              (candidate) => candidate.id === id && candidate.covered
+            )
+          )
+      )
       .sort((a, b) => {
         if (!targetPointId) return 0;
         const aMatches = a.pointIds?.includes(targetPointId) ? 1 : 0;
@@ -1190,15 +1777,22 @@ Return only the ids of points that were genuinely, substantively covered.`,
       )
       .join('\n');
     const introducedCardIds = new Set(
-      (script.knowledgeLedger?.introducedCards ?? []).map(
-        (entry) => entry.cardId
-      )
+      (script.knowledgeLedger?.introducedCards ?? [])
+        .filter((entry) => entry.state !== "teased")
+        .map((entry) => entry.cardId)
+    );
+    const teasedCardIds = new Set(
+      (script.knowledgeLedger?.introducedCards ?? [])
+        .filter((entry) => entry.state === "teased")
+        .map((entry) => entry.cardId)
     );
     const cardText = cards
       .slice(0, 20)
       .map((card) =>
         introducedCardIds.has(card.id)
           ? `- ${card.id} [${card.kind}] (ALREADY USED — do not reassign unless the conversation needs to explicitly revisit it): ${card.content}`
+          : teasedCardIds.has(card.id)
+            ? `- ${card.id} [${card.kind}] (TEASED ONLY — listeners still need the full setup before any consequence or payoff): ${card.content}`
           : `- ${card.id} [${card.kind}]: ${card.content}`
       )
       .join('\n');

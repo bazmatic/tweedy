@@ -1,9 +1,15 @@
-import { DirectorAgent, SpeakerAgent, SpeechRepetitionPolicy } from "../agents";
+import {
+  ClaimEditorialGate,
+  DirectorAgent,
+  SpeakerAgent,
+  SpeechRepetitionPolicy,
+} from "../agents";
 import {
   OpeningSequencePolicy,
   OpeningStage,
   OpeningTurn,
 } from "../agents/OpeningSequencePolicy";
+import { ClosingSequencePolicy } from "../agents/ClosingSequencePolicy";
 import { EpisodeRecapPolicy } from "../agents/EpisodeRecapPolicy";
 import { EpisodeConclusionPolicy } from "../agents/EpisodeConclusionPolicy";
 import { KnowledgeLedgerPolicy } from "../agents/KnowledgeLedgerPolicy";
@@ -18,9 +24,6 @@ import {
 import { SpeechRepository } from "../repositories";
 import { RAGService } from "../rag";
 import {
-  AudienceValue,
-  EditorialMove,
-  EnergyLevel,
   EpistemicRole,
   PodcastScript,
   Speaker,
@@ -36,6 +39,8 @@ import {
 import { inspectEpisode } from "../workflow/EpisodeInspector";
 import { EpisodeState } from "../workflow/episode-schemas";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
+import { EpisodeAuditAgent } from "../agents/EpisodeAuditAgent";
+import { EpisodeRepairService } from "./EpisodeRepairService";
 
 interface SelectedTurn {
   speaker: Speaker;
@@ -46,6 +51,24 @@ interface SelectedTurn {
   isFinalTurn: boolean;
   turnBrief?: TurnBrief;
   openingTurn: OpeningTurn | null;
+}
+
+function equivalentRejectionReasons(reasons: string[]): boolean {
+  if (reasons.length < 3) return false;
+  const tokenSets = reasons.map(
+    (reason) =>
+      new Set(
+        reason
+          .normalize("NFKC")
+          .toLocaleLowerCase()
+          .match(/[\p{L}\p{N}]+/gu) ?? []
+      )
+  );
+  const first = tokenSets[0];
+  return tokenSets.slice(1).every((tokens) => {
+    const shared = [...first].filter((token) => tokens.has(token)).length;
+    return shared / Math.max(1, Math.min(first.size, tokens.size)) >= 0.75;
+  });
 }
 
 /**
@@ -69,7 +92,9 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
       storagePath: appConfig.mastraStoragePath,
       tracePath: appConfig.mastraTracePath,
     },
-    private readonly conclusionPolicy = new EpisodeConclusionPolicy()
+    private readonly conclusionPolicy = new EpisodeConclusionPolicy(),
+    private readonly claimEditorialGate = new ClaimEditorialGate(),
+    private readonly episodeAuditAgent = new EpisodeAuditAgent()
   ) {}
 
   async run(request: ConversationGenerationRequest): Promise<PodcastScript> {
@@ -83,8 +108,11 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
       params.guidance
     );
     const opening = new OpeningSequencePolicy();
+    const closing = new ClosingSequencePolicy();
     const selectedTurns = new Map<string, SelectedTurn>();
     const generatedSpeeches = new Map<string, Speech>();
+    const verifiedDiscourseClaims = new Map<string, string[]>();
+    const advancedAfterRepeatedRejection = new Set<string>();
     let planReady = false;
 
     const keyFor = (selection: TurnSelection) =>
@@ -112,6 +140,8 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           selected.openingTurn !== null &&
           opening.getStage(script) === OpeningStage.Frame,
         isFinalTurn: selected.isFinalTurn,
+        isClosingTurn: false,
+        isFinalClosingTurn: false,
         wasRepaired: false,
         modelTask: ModelTask.DirectionSelection,
         ...overrides,
@@ -141,6 +171,9 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           conversationBeatIds: (script.conversationBeats ?? []).map(
             (beat) => beat.id
           ),
+          discourseClaimIds: (script.conversationBeats ?? []).flatMap(
+            (beat) => (beat.discourseClaims ?? []).map((claim) => claim.id)
+          ),
         };
       },
       inspectEpisode: async (state) => {
@@ -153,9 +186,29 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           state.discussionPoints.filter((point) => point.covered).length,
           this.roleResolver
         );
-        return { ...inspection } as unknown as Record<string, unknown>;
+        return {
+          ...inspection,
+          orientationActive: script.orientation?.status === "active",
+        } as unknown as Record<string, unknown>;
       },
       proposeTurn: async (state) => {
+        if (state.consecutiveRejectedTurns >= 3) {
+          const recentReasons = state.warnings.slice(-3);
+          if (equivalentRejectionReasons(recentReasons)) {
+            const prior = selectedTurns.get(`speech:${state.turnsUsed}`);
+            const claimIds =
+              prior?.turnBrief?.targetDiscourseClaimIds ?? [];
+            if (claimIds.length > 0) {
+              director.abandonDiscourseClaims(
+                claimIds,
+                state.warnings.at(-1) ?? "repeated rejection"
+              );
+              advancedAfterRepeatedRejection.add(
+                `speech:${state.turnsUsed}`
+              );
+            }
+          }
+        }
         const openingTurn = opening.nextTurn(script);
         const choice = openingTurn ?? (await director.chooseNextSpeaker(script));
         return rememberSelection(state, {
@@ -169,50 +222,52 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           openingTurn,
         });
       },
-      repairTurn: async (_state, proposal) => proposal,
-      forceClosingTurn: async (state, reason) => {
-        director.markRemainingPointsOmitted(reason.replace(/ /g, "_"));
-        const lastSpeaker = script.speeches[script.speeches.length - 1]?.speaker;
-        const speaker =
-          script.speakers.find(
-            (candidate) => candidate.id !== lastSpeaker?.id
-          ) ?? script.speakers[0];
-        if (!speaker) {
-          throw new Error("Cannot close an episode without a speaker");
+      repairTurn: async (state, proposal) => {
+        if (advancedAfterRepeatedRejection.delete(keyFor(proposal))) {
+          return { ...proposal, wasRepaired: true };
         }
-        const choice = {
-          speaker,
-          direction:
-            "Deliver the final big-picture takeaway, address the listener directly, thank the co-host, and sign off naturally. Briefly resolve only an immediately outstanding question before the farewell; do not open another topic.",
-          timeStatus: "",
-          forceNearlyOutOfTime: false,
-          requestSummary: false,
-          isFinalTurn: true,
-          turnBrief: {
-            speakerId: speaker.id,
-            goal:
-              "Deliver a self-contained final takeaway and explicit listener-facing farewell.",
-            move: EditorialMove.Summarise,
-            cardIds: [],
-            audienceValue: AudienceValue.Connection,
-            desiredEnergy: EnergyLevel.Warm,
-          },
+        if (state.consecutiveRejectedTurns === 0) return proposal;
+        const selected = selectedTurns.get(keyFor(proposal));
+        const rejectionReason = state.warnings.at(-1);
+        if (!selected || !rejectionReason) return proposal;
+        const retryGuidance = `Previous candidate rejected: ${rejectionReason}. Correct that specific problem while preserving the assigned goal.`;
+        const direction = `${selected.direction}\n\n${retryGuidance}`;
+        selectedTurns.set(keyFor(proposal), {
+          ...selected,
+          direction,
+          turnBrief: selected.turnBrief
+            ? {
+                ...selected.turnBrief,
+                goal: `${selected.turnBrief.goal} ${retryGuidance}`,
+              }
+            : selected.turnBrief,
+        });
+        return {
+          ...proposal,
+          direction,
+          wasRepaired: true,
         };
+      },
+      forceClosingTurn: async (state, reason) => {
+        if (state.phase === "discussion") {
+          director.markRemainingPointsOmitted(reason.replace(/ /g, "_"));
+        }
+        const choice = closing.nextTurn(script, state.closingCursor);
+        if (!choice) {
+          throw new Error("Closing sequence has no remaining turn");
+        }
         return rememberSelection(
           state,
           {
-            speaker: choice.speaker,
-            direction:
-              choice.direction ||
-              "Deliver the final big-picture takeaway and sign off naturally.",
+            ...choice,
             timeStatus: choice.timeStatus,
-            forceNearlyOutOfTime: false,
-            requestSummary: true,
-            isFinalTurn: true,
-            turnBrief: choice.turnBrief,
             openingTurn: null,
           },
-          { isFinalTurn: true }
+          {
+            isClosingTurn: true,
+            isFinalClosingTurn: choice.isFinalTurn,
+            isFinalTurn: choice.isFinalTurn,
+          }
         );
       },
       generateCandidate: async (state, selection) => {
@@ -289,7 +344,7 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
         );
         generatedSpeeches.set(keyFor(selection), reviewed);
         return {
-          approved: true,
+          approved: reviewed.review?.accepted !== false,
           notes: reviewed.review?.feedback ?? "Director review completed",
           candidate: {
             ...candidate,
@@ -298,7 +353,24 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           },
         };
       },
-      validateIntegrity: async () => null,
+      validateIntegrity: async (_state, selection) => {
+        const speech = generatedSpeeches.get(keyFor(selection));
+        if (!speech) return "Missing reviewed turn";
+        const claimGate = await this.claimEditorialGate.evaluate(speech, script);
+        if (!claimGate.accepted) return claimGate.reason ?? "Editorial claim gate rejected";
+        const targetClaimIds =
+          speech.turnBrief?.targetDiscourseClaimIds ?? [];
+        if (targetClaimIds.length === 0) return null;
+        const verified = await director.verifyDiscourseClaims(
+          script,
+          targetClaimIds,
+          speech.message
+        );
+        verifiedDiscourseClaims.set(keyFor(selection), verified);
+        return verified.length > 0
+          ? null
+          : "Targeted discourse claim was not established";
+      },
       validateRepetition: async (_state, selection) => {
         const speech = generatedSpeeches.get(keyFor(selection));
         return speech && this.repetitionPolicy.isRepetition(speech, script.speeches)
@@ -323,6 +395,11 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
         if (!speech) {
           throw new Error(`Missing reviewed turn ${keyFor(selection)}`);
         }
+        const targetDiscourseClaimIds =
+          speech.turnBrief?.targetDiscourseClaimIds ?? [];
+        const verifiedClaimIds =
+          verifiedDiscourseClaims.get(keyFor(selection)) ?? [];
+        verifiedDiscourseClaims.set(keyFor(selection), verifiedClaimIds);
         const record = {
           speakerId: speech.speaker.id,
           message: speech.message,
@@ -386,6 +463,11 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
             projectedScript.terminologyLedger?.explainedTerms
               .map((entry) => entry.term)
               .filter((term) => !introducedTermsBefore.has(term)) ?? [],
+          establishedDiscourseClaimIds: verifiedClaimIds,
+          teasedDiscourseClaimIds:
+            speech.turnBrief?.knowledgeState === "teased"
+              ? speech.turnBrief.cardIds
+              : [],
         };
       },
       acceptCandidate: async (_state, selection, _candidate, persisted) => {
@@ -401,7 +483,11 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           this.knowledgeLedgerPolicy.recordAcceptedTurn(script, speech);
           this.terminologyLedgerPolicy.recordAcceptedTurn(script, speech);
           script.speeches.push(speech);
-          await director.recordAcceptedCoverage(script, speech);
+          await director.recordAcceptedCoverage(
+            script,
+            speech,
+            verifiedDiscourseClaims.get(keyFor(selection))
+          );
         }
         script.updatedAt = new Date();
       },
@@ -437,6 +523,7 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
       },
       isNaturallyComplete: async (state) =>
         state.phase === "discussion" &&
+        script.orientation?.status !== "active" &&
         script.speeches.length > 0 &&
         director.isConversationComplete(script),
     };
@@ -469,6 +556,11 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
         `Mastra episode workflow ended without a valid closing statement (${result.result.state.phase}): ${result.result.state.warnings.join("; ")}`
       );
     }
+    await new EpisodeRepairService(
+      this.speechRepository,
+      this.episodeAuditAgent,
+      this.claimEditorialGate
+    ).auditAndRepair(script, params.maxDuration, director);
     return script;
   }
 }
