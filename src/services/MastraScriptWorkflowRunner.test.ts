@@ -300,4 +300,169 @@ describe("MastraScriptWorkflowRunner", () => {
     expect(speechesVisibleWhenLedgerRecorded).toBe(result.speeches.length - 1);
     expect(directorCreatePlan).toHaveBeenCalledOnce();
   });
+
+  it("gives a repaired turn its own retry-feedback field instead of duplicating rejection text into direction/turnBrief.goal", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "tweedy-mastra-runner-retry-")
+    );
+    tempDirectories.push(directory);
+    const speaker = {
+      id: "speaker-1",
+      slug: "host",
+      name: "Host",
+      personality: "curious host",
+      voice: {
+        id: "voice-1",
+        name: "Voice",
+        description: "",
+        provider: VocalProviderName.ElevenLabs,
+        providerId: "provider-1",
+        settings: {},
+      },
+      voiceStyle: "natural",
+    };
+    // OpeningSequencePolicy.getStage derives its stage purely from
+    // script.speeches.length vs script.speakers.length: with a single
+    // speaker and an empty speeches array it would insert real Hook/
+    // Welcome/Frame turns ahead of anything directorChoose returns,
+    // masking the retry-feedback behavior under test. Pre-seeding 3 prior
+    // speeches (> speakers.length + 1) makes getStage return "complete"
+    // immediately, so opening.nextTurn() is null and director.chooseNextSpeaker
+    // (the mocked directorChoose) drives the turn under test from the start.
+    const priorSpeech = {
+      id: "prior",
+      speaker,
+      message: "Prior opening content.",
+      instructions: "natural",
+      voice: speaker.voice,
+      voiceStyle: speaker.voiceStyle,
+      timestamp: new Date("2026-07-30T00:00:00.000Z"),
+      stopReason: "stop" as const,
+      tool: SpeakerAgentToolName.SPEAK,
+    };
+    const script = {
+      id: "",
+      title: "Mastra episode",
+      description: "",
+      speakers: [speaker],
+      speeches: [priorSpeech, priorSpeech, priorSpeech],
+      materials: [],
+      discussionPoints: [],
+      audienceProfile: AudienceProfile.General,
+      createdAt: new Date("2026-07-30T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-30T00:00:00.000Z"),
+    };
+    const speech = {
+      id: "",
+      speaker,
+      instructions: "natural",
+      voice: speaker.voice,
+      voiceStyle: speaker.voiceStyle,
+      timestamp: new Date("2026-07-30T00:00:01.000Z"),
+      stopReason: "stop" as const,
+      tool: SpeakerAgentToolName.CLOSING_STATEMENT,
+    };
+    // Must satisfy the real EpisodeConclusionPolicy.hasFinalSignOff check
+    // (unmocked in this test) on every attempt, so the only rejection in
+    // play is the one this test controls via claimEditorialGate below —
+    // otherwise a real "no sign-off detected" rejection could interleave
+    // unpredictably with the controlled one.
+    let generatedSpeechNumber = 0;
+    speakerSpeak.mockImplementation(async () => {
+      generatedSpeechNumber += 1;
+      return {
+        ...speech,
+        message: `Attempt ${generatedSpeechNumber}: thanks for listening, and until next time.`,
+      };
+    });
+    directorReview.mockImplementation(async (candidate) => candidate);
+    directorComplete.mockResolvedValue(false);
+    const turnBrief = {
+      speakerId: speaker.id,
+      goal: "Land the reflective close.",
+      move: EditorialMove.Reframe,
+      cardIds: [],
+      audienceValue: AudienceValue.Connection,
+      desiredEnergy: EnergyLevel.Reflective,
+    };
+    directorChoose.mockResolvedValue({
+      speaker,
+      direction: "sign off",
+      timeStatus: "",
+      forceNearlyOutOfTime: false,
+      requestSummary: false,
+      isFinalTurn: true,
+      turnBrief,
+    });
+    let evaluateCallCount = 0;
+    const claimEditorialGate = {
+      evaluate: vi.fn().mockImplementation(async () => {
+        evaluateCallCount += 1;
+        return evaluateCallCount === 1
+          ? { accepted: false, reason: "Too abrupt for a closing statement." }
+          : { accepted: true };
+      }),
+    };
+    const knowledgeLedgerPolicy = {
+      createLedger: () => ({ introducedCards: [] }),
+      getAccessibleCards: () => [],
+      recordAcceptedTurn: () => {},
+    };
+    const runner = new MastraScriptWorkflowRunner(
+      { createOrReturn: vi.fn(async (record, idempotencyKey) => ({
+          ...record,
+          id: `speech-${idempotencyKey}`,
+          idempotencyKey,
+        })) } as any,
+      { addMaterials: vi.fn() } as any,
+      knowledgeLedgerPolicy as any,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        storagePath: path.join(directory, "workflow.db"),
+        tracePath: path.join(directory, "traces.jsonl"),
+      },
+      undefined,
+      claimEditorialGate as any,
+      {
+        audit: vi.fn().mockResolvedValue([]),
+        rewrite: vi.fn(),
+        attachObservability: vi.fn(),
+      } as any
+    );
+
+    await runner.run({
+      script,
+      params: {
+        title: script.title,
+        description: "",
+        speakers: [speaker],
+        materials: [],
+        maxTurns: 1,
+        maxDuration: 60,
+        allocation: SpeakerAllocation.Sequential,
+      },
+      workflowRunId: "run-retry",
+    });
+
+    const firstCallOptions = speakerSpeak.mock.calls[0][2];
+    const secondCallOptions = speakerSpeak.mock.calls[1][2];
+
+    expect(speakerSpeak.mock.calls[0][1]).toBe("sign off");
+    expect(speakerSpeak.mock.calls[1][1]).toBe("sign off");
+    expect(firstCallOptions.turnBrief.goal).toBe("Land the reflective close.");
+    expect(secondCallOptions.turnBrief.goal).toBe("Land the reflective close.");
+    expect(firstCallOptions.retryFeedback).toBeUndefined();
+    expect(secondCallOptions.retryFeedback).toContain(
+      "Your previous attempt at this turn was rejected"
+    );
+    expect(secondCallOptions.retryFeedback).toContain(
+      "Too abrupt for a closing statement."
+    );
+    expect(secondCallOptions.retryFeedback).toContain(
+      '"Attempt 1: thanks for listening, and until next time."'
+    );
+  });
 });

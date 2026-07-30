@@ -52,6 +52,7 @@ interface SelectedTurn {
   isFinalTurn: boolean;
   turnBrief?: TurnBrief;
   openingTurn: OpeningTurn | null;
+  retryFeedback?: string;
 }
 
 function tokenize(reason: string): Set<string> {
@@ -302,29 +303,19 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
         const selected = selectedTurns.get(keyFor(proposal));
         const rejectionReason = state.warnings.at(-1);
         if (!selected || !rejectionReason) return proposal;
-        // A single terse reason repeats every retry with no memory of past
-        // attempts, so the model often just rephrases the same failed fix.
-        // When the same problem is recurring, say so explicitly and demand
-        // a substantively different fix rather than another rewording.
+        const rejectedMessage = generatedSpeeches.get(keyFor(proposal))?.message;
         const recurring = findRecurringRejection(state.warnings);
-        const retryGuidance =
-          recurring && recurring.reason === rejectionReason
-            ? `Previous candidate rejected: ${rejectionReason}. This same problem has now failed ${recurring.occurrences} attempts in a row, each time in different wording — rephrasing alone has not worked. Make a substantively different fix: change what information you lead with or how you frame it, not just the phrasing.`
-            : `Previous candidate rejected: ${rejectionReason}. Correct that specific problem while preserving the assigned goal.`;
-        const direction = `${selected.direction}\n\n${retryGuidance}`;
+        const retryFeedback = buildRetryFeedback(
+          rejectionReason,
+          rejectedMessage,
+          recurring && recurring.reason === rejectionReason ? recurring : undefined
+        );
         selectedTurns.set(keyFor(proposal), {
           ...selected,
-          direction,
-          turnBrief: selected.turnBrief
-            ? {
-                ...selected.turnBrief,
-                goal: `${selected.turnBrief.goal} ${retryGuidance}`,
-              }
-            : selected.turnBrief,
+          retryFeedback,
         });
         return {
           ...proposal,
-          direction,
           wasRepaired: true,
         };
       },
@@ -391,6 +382,7 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
             ),
             centralAnalogy: script.centralAnalogy,
             episodeRecap: this.recapPolicy.buildRecap(script),
+            retryFeedback: selected.retryFeedback,
           });
         }
         generatedSpeeches.set(keyFor(selection), speech);
