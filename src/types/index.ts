@@ -798,6 +798,10 @@ export interface SpeakerTurnOptions {
   editorialCards?: EditorialCard[];
   centralAnalogy?: string;
   episodeRecap?: string;
+  /** Feedback on the speaker's own previously rejected attempt at this exact
+   * turn, quoting what it said. Distinct from `direction`/`turnBrief.goal`,
+   * which stay as the director originally set them. */
+  retryFeedback?: string;
 }
 
 // Agent Interfaces
