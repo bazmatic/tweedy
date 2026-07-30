@@ -117,7 +117,7 @@ async function runEpisode(
     episodeWorkflowDependencies: workflowDependencies,
   });
   const workflow = runtime.mastra.getWorkflow("episodeWorkflow");
-  const run = await workflow.createRunAsync({ runId: "run-12" });
+  const run = await workflow.createRun({ runId: "run-12" });
   const result = await run.start({
     inputData: {
       definition: {
@@ -152,7 +152,8 @@ describe("nested Mastra episode workflow", () => {
       true
     );
 
-    const snapshot = await runtime.storage.loadWorkflowSnapshot({
+    const workflowsStore = await runtime.storage.getStore("workflows");
+    const snapshot = await workflowsStore?.loadWorkflowSnapshot({
       workflowName: workflow.id,
       runId: "run-12",
     });

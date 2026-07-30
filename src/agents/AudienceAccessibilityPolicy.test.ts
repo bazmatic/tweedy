@@ -15,6 +15,7 @@ describe("AudienceAccessibilityPolicy", () => {
     expect(guidance).toContain("familiar format labels such as book or chapter");
     expect(guidance).toContain('Before using shorthand such as "the others"');
     expect(guidance).toContain("explicitly introduce");
+    expect(guidance).toContain("A listener must never have to infer what was hidden");
   });
 
   it("shows terms that listeners have already heard explained", () => {

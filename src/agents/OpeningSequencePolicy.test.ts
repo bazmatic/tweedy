@@ -83,6 +83,9 @@ describe("OpeningSequencePolicy", () => {
     expect(turn?.forceColdOpen).toBe(true);
     expect(turn?.direction).toContain("Open cold");
     expect(turn?.direction).toContain("Do not");
+    expect(turn?.direction).toContain(
+      "do not make the listener infer what was hidden from the consequence alone"
+    );
   });
 
   it("grounds the hook in the highest-storyValue editorial card", () => {

@@ -14,7 +14,7 @@ const AUDIENCE_GUIDANCE: Readonly<Record<AudienceProfile, string>> =
   });
 
 const REFERENT_GUIDANCE =
-  'Keep every reference recoverable from the spoken conversation. Before using shorthand such as "the others", "they", "the second group", or "that response", explicitly introduce the people, group, object, or event it refers to. Do not rely on prepared notes or a later claim to supply an antecedent the listener has not heard.';
+  'Keep every reference recoverable from the spoken conversation. Before using shorthand such as "the others", "they", "the second group", or "that response", explicitly introduce the people, group, object, or event it refers to. Do not rely on prepared notes or a later claim to supply an antecedent the listener has not heard. The same rule applies when a payoff depends on an earlier hidden action, choice, or fact — such as a disguise, a trick, a false name, or a withheld detail — that has not itself been described aloud: state that antecedent plainly rather than only gesturing at its consequence. A listener must never have to infer what was hidden or done from the outcome alone.';
 
 /** Defines listener accessibility without changing a speaker's expertise or delivery style. */
 export class AudienceAccessibilityPolicy {

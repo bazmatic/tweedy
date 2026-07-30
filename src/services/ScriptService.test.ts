@@ -602,6 +602,100 @@ describe("ScriptService RAG wiring", () => {
   });
 });
 
+describe("ScriptService stuck-turn circuit breaker", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("force-accepts a speech after repeated consecutive discards instead of exhausting the turn budget", async () => {
+    const guide = {
+      id: "guide",
+      slug: "miles",
+      name: "Miles",
+      personality: "curious",
+      voice: makeVoice("voice-guide"),
+      voiceStyle: "natural",
+      roleProfile: {
+        epistemicRole: EpistemicRole.AudienceGuide,
+        sourceAccess: SourceAccess.HeardOnly,
+        uncertaintyStyle: UncertaintyStyle.ListenerSurrogate,
+      },
+    };
+    const expert = {
+      id: "expert",
+      slug: "ada",
+      name: "Ada",
+      personality: "precise",
+      voice: makeVoice("voice-expert"),
+      voiceStyle: "natural",
+      roleProfile: {
+        epistemicRole: EpistemicRole.Expert,
+        sourceAccess: SourceAccess.Full,
+        uncertaintyStyle: UncertaintyStyle.Precise,
+      },
+    };
+    const script = makeScript();
+    script.speakers = [guide, expert];
+    // Past speeches push the opening sequence past "Complete" so the
+    // director-driven loop runs immediately.
+    script.speeches = [
+      makePastSpeech(guide, 1),
+      makePastSpeech(expert, 2),
+      makePastSpeech(guide, 3),
+    ];
+
+    chooseNextSpeakerMock.mockResolvedValue({
+      speaker: guide,
+      direction: "talk about it",
+      timeStatus: "",
+      forceNearlyOutOfTime: false,
+      isFinalTurn: false,
+    });
+    speakMock.mockResolvedValue({
+      id: "",
+      speaker: guide,
+      message: "the same rejected candidate every time",
+      instructions: "warm",
+      voice: guide.voice,
+      voiceStyle: guide.voiceStyle,
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.SPEAK,
+      stopReason: "stop",
+    });
+    // Every review rejects, with no state on the script ever changing
+    // between attempts — the exact deterministic-stuck-loop scenario.
+    reviewSpeechMock.mockImplementation((speech) =>
+      Promise.resolve({ ...speech, review: { accepted: false } })
+    );
+
+    let recordNumber = 0;
+    const speechRepository = {
+      create: vi.fn().mockImplementation(async () => ({
+        id: `record-${++recordNumber}`,
+      })),
+    };
+    const service = makeService({ speechRepository });
+
+    try {
+      await (service as any).generateScriptContent(script, {
+        maxTurns: 10,
+        maxDuration: 60,
+      });
+
+      // Without the circuit breaker, every one of the 10 turns would be
+      // discarded and nothing would ever be persisted.
+      expect(speechRepository.create).toHaveBeenCalled();
+      expect(
+        script.speeches.some(
+          (speech) => speech.message === "the same rejected candidate every time"
+        )
+      ).toBe(true);
+    } finally {
+      reviewSpeechMock.mockImplementation((speech) => Promise.resolve(speech));
+    }
+  });
+});
+
 describe("ScriptService opening sequence", () => {
   beforeEach(() => {
     vi.clearAllMocks();

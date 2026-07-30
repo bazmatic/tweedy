@@ -8,11 +8,17 @@ monitoring and the rollback procedure.
 
 ## Pinned compatibility line
 
-Tweedy supports Node 20, so it pins Mastra core 0.23.3 and LibSQL storage
-0.16.4. Mastra 1.x requires Node 22.13 or newer. AI SDK 5.0.76 and its OpenAI
-2.0.53 and Anthropic 2.0.33 providers are pinned from the generation used by
-this Mastra release. Upgrade these packages together and rerun the full test
-suite. Do not use floating ranges.
+Tweedy requires Node 22.13+ and pins Mastra core 1.55.0 and LibSQL storage
+1.18.0, matching the `mastra` CLI (1.21.0, used only for Studio). AI SDK
+5.0.76 and its OpenAI 2.0.53 and Anthropic 2.0.33 providers are pinned from
+the generation used when Mastra core was 0.23.3 and remain compatible with
+1.55.0; reverify them if Mastra core is upgraded again. Upgrade these
+packages together and rerun the full test suite. Do not use floating ranges.
+
+`Workflow.createRunAsync` was renamed to `createRun` (still async) in the 1.x
+line, and `LibSQLStore` now requires an `id` in its constructor config.
+`LibSQLStore#loadWorkflowSnapshot` moved off the top-level store onto the
+`workflows` storage domain: call `await storage.getStore("workflows")` first.
 
 ## Composition and storage
 
@@ -88,3 +94,26 @@ Resume is refused if the requested engine or flow version differs from that
 stored identity; active runs are never migrated between engines. Older scripts
 without this metadata remain readable and editable, but are not treated as
 resumable workflow runs.
+
+## Inspecting runs with Mastra Studio
+
+Run `pnpm studio` (from the repo root) to launch Mastra Studio at
+`http://localhost:4111`, browsing this project's real `data/mastra.db` and
+`data/mastra-traces.jsonl`. It reads the `generate-episode` workflow's past
+runs (including failed and still-`running`/interrupted ones left over from a
+killed process) directly from storage.
+
+The entry point lives at `mastra-studio/index.ts`, outside `src/`, deliberately
+kept separate from `src/mastra/index.ts` so that module's "importing has no
+side effects" guarantee stays true for the CLI. It registers the real
+`generate-episode` workflow definition (required for Studio to associate
+stored snapshots with a workflow at all) but wires every dependency to throw
+if called — Studio is for **inspecting recorded runs only**, it does not
+re-execute steps or generate real content from this process. On startup,
+Mastra tries to auto-resume every run left in a non-terminal status; expect
+harmless `Failed to restart workflow run` log noise for old interrupted runs
+whose dependencies are stubbed out.
+
+Paths are resolved via `TWEEDY_PROJECT_ROOT` (defaults to this repo's known
+location) rather than `process.cwd()`, because the bundled dev server does
+not run with this repo as its working directory.

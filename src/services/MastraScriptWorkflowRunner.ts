@@ -534,7 +534,7 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
       episodeWorkflowDependencies: dependencies,
     });
     const workflow = runtime.mastra.getWorkflow("episodeWorkflow");
-    const run = await workflow.createRunAsync({ runId: workflowRunId });
+    const run = await workflow.createRun({ runId: workflowRunId });
     const result = await run.start({
       inputData: {
         definition: {

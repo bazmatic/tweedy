@@ -465,6 +465,23 @@ export class ScriptService implements IScriptService {
     const closingSequence = new ClosingSequencePolicy();
     let closingStarted = false;
     let closingCursor = 0;
+    // Rejected turns don't persist any state, so the director/speaker/reviewer
+    // can deterministically repeat the same speaker, direction, and rejection
+    // forever. Force acceptance after repeated consecutive discards rather
+    // than silently burning the whole turn budget on a stuck cycle.
+    let consecutiveDiscards = 0;
+    const MAX_CONSECUTIVE_DISCARDS = 4;
+    const shouldRetryDiscard = (reason: string): boolean => {
+      consecutiveDiscards += 1;
+      if (consecutiveDiscards > MAX_CONSECUTIVE_DISCARDS) {
+        logger.warn(
+          `${reason}; accepting after ${consecutiveDiscards} consecutive discards to avoid stalling production`
+        );
+        return false;
+      }
+      logger.warn(reason);
+      return true;
+    };
     await directorAgent.createPodcastPlan();
     try {
       await this.ragService.addMaterials(script.materials);
@@ -547,17 +564,21 @@ export class ScriptService implements IScriptService {
         script.editorialCards ?? [],
         script.speeches
       );
-      if (speech.review?.accepted === false) {
-        logger.warn(
+      if (
+        speech.review?.accepted === false &&
+        shouldRetryDiscard(
           `Discarded rejected speech from ${speech.speaker.name}; asking the director for a fresh turn`
-        );
+        )
+      ) {
         continue;
       }
       const claimGate = await this.claimEditorialGate.evaluate(speech, script);
-      if (!claimGate.accepted) {
-        logger.warn(
+      if (
+        !claimGate.accepted &&
+        shouldRetryDiscard(
           `Discarded speech from ${speech.speaker.name}: ${claimGate.reason}`
-        );
+        )
+      ) {
         continue;
       }
       const targetDiscourseClaimIds =
@@ -572,11 +593,11 @@ export class ScriptService implements IScriptService {
           : [];
       if (
         targetDiscourseClaimIds.length > 0 &&
-        verifiedDiscourseClaimIds.length === 0
-      ) {
-        logger.warn(
+        verifiedDiscourseClaimIds.length === 0 &&
+        shouldRetryDiscard(
           `Discarded speech from ${speech.speaker.name}: targeted claim was not established`
-        );
+        )
+      ) {
         continue;
       }
       // if (speech.review) {
@@ -585,13 +606,14 @@ export class ScriptService implements IScriptService {
       //   );
       // }
       if (
-        this.speechRepetitionPolicy.isRepetition(speech, script.speeches)
-      ) {
-        logger.warn(
+        this.speechRepetitionPolicy.isRepetition(speech, script.speeches) &&
+        shouldRetryDiscard(
           `Discarded repeated speech from ${speech.speaker.name}; asking the director for a fresh turn`
-        );
+        )
+      ) {
         continue;
       }
+      consecutiveDiscards = 0;
       await this.persistSpeech(
         script,
         speech,

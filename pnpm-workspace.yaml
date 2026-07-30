@@ -1,0 +1,10 @@
+allowBuilds:
+  esbuild: true
+  ffmpeg-static: true
+  protobufjs: true
+  sharp: true
+minimumReleaseAgeExclude:
+  - '@mastra/core@1.55.0'
+  - '@mastra/deployer@1.55.0'
+  - '@mastra/server@1.55.0'
+  - mastra@1.21.0

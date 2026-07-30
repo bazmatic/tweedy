@@ -39,7 +39,7 @@ describe("Tweedy Mastra composition root", () => {
       traceSink: sink,
     });
     const workflow = mastra.getWorkflow("minimalWorkflow");
-    const run = await workflow.createRunAsync({ runId: "run-10" });
+    const run = await workflow.createRun({ runId: "run-10" });
     const result = await run.start({
       inputData: {
         episodeId: "episode-10",
@@ -54,7 +54,8 @@ describe("Tweedy Mastra composition root", () => {
       throw new Error(`Workflow did not complete: ${result.status}`);
     }
     expect(result.result).toMatchObject({ completed: true });
-    const snapshot = await storage.loadWorkflowSnapshot({
+    const workflowsStore = await storage.getStore("workflows");
+    const snapshot = await workflowsStore?.loadWorkflowSnapshot({
       workflowName: workflow.id,
       runId: "run-10",
     });

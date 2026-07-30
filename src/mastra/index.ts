@@ -22,7 +22,10 @@ export interface CreateTweedyMastraOptions {
  * provider clients, open a database, start a server or execute a workflow.
  */
 export function createTweedyMastra(options: CreateTweedyMastraOptions) {
-  const storage = new LibSQLStore({ url: toFileUrl(options.storagePath) });
+  const storage = new LibSQLStore({
+    id: "tweedy-mastra-storage",
+    url: toFileUrl(options.storagePath),
+  });
   const traceSink =
     options.traceSink ??
     new JsonlTraceSink(

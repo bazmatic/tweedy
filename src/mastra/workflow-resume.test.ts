@@ -72,7 +72,10 @@ function createResumeRuntime(storagePath: string, speeches: IdempotentSpeechFake
   })
     .then(persistThenSuspend)
     .commit();
-  const storage = new LibSQLStore({ url: `file:${storagePath}` });
+  const storage = new LibSQLStore({
+    id: "tweedy-mastra-resume-test",
+    url: `file:${storagePath}`,
+  });
   return {
     mastra: new Mastra({ storage, workflows: { workflow } }),
     storage,
@@ -97,12 +100,13 @@ describe("Mastra durable suspension and resume", () => {
     const firstRuntime = createResumeRuntime(storagePath, speeches);
     const firstRun = await firstRuntime.mastra
       .getWorkflow("workflow")
-      .createRunAsync({ runId: input.runId });
+      .createRun({ runId: input.runId });
     const suspended = await firstRun.start({ inputData: input });
 
     expect(suspended.status).toBe("suspended");
     expect(speeches.writes).toBe(1);
-    const snapshot = await firstRuntime.storage.loadWorkflowSnapshot({
+    const workflowsStore = await firstRuntime.storage.getStore("workflows");
+    const snapshot = await workflowsStore?.loadWorkflowSnapshot({
       workflowName: "acceptance-resume-proof",
       runId: input.runId,
     });
@@ -114,7 +118,7 @@ describe("Mastra durable suspension and resume", () => {
     const resumedRuntime = createResumeRuntime(storagePath, speeches);
     const resumedRun = await resumedRuntime.mastra
       .getWorkflow("workflow")
-      .createRunAsync({ runId: input.runId });
+      .createRun({ runId: input.runId });
     const resumed = await resumedRun.resume({
       step: resumedRuntime.persistThenSuspend,
       resumeData: { continue: true },
