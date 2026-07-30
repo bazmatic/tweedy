@@ -9,6 +9,7 @@ import {
   Speech,
   Speaker,
   SourceAccess,
+  SpeakerRoleProfile,
   SpeakerTurnOptions,
   StopReason,
   TerminologyLedger,
@@ -112,6 +113,40 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
     return ` Before moving to your own point, briefly connect to what ${previousSpeech.speaker.name} just said ("${previousSpeech.message.slice(0, 160)}") — a short acknowledgment, reaction, or explicit link is enough; don't jump straight into new material as if their turn hadn't happened.`;
   }
 
+  private buildRetryFeedbackSection(retryFeedback?: string): string {
+    return retryFeedback ? `\n\nRevision note: ${retryFeedback}` : "";
+  }
+
+  /**
+   * The trailing instructions are a checklist of independent rules, not
+   * prose — grouping them under headers costs nothing narratively (there was
+   * no scene here to lose) and makes each rule's category legible to both
+   * the model and future maintainers. Wording is unchanged from before this
+   * grouping; only the layout changed.
+   */
+  private buildRulesSection(
+    isSolo: boolean,
+    roleProfile: SpeakerRoleProfile,
+    turnBrief: TurnBrief | undefined,
+    audienceProfile: AudienceProfile,
+    terminologyLedger: TerminologyLedger,
+    lengthGuidanceWithProviderCap: string
+  ): string {
+    return `
+
+## Audience & Accessibility
+${this.audienceAccessibilityPolicy.buildSpeakerGuidance(audienceProfile, terminologyLedger)}
+
+## Length & Delivery
+${lengthGuidanceWithProviderCap}
+
+## Conversational Style
+${this.getExpertiseNudge(isSolo, roleProfile.epistemicRole, turnBrief)} Serve the assigned audience value without forcing analysis, jokes or profundity where they do not belong. When the material offers an everyday comparison (a pet, a common habit, something the audience has personally experienced), take that as an opening for a quip, a personal anecdote or a bit of humour — don't just restate its analytical point again in your own words. Trust your co-host to ask a follow-up; don't pre-empt their next question. Don't reuse a striking phrase, metaphor or turn of phrase a co-host already said in the conversation history above — say the same idea in your own words instead of echoing theirs. Before speaking, scan the full conversation history above for any fact, comparison, analogy or illustrative example (e.g. "we still can't decode a cat's meow", "entropy is flat across species but complexity varies") that has already been raised, even if it was phrased differently — if you find one, don't re-explain or re-derive it from scratch; either build on it explicitly, reference it briefly as something already established ("like we said about the cat's meow..."), or drop it and bring a genuinely new point instead. Use Australian/British spelling. Be authentic to your personality and epistemic role. ${this.naturalSpeechStylePolicy.buildGuidance(roleProfile)}
+
+## Formatting
+Don't include stage directions, emotes, or sound effects — those belong in the style argument only. For a spoken pause or interruption, use an em dash (—), never a bare hyphen (-) — reserve the hyphen strictly for compound words. Write the message as plain spoken text only — never use markdown emphasis (*word*) or HTML tags (<em>word</em>) to mark emphasis; convey emphasis through word choice and the style argument instead, since a TTS engine reads literal markup characters aloud.`;
+  }
+
   private mannerismsLine(): string {
     return this.speaker.mannerisms
       ? `\n- Mannerisms (draw on these for filler comments/interjections, don't overuse): ${this.speaker.mannerisms}`
@@ -133,6 +168,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
       editorialCards = [],
       centralAnalogy,
       episodeRecap,
+      retryFeedback,
     } = options;
     let attempts = 0;
 
@@ -154,6 +190,7 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
             editorialCards,
             centralAnalogy,
             episodeRecap,
+            retryFeedback,
           });
 
         const requiresCompleteDelivery =
@@ -291,6 +328,7 @@ Give a brief, natural reaction to cut in with — a quick interjection or filler
       editorialCards = [],
       centralAnalogy,
       episodeRecap,
+      retryFeedback,
     } = options;
     const {
       speeches,
@@ -421,7 +459,7 @@ Podcast Context:
 Conversation History (speaker: message [tool used]):
 ${conversationHistory}${materialsSection}
 
-${direction ? `Here is some guidance from the Director. Only you can hear him. Listen to what he says and incorporate it naturally into the conversation if you can. DIRECTOR GUIDANCE: ${direction}` : "No specific director's guidance for this turn — continue the conversation naturally in character."}${this.getHandoffGuidance(speeches.at(-1))}${this.getBridgingGuidance(speeches.at(-1), isFinalTurn)}${editorialSection}${analogySection}${
+${direction ? `Here is some guidance from the Director. Only you can hear him. Listen to what he says and incorporate it naturally into the conversation if you can. DIRECTOR GUIDANCE: ${direction}` : "No specific director's guidance for this turn — continue the conversation naturally in character."}${this.getHandoffGuidance(speeches.at(-1))}${this.getBridgingGuidance(speeches.at(-1), isFinalTurn)}${this.buildRetryFeedbackSection(retryFeedback)}${editorialSection}${analogySection}${
           timeStatus && !isFinalTurn
             ? forceNearlyOutOfTime
               ? `\n\nTime status: ${timeStatus} You must use the nearly_out_of_time tool this turn to tell your co-hosts you're running low on time.`
@@ -431,7 +469,14 @@ ${direction ? `Here is some guidance from the Director. Only you can hear him. L
 
 Respond naturally as ${
           this.speaker.name
-        }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.getExpertiseNudge(isSolo, roleProfile.epistemicRole, turnBrief)} ${this.audienceAccessibilityPolicy.buildSpeakerGuidance(audienceProfile, terminologyLedger)} ${lengthGuidanceWithProviderCap} Serve the assigned audience value without forcing analysis, jokes or profundity where they do not belong. When the material offers an everyday comparison (a pet, a common habit, something the audience has personally experienced), take that as an opening for a quip, a personal anecdote or a bit of humour — don't just restate its analytical point again in your own words. Trust your co-host to ask a follow-up; don't pre-empt their next question. Don't reuse a striking phrase, metaphor or turn of phrase a co-host already said in the conversation history above — say the same idea in your own words instead of echoing theirs. Before speaking, scan the full conversation history above for any fact, comparison, analogy or illustrative example (e.g. "we still can't decode a cat's meow", "entropy is flat across species but complexity varies") that has already been raised, even if it was phrased differently — if you find one, don't re-explain or re-derive it from scratch; either build on it explicitly, reference it briefly as something already established ("like we said about the cat's meow..."), or drop it and bring a genuinely new point instead. Use Australian/British spelling. Be authentic to your personality and epistemic role. ${this.naturalSpeechStylePolicy.buildGuidance(roleProfile)} Don't include stage directions, emotes, or sound effects — those belong in the style argument only. For a spoken pause or interruption, use an em dash (—), never a bare hyphen (-) — reserve the hyphen strictly for compound words. Write the message as plain spoken text only — never use markdown emphasis (*word*) or HTML tags (<em>word</em>) to mark emphasis; convey emphasis through word choice and the style argument instead, since a TTS engine reads literal markup characters aloud.`,
+        }. Choose the response style tool that best fits this moment in the conversation, and provide both the spoken message and a delivery style for it.${this.buildRulesSection(
+          isSolo,
+          roleProfile,
+          turnBrief,
+          audienceProfile,
+          terminologyLedger,
+          lengthGuidanceWithProviderCap
+        )}`,
       },
     ];
 

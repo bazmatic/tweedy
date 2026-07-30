@@ -553,6 +553,78 @@ describe("SpeakerAgent.interject tool set", () => {
   });
 });
 
+describe("SpeakerAgent retry feedback", () => {
+  it("renders retry feedback in its own labeled section without duplicating it elsewhere", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "A calmer version of the same point.",
+      style: "calm",
+      stopReason: "stop",
+    });
+    const script = makeScript();
+
+    await agent.speak(script, "Tell the story.", {
+      retryFeedback:
+        'Your previous attempt at this turn was rejected: Too abrupt. What you said: "That\'s it, we\'re done." Revise to fix that specific problem while keeping the same goal — don\'t just reword it.',
+    });
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    const occurrences = prompt.split("Your previous attempt at this turn was rejected").length - 1;
+    expect(occurrences).toBe(1);
+    expect(prompt).toContain("Revision note:");
+    expect(prompt).toContain('That\'s it, we\'re done.');
+  });
+
+  it("omits the retry feedback section entirely when absent", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "hello there",
+      style: "calm",
+      stopReason: "stop",
+    });
+    const script = makeScript();
+
+    await agent.speak(script, "talk about x");
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).not.toContain("Revision note:");
+  });
+});
+
+describe("SpeakerAgent rules section grouping", () => {
+  it("groups accessibility, length, style, and formatting rules under distinct headers", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "hello there",
+      style: "calm",
+      stopReason: "stop",
+    });
+    const script = makeScript();
+
+    await agent.speak(script, "talk about x");
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    const accessibilityIndex = prompt.indexOf("## Audience & Accessibility");
+    const lengthIndex = prompt.indexOf("## Length & Delivery");
+    const styleIndex = prompt.indexOf("## Conversational Style");
+    const formattingIndex = prompt.indexOf("## Formatting");
+
+    expect(accessibilityIndex).toBeGreaterThan(-1);
+    expect(lengthIndex).toBeGreaterThan(accessibilityIndex);
+    expect(styleIndex).toBeGreaterThan(lengthIndex);
+    expect(formattingIndex).toBeGreaterThan(styleIndex);
+    expect(prompt.slice(formattingIndex)).toContain(
+      "never use markdown emphasis"
+    );
+    expect(prompt.slice(styleIndex, formattingIndex)).toContain(
+      "Use Australian/British spelling"
+    );
+  });
+});
+
 describe("SpeakerAgent.speak tool set for solo episodes", () => {
   it("only offers SPEAK, QUOTE, and ONE_LINER when there is a single speaker", async () => {
     const agent = new SpeakerAgent(makeSpeaker("s1"));
