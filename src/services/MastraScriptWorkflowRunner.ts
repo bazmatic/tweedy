@@ -109,7 +109,7 @@ const REJECTION_RECURRENCE_THRESHOLD = 3;
  * (regardless of what's interleaved) catches that pattern; requiring strict
  * consecutive repeats does not.
  */
-interface RecurringRejection {
+export interface RecurringRejection {
   reason: string;
   occurrences: number;
 }
@@ -126,6 +126,17 @@ export function findRecurringRejection(
   return occurrences >= REJECTION_RECURRENCE_THRESHOLD
     ? { reason: mostRecent, occurrences }
     : undefined;
+}
+
+export function buildRetryFeedback(
+  rejectionReason: string,
+  rejectedMessage: string | undefined,
+  recurring: RecurringRejection | undefined
+): string {
+  const quoted = rejectedMessage ? ` What you said: "${rejectedMessage}".` : "";
+  return recurring
+    ? `Your previous attempt at this turn was rejected: ${rejectionReason}.${quoted} This same problem has now failed ${recurring.occurrences} attempts in a row, each time in different wording — rephrasing alone has not worked. Make a substantively different fix: change what information you lead with or how you frame it, not just the phrasing.`
+    : `Your previous attempt at this turn was rejected: ${rejectionReason}.${quoted} Revise to fix that specific problem while keeping the same goal — don't just reword it.`;
 }
 
 /**

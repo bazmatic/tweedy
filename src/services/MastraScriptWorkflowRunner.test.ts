@@ -3,11 +3,15 @@ import * as os from "os";
 import * as path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildRetryFeedback,
   findRecurringRejection,
   MastraScriptWorkflowRunner,
 } from "./MastraScriptWorkflowRunner";
 import {
   AudienceProfile,
+  AudienceValue,
+  EditorialMove,
+  EnergyLevel,
   EpistemicRole,
   SourceAccess,
   SpeakerAllocation,
@@ -120,6 +124,44 @@ describe("findRecurringRejection", () => {
     ];
 
     expect(findRecurringRejection([...stale, ...recent])).toBeUndefined();
+  });
+});
+
+describe("buildRetryFeedback", () => {
+  it("frames the rejection as feedback on the speaker's own previous attempt and quotes it", () => {
+    const feedback = buildRetryFeedback(
+      "108 suitors appear without being introduced to the listener",
+      "There were 108 suitors waiting for her.",
+      undefined
+    );
+
+    expect(feedback).toContain("Your previous attempt at this turn was rejected");
+    expect(feedback).toContain(
+      "108 suitors appear without being introduced to the listener"
+    );
+    expect(feedback).toContain('"There were 108 suitors waiting for her."');
+    expect(feedback).not.toContain("Director");
+  });
+
+  it("omits the quote when no previous message is available", () => {
+    const feedback = buildRetryFeedback("Some rejection reason", undefined, undefined);
+
+    expect(feedback).toContain("Some rejection reason");
+    expect(feedback).not.toContain("What you said");
+  });
+
+  it("demands a substantively different fix when the same problem is recurring", () => {
+    const feedback = buildRetryFeedback(
+      "108 suitors appear without being introduced to the listener",
+      "There were 108 suitors waiting for her.",
+      {
+        reason: "108 suitors appear without being introduced to the listener",
+        occurrences: 3,
+      }
+    );
+
+    expect(feedback).toContain("failed 3 attempts in a row");
+    expect(feedback).toContain("change what information you lead with");
   });
 });
 
