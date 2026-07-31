@@ -301,6 +301,139 @@ describe("MastraScriptWorkflowRunner", () => {
     expect(directorCreatePlan).toHaveBeenCalledOnce();
   });
 
+  it("forces a turn through after the rejection budget is used up, instead of looping indefinitely", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "tweedy-mastra-runner-budget-")
+    );
+    tempDirectories.push(directory);
+    const speaker = {
+      id: "speaker-1",
+      slug: "host",
+      name: "Host",
+      personality: "curious host",
+      voice: {
+        id: "voice-1",
+        name: "Voice",
+        description: "",
+        provider: VocalProviderName.ElevenLabs,
+        providerId: "provider-1",
+        settings: {},
+      },
+      voiceStyle: "natural",
+    };
+    const script = {
+      id: "",
+      title: "Mastra episode",
+      description: "",
+      speakers: [speaker],
+      speeches: [],
+      materials: [],
+      discussionPoints: [],
+      audienceProfile: AudienceProfile.General,
+      createdAt: new Date("2026-07-29T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-29T00:00:00.000Z"),
+    };
+    const speech = {
+      id: "",
+      speaker,
+      message: "A concise opening and final thought.",
+      instructions: "natural",
+      voice: speaker.voice,
+      voiceStyle: speaker.voiceStyle,
+      timestamp: new Date("2026-07-29T00:00:01.000Z"),
+      stopReason: "stop" as const,
+      tool: SpeakerAgentToolName.CLOSING_STATEMENT,
+    };
+    let generatedSpeechNumber = 0;
+    speakerSpeak.mockImplementation(async (...args) => {
+      const isFinalTurn = args[2]?.isFinalTurn === true;
+      generatedSpeechNumber += 1;
+      return {
+        ...speech,
+        message: isFinalTurn
+          ? `A distinct closing thought ${generatedSpeechNumber}.`
+          : `A distinct production thought ${generatedSpeechNumber}.`,
+        tool: isFinalTurn
+          ? SpeakerAgentToolName.CLOSING_STATEMENT
+          : SpeakerAgentToolName.SPEAK,
+      };
+    });
+    // Every single review rejects, unconditionally, forever — if the
+    // rejection-budget force-accept mechanism is working, the workflow must
+    // still terminate (each logical turn force-accepted after 3 attempts)
+    // rather than regenerating and rejecting the same turn indefinitely.
+    directorReview.mockImplementation(async (candidate) => ({
+      ...candidate,
+      review: { accepted: false, feedback: "never good enough" },
+    }));
+    directorComplete.mockResolvedValue(false);
+    directorChoose.mockResolvedValue({
+      speaker,
+      direction: "sign off",
+      timeStatus: "",
+      forceNearlyOutOfTime: false,
+      requestSummary: true,
+      isFinalTurn: true,
+      turnBrief: undefined,
+    });
+    const createOrReturn = vi.fn(async (record, idempotencyKey) => ({
+      ...record,
+      id: `speech-${idempotencyKey}`,
+      idempotencyKey,
+    }));
+    const knowledgeLedgerPolicy = {
+      createLedger: () => ({ introducedCards: [] }),
+      getAccessibleCards: () => [],
+      recordAcceptedTurn: () => {},
+    };
+    const runner = new MastraScriptWorkflowRunner(
+      { createOrReturn } as any,
+      { addMaterials: vi.fn() } as any,
+      knowledgeLedgerPolicy as any,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        storagePath: path.join(directory, "workflow.db"),
+        tracePath: path.join(directory, "traces.jsonl"),
+      },
+      undefined,
+      { evaluate: vi.fn().mockResolvedValue({ accepted: true }) } as any,
+      {
+        audit: vi.fn().mockResolvedValue([]),
+        rewrite: vi.fn(),
+        attachObservability: vi.fn(),
+      } as any
+    );
+
+    const result = await runner.run({
+      script,
+      params: {
+        title: script.title,
+        description: "",
+        speakers: [speaker],
+        materials: [],
+        maxTurns: 3,
+        maxDuration: 60,
+        allocation: SpeakerAllocation.Sequential,
+      },
+      workflowRunId: "run-budget",
+    });
+
+    // Every persisted turn made it through despite every single review call
+    // rejecting — proving the budget forced acceptance rather than the
+    // episode either hanging or silently dropping the turns.
+    expect(result.speeches.length).toBeGreaterThan(0);
+    // Each logical turn should take at most 3 generation attempts (the
+    // rejection budget) before being forced through. If the budget were
+    // broken (not accumulating, as originally suspected), a stuck turn would
+    // regenerate far more than 3 times before this test's timeout gave up —
+    // bounding the ratio here catches that regression directly.
+    expect(generatedSpeechNumber).toBeLessThanOrEqual(result.speeches.length * 3);
+    expect(directorReview).toHaveBeenCalled();
+  });
+
   it("gives a repaired turn its own retry-feedback field instead of duplicating rejection text into direction/turnBrief.goal", async () => {
     const directory = await mkdtemp(
       path.join(os.tmpdir(), "tweedy-mastra-runner-retry-")

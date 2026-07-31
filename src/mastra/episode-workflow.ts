@@ -20,6 +20,7 @@ import {
 import { TraceSink } from "./tracing";
 
 export const EPISODE_FLOW_VERSION = "mastra-episode-v1";
+const TURN_REJECTION_BUDGET = 3;
 
 const WorkflowLimitsSchema = z.object({
   maxTurns: z.number().int().positive(),
@@ -453,6 +454,32 @@ export function createTurnTransactionWorkflow(
           candidate
         ));
       if (!rejectionReason) return inputData;
+      // The reviewer has rejected this logical turn twice already. On the
+      // third rejection, stop repairing and let the current speech through.
+      if (
+        inputData.state.consecutiveRejectedTurns >=
+        TURN_REJECTION_BUDGET - 1
+      ) {
+        const review: WorkflowReview = {
+          approved: true,
+          notes: "Accepted unchanged after three rejected attempts",
+        };
+        let state = inputData.state;
+        if (state.pendingTurn?.reviewApproved !== true) {
+          state = apply(state, {
+            type: "TURN_REVISED",
+            timestamp: timestamp(),
+            message: candidate.message,
+            stopReason: candidate.stopReason,
+          });
+          state = apply(state, {
+            type: "TURN_REVIEWED",
+            timestamp: timestamp(),
+            ...review,
+          });
+        }
+        return { ...inputData, state, review };
+      }
       const state = apply(inputData.state, {
         type: "TURN_REJECTED",
         timestamp: timestamp(),

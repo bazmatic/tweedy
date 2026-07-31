@@ -406,14 +406,31 @@ Default to "informed_host" for any speaker whose personality doesn't say otherwi
       const discourseNote = targetDiscourseClaim
         ? `\n\nLocal discourse requirement: establish this next eligible meaning before asking listeners to interpret, react to, or remember dependent material:\n- ${targetDiscourseClaim.id} [${targetDiscourseClaim.role}]: ${targetDiscourseClaim.text}\nIts prerequisites are established. Do not presuppose a later claim or jump to a complication, consequence, implication, or payoff. Do not foreshadow later material using people, groups, objects, or events that have not yet been explicitly introduced aloud.`
         : "";
+      // With exactly two speakers, who talks next is already deterministic
+      // (ping-pong, computed from script.speeches alone) — it does not
+      // depend on anything the model returns. Computed here, ahead of the
+      // orientation note below, so that note can tailor itself to whether
+      // this turn's speaker actually holds the informed-host role.
+      const knownNextSpeaker =
+        script.speakers.length === 2 ? this.pingPongSpeaker(script) : undefined;
       const orientationTargets = orientationClaims.slice(0, 2);
+      const orientationSpeakerIsAudienceGuide =
+        !!knownNextSpeaker &&
+        this.roleProfileResolver.resolve(knownNextSpeaker).epistemicRole ===
+          EpistemicRole.AudienceGuide;
       const orientationNote =
         orientationTargets.length > 0
-          ? `\n\nMandatory listener orientation: before opening any ranked topic, clearly establish these foundational claims in plain language during this turn:\n${orientationTargets
-              .map((claim) => `- ${claim.id}: ${claim.text}`)
-              .join(
-                "\n"
-              )}\nState their complete meaning; do not merely mention keywords. This is a conversational orientation turn, not a list or a full episode summary.`
+          ? orientationSpeakerIsAudienceGuide
+            ? `\n\nMandatory listener orientation is due, but this turn's speaker is the audience-guide, not the informed host — they should not deliver these foundational claims themselves. Instead, have them ask a direct question or prompt that invites their co-host to establish it on the next turn:\n${orientationTargets
+                .map((claim) => `- ${claim.id}: ${claim.text}`)
+                .join(
+                  "\n"
+                )}\nDo not have this speaker state the claims' content themselves; only set up the handoff.`
+            : `\n\nMandatory listener orientation: before opening any ranked topic, clearly establish these foundational claims in plain language during this turn:\n${orientationTargets
+                .map((claim) => `- ${claim.id}: ${claim.text}`)
+                .join(
+                  "\n"
+                )}\nState their complete meaning; do not merely mention keywords. This is a conversational orientation turn, not a list or a full episode summary.`
           : "";
       const guidanceNote = this.guidance
         ? ` Keep steering the conversation in line with the producer's guidance for this episode: ${this.guidance}`
@@ -436,16 +453,12 @@ Default to "informed_host" for any speaker whose personality doesn't say otherwi
         )
         .join('\n');
 
-      // With exactly two speakers, who talks next is already deterministic
-      // (ping-pong, computed further below from script.speeches alone) — it
-      // does not depend on anything the model returns. Telling the model
-      // this upfront, instead of letting it guess a speakerId that then gets
-      // silently overridden after the fact, removes the mismatch where the
-      // model writes a direction assuming one speaker will deliver it (e.g.
-      // naming them in a handoff phrase) while the fixed turn order actually
-      // hands it to that same speaker, producing a self-addressed line.
-      const knownNextSpeaker =
-        script.speakers.length === 2 ? this.pingPongSpeaker(script) : undefined;
+      // Telling the model knownNextSpeaker upfront, instead of letting it
+      // guess a speakerId that then gets silently overridden after the
+      // fact, removes the mismatch where the model writes a direction
+      // assuming one speaker will deliver it (e.g. naming them in a handoff
+      // phrase) while the fixed turn order actually hands it to that same
+      // speaker, producing a self-addressed line.
       const fixedSpeakerNote = knownNextSpeaker
         ? `\n\nThis turn's speaker is already fixed by production: ${knownNextSpeaker.name} will deliver it, regardless of the speakerId you return. Write the direction as a direct instruction addressed to ${knownNextSpeaker.name} ("Explain...", "Ask your co-host...") — never name ${knownNextSpeaker.name} inside their own direction, since that reads as instructing someone else to speak to them.`
         : '';
@@ -728,7 +741,7 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
           logger.warn(
             `Turn reviewer revised ${speech.speaker.name}'s closing statement to add a sign-off`
           );
-          return { ...revisedSpeech, review };
+          return { ...revisedSpeech, review: { ...review, accepted: true } };
         }
         // Step 4: re-review the revision itself — the reviewer's fix isn't
         // trusted blindly, it must independently pass the same review. Tell
@@ -1160,6 +1173,19 @@ Return only the ids of points that were genuinely, substantively covered.`,
         verifiedDiscourseClaimIds
       );
     }
+    // A speaker can establish a claim's content in passing while pursuing an
+    // unrelated assigned target (e.g. answering a co-host's tangent) — only
+    // checking the turn's explicitly targeted claims leaves those claims
+    // permanently "unestablished" even though a listener already heard them,
+    // so the director re-assigns the same already-spoken content as a fresh
+    // target on a later turn, guaranteeing a repetition rejection. Bounded to
+    // a handful of untargeted-but-eligible claims to avoid an unbounded LLM
+    // call per turn.
+    await this.recordOpportunisticDiscourseCoverage(
+      script,
+      speech,
+      discourseClaimIds
+    );
     const targetPointId = speech.turnBrief?.targetPointId;
     if (!targetPointId) return;
     if (discourseClaimIds.length > 0) {
@@ -1168,6 +1194,40 @@ Return only the ids of points that were genuinely, substantively covered.`,
     }
     const confirmed = await this.verifyCoveredPoints([targetPointId], script);
     this.applyCoveredPoints(confirmed);
+  }
+
+  private static readonly MAX_OPPORTUNISTIC_DISCOURSE_CLAIMS = 3;
+
+  private async recordOpportunisticDiscourseCoverage(
+    script: PodcastScript,
+    speech: Speech,
+    alreadyTargetedClaimIds: string[]
+  ): Promise<void> {
+    const untargetedEligibleIds = this.allDiscourseClaims()
+      .filter(
+        (claim) =>
+          !alreadyTargetedClaimIds.includes(claim.id) &&
+          claim.state !== "established" &&
+          claim.state !== "developed" &&
+          claim.state !== "unresolved" &&
+          claim.prerequisiteClaimIds.every((id) =>
+            this.isDiscourseClaimEstablished(id)
+          )
+      )
+      .map((claim) => claim.id)
+      .slice(0, DirectorAgent.MAX_OPPORTUNISTIC_DISCOURSE_CLAIMS);
+    if (untargetedEligibleIds.length === 0) return;
+    const verifiedIds = await this.verifyDiscourseClaims(
+      script,
+      untargetedEligibleIds,
+      speech.message
+    );
+    if (verifiedIds.length === 0) return;
+    this.applyVerifiedDiscourseClaims(
+      speech,
+      untargetedEligibleIds,
+      verifiedIds
+    );
   }
 
   private async recordAcceptedDiscourseCoverage(

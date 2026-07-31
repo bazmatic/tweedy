@@ -177,6 +177,56 @@ describe("nested Mastra episode workflow", () => {
     );
   });
 
+  it("allows the current speech through after three rejected attempts", async () => {
+    const reviewCandidate = vi
+      .fn()
+      .mockResolvedValue({ approved: false, notes: "editorial rejection" });
+    const persistCandidate = vi.fn(async (_state, turn, candidate) => ({
+      speechId: `${turn.kind}-${turn.logicalTurn}-${candidate.message}`,
+      durationSeconds: 5,
+      coveredConversationBeatIds: turn.isOpeningTurn ? ["beat-1"] : [],
+      coveredDiscussionPointIds: turn.isOpeningTurn ? [] : ["point-1"],
+    }));
+
+    const { result } = await runEpisode(
+      dependencies({ reviewCandidate, persistCandidate })
+    );
+
+    expect(result.state.phase).toBe("completed");
+    expect((persistCandidate.mock.calls[0][2] as { message: string }).message).toBe(
+      "speech-3"
+    );
+  });
+
+  it("still allows a later logical turn through after three rejected attempts, once an earlier turn already reset the budget", async () => {
+    // Turn 0 (opening) is accepted normally, resetting consecutiveRejectedTurns
+    // to 0 via TURN_ACCEPTED. Turn 1 onward is rejected unconditionally. If the
+    // budget correctly survives across dowhile iterations, turn 1 should force
+    // through on its 3rd attempt, exactly like the opening-turn case above —
+    // not loop indefinitely until the workflow's maxIterations safety cap.
+    const reviewCandidate = vi.fn(async (_state, turnSelection: TurnSelection) =>
+      turnSelection.logicalTurn >= 1
+        ? { approved: false, notes: "editorial rejection" }
+        : { approved: true, notes: "approved" }
+    );
+    const persistCandidate = vi.fn(async (_state, turn, candidate) => ({
+      speechId: `${turn.kind}-${turn.logicalTurn}-${candidate.message}`,
+      durationSeconds: 5,
+      coveredConversationBeatIds: turn.isOpeningTurn ? ["beat-1"] : [],
+      coveredDiscussionPointIds: turn.isOpeningTurn ? [] : ["point-1"],
+    }));
+
+    const { result } = await runEpisode(
+      dependencies({ reviewCandidate, persistCandidate })
+    );
+
+    const turn1Calls = persistCandidate.mock.calls.filter(
+      ([, turn]) => turn.logicalTurn === 1
+    );
+    expect(turn1Calls).toHaveLength(1);
+    expect((turn1Calls[0][2] as { message: string }).message).toBe("speech-4");
+  });
+
   it("revises and re-reviews an editorially rejected candidate", async () => {
     let firstReview = true;
     const reviewCandidate = vi.fn(async () => {
@@ -320,7 +370,7 @@ describe("nested Mastra episode workflow", () => {
     expect(forceClosingTurn).toHaveBeenCalledWith(expect.anything(), reason);
   });
 
-  it("does not complete when every forced final candidate fails closing validation", async () => {
+  it("allows a forced final candidate through after three validation rejections", async () => {
     const { result } = await runEpisode(
       dependencies({
         validateFinalCandidate: vi
@@ -330,11 +380,14 @@ describe("nested Mastra episode workflow", () => {
       { maxTurns: 2, maxDurationSeconds: 1 }
     );
 
-    expect(result.state.phase).toBe("closing");
-    expect(result.state.warnings).toContain(
-      "Workflow iteration bound reached before a valid closing statement was accepted"
+    expect(result.state.phase).toBe("completed");
+    expect(result.state.warnings).toEqual(
+      expect.arrayContaining([
+        "missing listener-facing sign-off",
+        "missing listener-facing sign-off",
+      ])
     );
-    expect(result.state.acceptedSpeechIds).toHaveLength(1);
+    expect(result.state.acceptedSpeechIds).toHaveLength(2);
   });
 
   it("retries an invalid final candidate and completes only after validation succeeds", async () => {

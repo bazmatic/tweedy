@@ -76,7 +76,7 @@ describe("TurnReviewerAgent", () => {
     expect(call.mock.calls[0][0]).toBe(ModelTask.TurnReview);
     const prompt = (call.mock.calls[0][1] as any)[0].content as string;
     expect(prompt).toContain("Humanise the subject");
-    expect(prompt).toContain("Do not demand analysis from a story");
+    expect(prompt).toContain("Judge the turn by its goal and format");
     expect(prompt).toContain("First perform a listener-comprehension audit");
     expect(prompt).toContain(
       "You cannot see the director's goal, prepared cards, source notes, or future turns"
@@ -84,21 +84,17 @@ describe("TurnReviewerAgent", () => {
     expect(prompt).toContain(
       "set clear, audienceAccessible, and accepted to false"
     );
-    expect(prompt).toContain(
-      "should normally acknowledge the co-host's contribution"
-    );
-    expect(prompt).toContain("simply talks past the interjection");
+    expect(prompt).toContain("After a brief interjection, acknowledge it");
+    expect(prompt).toContain("Preserve time continuity");
     expect(prompt).toContain("This call judges only");
-    expect(prompt).toContain("at most 12 words");
+    expect(prompt).toContain("one plain sentence");
     expect(prompt).toContain("proposed candidate that has NOT been heard");
     expect(prompt).toContain("Speaker epistemic role: audience_guide");
-    expect(prompt).toContain("Natural fillers, pauses, hesitations");
-    expect(prompt).toContain('phrases such as "where we left off"');
-    expect(prompt).toContain("uninterrupted adjacent exchange");
+    expect(prompt).toContain("natural fillers, pauses, and self-corrections");
     expect(prompt).toContain("Audience profile: general");
     expect(prompt).toContain("likely unfamiliar to this audience");
     expect(prompt).toContain(
-      '"the other Cyclopes" introduces a group, while "the others" does not'
+      "requires knowledge of an unheard person, group, object, or event"
     );
     expect(result.accepted).toBe(true);
     expect(result.feedback).toBe("");
@@ -187,7 +183,7 @@ describe("TurnReviewerAgent", () => {
     expect(prompt).not.toContain("resolve every necessary reference");
     expect(prompt).not.toContain("paraphrase the turn's complete point");
     expect(prompt).not.toContain(
-      "Reject and revise a turn when a definite reference or pronoun requires an unheard person"
+      "requires knowledge of an unheard person, group, object, or event"
     );
     expect(prompt).toContain("This is the cold open");
     expect(prompt).toContain(
@@ -233,7 +229,7 @@ describe("TurnReviewerAgent", () => {
     const prompt = (call.mock.calls[0][1] as any)[0].content as string;
     expect(prompt).toContain("resolve every necessary reference");
     expect(prompt).toContain(
-      "Reject and revise a turn when a definite reference or pronoun requires an unheard person"
+      "requires knowledge of an unheard person, group, object, or event"
     );
     expect(prompt).not.toContain("This is the cold open");
   });
