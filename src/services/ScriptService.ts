@@ -468,14 +468,25 @@ export class ScriptService implements IScriptService {
     // Rejected turns don't persist any state, so the director/speaker/reviewer
     // can deterministically repeat the same speaker, direction, and rejection
     // forever. Force acceptance after repeated consecutive discards rather
-    // than silently burning the whole turn budget on a stuck cycle.
+    // than silently burning the whole turn budget on a stuck cycle. Scoped to
+    // the current speech attempt (reset whenever the turn moves to a
+    // different beat) — not a single episode-wide counter — so a string of
+    // unrelated discards on earlier beats can't spend down the budget for a
+    // later, unrelated beat and force-accept a genuinely bad (e.g. garbled)
+    // candidate for it just because it happened to land on the Nth discard
+    // overall.
     let consecutiveDiscards = 0;
-    const MAX_CONSECUTIVE_DISCARDS = 4;
-    const shouldRetryDiscard = (reason: string): boolean => {
+    let discardBeatId: string | undefined;
+    const MAX_CONSECUTIVE_DISCARDS = 2;
+    const shouldRetryDiscard = (reason: string, beatId: string | undefined): boolean => {
+      if (beatId !== discardBeatId) {
+        discardBeatId = beatId;
+        consecutiveDiscards = 0;
+      }
       consecutiveDiscards += 1;
       if (consecutiveDiscards > MAX_CONSECUTIVE_DISCARDS) {
         logger.warn(
-          `${reason}; accepting after ${consecutiveDiscards} consecutive discards to avoid stalling production`
+          `${reason}; accepting after ${consecutiveDiscards} consecutive discards on this speech to avoid stalling production`
         );
         return false;
       }
@@ -559,7 +570,8 @@ export class ScriptService implements IScriptService {
       if (
         speech.review?.accepted === false &&
         shouldRetryDiscard(
-          `Discarded rejected speech from ${speech.speaker.name}; asking the director for a fresh turn`
+          `Discarded rejected speech from ${speech.speaker.name}; asking the director for a fresh turn`,
+          turnBrief?.beatId
         )
       ) {
         continue;
@@ -568,7 +580,8 @@ export class ScriptService implements IScriptService {
       if (
         !claimGate.accepted &&
         shouldRetryDiscard(
-          `Discarded speech from ${speech.speaker.name}: ${claimGate.reason}`
+          `Discarded speech from ${speech.speaker.name}: ${claimGate.reason}`,
+          turnBrief?.beatId
         )
       ) {
         continue;
@@ -587,7 +600,8 @@ export class ScriptService implements IScriptService {
         targetDiscourseClaimIds.length > 0 &&
         verifiedDiscourseClaimIds.length === 0 &&
         shouldRetryDiscard(
-          `Discarded speech from ${speech.speaker.name}: targeted claim was not established`
+          `Discarded speech from ${speech.speaker.name}: targeted claim was not established`,
+          turnBrief?.beatId
         )
       ) {
         continue;
@@ -600,12 +614,14 @@ export class ScriptService implements IScriptService {
       if (
         this.speechRepetitionPolicy.isRepetition(speech, script.speeches) &&
         shouldRetryDiscard(
-          `Discarded repeated speech from ${speech.speaker.name}; asking the director for a fresh turn`
+          `Discarded repeated speech from ${speech.speaker.name}; asking the director for a fresh turn`,
+          turnBrief?.beatId
         )
       ) {
         continue;
       }
       consecutiveDiscards = 0;
+      discardBeatId = undefined;
       await this.persistSpeech(
         script,
         speech,
