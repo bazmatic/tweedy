@@ -92,7 +92,7 @@ export class OpeningSequencePolicy {
 
     if (stage === OpeningStage.Frame) {
       const host = orderedSpeakers[0];
-      const goal = `Complete the opening phase with a compact listener promise for "${script.title}". In 1-2 sentences, say what central question or experience the episode will help the listener understand and why it matters. Do not summarise the planned sequence, list examples, tell a specific story, introduce terminology, thank listeners, sign off, or ask a question.`;
+      const goal = `Complete the opening phase with a compact listener promise for "${script.title}". In 1-2 sentences, say what central question or experience the episode will help the listener understand and why it matters. You may riff off the cold open's idea or image, but this turn must add the actual promise — the specific question or payoff — in plain terms; do not just restate or rephrase the cold open's own hook without that addition. Do not summarise the planned sequence, list examples, tell a specific story, introduce terminology, thank listeners, sign off, or ask a question.`;
 
       return this.toOpeningTurn(host, goal, EditorialMove.AddContext, false);
     }

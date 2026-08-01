@@ -192,7 +192,7 @@ Keep your logic terse. When rejected, return one feedback item written as one pl
           ? 90
           : speech.tool === SpeakerAgentToolName.NEARLY_OUT_OF_TIME
           ? 70
-          : 50;
+          : 75;
       try {
         const rewrite = await this.callModelForStructuredOutput<RewriteRejectedTurnInput>(
           ModelTask.TurnReview,
@@ -213,6 +213,7 @@ Original turn: ${speech.message}
 
 The original turn was rejected before broadcast. It is not conversation history, and the correction must replace it rather than reply to it.
 Use the relevant prepared material above when the reason requires naming or grounding the subject. Do not assume a new listener can infer a missing person, work, or topic from the rejected original alone.
+Fix only the specific problem named in Reason — every other person, show, term, or reference the original turn already resolved must still be resolved in your rewrite. Do not silently drop an already-established reference to make room for the fix; if both cannot fit, keep the fix and trim elsewhere in the sentence (word choice, filler, secondary detail) rather than cutting a resolved reference.
 
 Return only one complete corrected spoken turn in the same voice, no longer than ${wordBudget} words. Use one unbroken line. Use Australian/British spelling. Do not include analysis, labels, dot points, quotations around the answer, markdown, card ids, or citations.`,
             },
