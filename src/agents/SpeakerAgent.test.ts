@@ -299,6 +299,33 @@ describe("SpeakerAgent editorial context", () => {
   });
 });
 
+describe("SpeakerAgent director guidance framing", () => {
+  it("frames the Director's guidance as a recommendation subordinate to character and flow", async () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "Sure.",
+      style: "warm",
+      stopReason: "stop",
+    });
+    const script = makeScript();
+
+    await agent.speak(script, "Establish the foundational claim directly.");
+
+    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(prompt).toContain("Treat it as a recommendation, not a script");
+    expect(prompt).toContain(
+      "your character's voice and the natural flow of what was just said come first"
+    );
+    expect(prompt).toContain(
+      "still satisfy anything above or below that would otherwise get this turn rejected"
+    );
+    expect(prompt).toContain(
+      "DIRECTOR GUIDANCE: Establish the foundational claim directly."
+    );
+  });
+});
+
 describe("SpeakerAgent central analogy", () => {
   it("injects the central analogy into the speaker prompt", async () => {
     const agent = new SpeakerAgent(makeSpeaker("s1"));

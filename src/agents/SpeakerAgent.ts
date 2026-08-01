@@ -467,7 +467,7 @@ ${this.buildRulesSection(
           lengthGuidanceWithProviderCap
         )}${materialsSection}
 
-${direction ? `Here is some guidance from the Director. Only you can hear him. Listen to what he says and incorporate it naturally into the conversation if you can. DIRECTOR GUIDANCE: ${direction}` : "No specific director's guidance for this turn — continue the conversation naturally in character."}${this.getHandoffGuidance(speeches.at(-1))}${this.getBridgingGuidance(speeches.at(-1), isFinalTurn)}${this.buildRetryFeedbackSection(retryFeedback)}${editorialSection}${analogySection}${
+${direction ? `Here is some guidance from the Director. Only you can hear him. Treat it as a recommendation, not a script: your character's voice and the natural flow of what was just said come first. Deviate from its specific wording or details whenever staying in character or responding naturally to the conversation calls for it — but still satisfy anything above or below that would otherwise get this turn rejected (staying in your role, keeping references clear, not repeating what's already been said). DIRECTOR GUIDANCE: ${direction}` : "No specific director's guidance for this turn — continue the conversation naturally in character."}${this.getHandoffGuidance(speeches.at(-1))}${this.getBridgingGuidance(speeches.at(-1), isFinalTurn)}${this.buildRetryFeedbackSection(retryFeedback)}${editorialSection}${analogySection}${
           timeStatus && !isFinalTurn
             ? forceNearlyOutOfTime
               ? `\n\nTime status: ${timeStatus} You must use the nearly_out_of_time tool this turn to tell your co-hosts you're running low on time.`
