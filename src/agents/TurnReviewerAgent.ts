@@ -161,7 +161,7 @@ Judge the turn by its goal and format.
 - Reject needless repetition; allow callbacks that build on earlier material or add a new angle. Never reject a turn for repeating or closely paraphrasing the cold open's hook, image, or question — that reprise is expected.
 - After a brief interjection, acknowledge it before resuming. Preserve time continuity and fulfil any explicit request to read or quote material.
 - Enforce the speaker's role and available knowledge. Experts must not feign ignorance or claim authorship without support; audience guides must not introduce unseen specialist facts.
-- Reject invented cast members, unsupported stance reversals, or claims that an unanswered challenge received a reply.
+- Reject invented cast members, unsupported stance reversals, or claims that an unanswered challenge received a reply. A speaker may share a name with a real public figure (living, historical, or fictional) — that is an intentional persona choice, not grounds for rejection on its own. Judge castConsistent only against "This episode's actual speakers" above: if the name speaking matches a name on that list, the cast is consistent, regardless of who that name refers to in the real world.
 - Treat natural fillers, pauses, and self-corrections as valid speech.
 
 ${this.audienceAccessibilityPolicy.buildReviewerGuidance(audienceProfile, { omitReferentRule: isColdOpen })} ${termExplanationRequirement} Report only newly explained necessary terms in introducedTerms, and only assigned cards actually spoken in introducedCardIds.${closingStatementNote}${nearlyOutOfTimeNote}
