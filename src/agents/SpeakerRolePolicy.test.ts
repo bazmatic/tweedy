@@ -44,6 +44,29 @@ function makeSpeaker(id: string, isExpert: boolean): Speaker {
   };
 }
 
+function makeInformedHost(id: string): Speaker {
+  return {
+    id,
+    slug: id,
+    name: id,
+    personality: "well-read",
+    voice: {
+      id: `voice-${id}`,
+      name: "Voice",
+      description: "",
+      provider: VocalProviderName.ElevenLabs,
+      providerId: "provider-id",
+      settings: {},
+    },
+    voiceStyle: "natural",
+    roleProfile: {
+      epistemicRole: EpistemicRole.InformedHost,
+      sourceAccess: SourceAccess.PreparedCards,
+      uncertaintyStyle: UncertaintyStyle.Exploratory,
+    },
+  };
+}
+
 function makeBrief(speakerId: string, move: EditorialMove): TurnBrief {
   return {
     speakerId,
@@ -231,6 +254,41 @@ describe("SpeakerRolePolicy", () => {
 
     expect(result.repaired).toBe(false);
     expect(result.repairReason).toBeUndefined();
+  });
+
+  it("lets an informed host explain an unexplained key term from their own prepared card", () => {
+    const host = makeInformedHost("host");
+    const script = makeScript(expert, guide);
+    script.speakers = [guide, host, expert];
+    script.editorialCards = [
+      {
+        id: "card-1",
+        materialId: "material-1",
+        kind: EditorialCardKind.EssentialPoint,
+        content: "Fungal spikes are scored for structural complexity.",
+        significance: "",
+        evidence: [],
+        relatedCardIds: [],
+        tags: [],
+        keyTerms: ["complexity score"],
+        storyValue: 5,
+      },
+    ];
+    const brief = makeBrief(host.id, EditorialMove.Explain);
+    brief.goal = "Explain what the complexity score means.";
+    brief.cardIds = ["card-1"];
+
+    const result = policy.repairAssignment(
+      script,
+      host,
+      brief,
+      "Explain the complexity score in plain language."
+    );
+
+    expect(result.speaker.id).toBe(host.id);
+    expect(result.repaired).toBe(false);
+    expect(result.turnBrief.move).toBe(EditorialMove.Explain);
+    expect(result.turnBrief.goal).toBe("Explain what the complexity score means.");
   });
 
   it("allows a guide's direction to name a key term once it has been explained aloud", () => {

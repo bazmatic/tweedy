@@ -293,7 +293,12 @@ export class SpeakerRolePolicy {
     direction: string
   ): string | undefined {
     const profile = this.roleProfileResolver.resolve(speaker);
-    if (profile.epistemicRole === EpistemicRole.Expert) return undefined;
+    if (
+      profile.epistemicRole === EpistemicRole.Expert ||
+      profile.epistemicRole === EpistemicRole.InformedHost
+    ) {
+      return undefined;
+    }
 
     const cards = script.editorialCards ?? [];
     if (cards.length === 0) return undefined;
