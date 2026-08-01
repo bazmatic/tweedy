@@ -780,7 +780,7 @@ describe("DirectorAgent local discourse contracts", () => {
     );
   });
 
-  it("does not let point-level coverage bypass an incomplete discourse contract", async () => {
+  it("marks a point covered directly once the Director's claim is independently verified, without requiring its discourse contract to complete first", async () => {
     const script = cyclopsScript();
     const agent = new DirectorAgent(script, {
       maxTurns: 10,
@@ -793,12 +793,13 @@ describe("DirectorAgent local discourse contracts", () => {
         speakerId: "s1",
         direction: "Move on.",
         coveredPointIds: ["p1"],
-      });
+      })
+      .mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
 
     await agent.chooseNextSpeaker(script);
 
-    expect(call).toHaveBeenCalledTimes(1);
-    expect(script.discussionPoints[0].covered).toBe(false);
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(script.discussionPoints[0].covered).toBe(true);
     expect(script.conversationBeats![0].covered).toBe(false);
   });
 

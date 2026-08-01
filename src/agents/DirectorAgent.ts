@@ -539,7 +539,7 @@ Occasionally — at most once every several turns, mid-explanation — assign th
       }
 
       const confirmedPointIds = await this.verifyCoveredPoints(
-        this.pointIdsEligibleForDirectCoverage(coveredPointIds),
+        coveredPointIds,
         script
       );
       this.applyCoveredPoints(confirmedPointIds);
@@ -893,26 +893,6 @@ Return only the ids of points that were genuinely, substantively covered.`,
       );
       return [];
     }
-  }
-
-  private pointIdsEligibleForDirectCoverage(
-    coveredPointIds: string[] | undefined
-  ): string[] | undefined {
-    if (!coveredPointIds) return coveredPointIds;
-    return coveredPointIds.filter((pointId) => {
-      const contractedBeats = (this.script.conversationBeats ?? []).filter(
-        (beat) =>
-          (beat.pointIds ?? []).includes(pointId) &&
-          ((beat.completionClaimIds?.length ?? 0) > 1 ||
-            (beat.discourseClaims ?? []).some(
-              (claim) => claim.prerequisiteClaimIds.length > 0
-            ))
-      );
-      return (
-        contractedBeats.length === 0 ||
-        contractedBeats.every((beat) => beat.covered)
-      );
-    });
   }
 
   private applyCoveredPoints(coveredPointIds?: string[]): void {
