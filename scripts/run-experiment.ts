@@ -1,4 +1,4 @@
-// experiments/run-experiment.ts
+// scripts/run-experiment.ts
 import * as path from "path";
 import { Mastra } from "@mastra/core/mastra";
 import { LibSQLStore } from "@mastra/libsql";

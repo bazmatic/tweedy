@@ -17,7 +17,7 @@ keys/
 # Data directories
 data/
 audio/
-scripts/
+scripts/*.json
 embeddings/
 *.db
 *.db-shm
