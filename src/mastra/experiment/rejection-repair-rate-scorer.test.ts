@@ -26,7 +26,7 @@ describe("computeRejectionRepairRate", () => {
     expect(result.counts).toEqual({ totalAttempts: 0, failedCount: 0, repairedCount: 0 });
   });
 
-  it("counts only failed/repaired outcomes for the matching episode+run", () => {
+  it("counts totalAttempts from 'proposed' outcomes and clamps score at 0 when rework exceeds attempts", () => {
     const traces = [
       trace({ outcome: "proposed" }),
       trace({ outcome: "repaired" }),
@@ -36,8 +36,26 @@ describe("computeRejectionRepairRate", () => {
       trace({ outcome: "failed", runId: "other-run" }),
     ];
     const result = computeRejectionRepairRate(traces, "ep-1", "run-1");
+    // totalAttempts = 1 "proposed" trace; failedCount + repairedCount = 2 > totalAttempts,
+    // so the raw score (1 - 2/1 = -1) is clamped to 0.
+    expect(result.counts).toEqual({ totalAttempts: 1, failedCount: 1, repairedCount: 1 });
+    expect(result.score).toBe(0);
+    expect(result.reason).toBe("1 attempts, 1 repaired, 1 failed");
+  });
+
+  it("computes a proportional score when attempts exceed rework", () => {
+    const traces = [
+      trace({ outcome: "proposed" }),
+      trace({ outcome: "proposed" }),
+      trace({ outcome: "proposed" }),
+      trace({ outcome: "proposed" }),
+      trace({ outcome: "repaired" }),
+      trace({ outcome: "failed" }),
+      trace({ outcome: "completed" }),
+    ];
+    const result = computeRejectionRepairRate(traces, "ep-1", "run-1");
     expect(result.counts).toEqual({ totalAttempts: 4, failedCount: 1, repairedCount: 1 });
-    expect(result.score).toBe(0.75);
+    expect(result.score).toBe(0.5);
     expect(result.reason).toBe("4 attempts, 1 repaired, 1 failed");
   });
 });

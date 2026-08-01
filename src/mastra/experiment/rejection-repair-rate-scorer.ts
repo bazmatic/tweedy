@@ -4,6 +4,7 @@ import { TweedyTrace } from "../tracing";
 import type { ExperimentRunInput, ExperimentRunOutput } from "./experiment-workflow";
 
 export interface RejectionRepairCounts {
+  /** Count of traces with outcome === "proposed" (one per real turn-selection attempt). */
   totalAttempts: number;
   failedCount: number;
   repairedCount: number;
@@ -26,10 +27,13 @@ export function computeRejectionRepairRate(
       trace.runId === runId &&
       trace.outcome !== undefined
   );
-  const totalAttempts = relevant.length;
+  // totalAttempts = one per real turn-selection attempt ("proposed" outcome).
+  // failedCount/repairedCount both represent rework needed on top of that attempt.
+  const totalAttempts = relevant.filter((trace) => trace.outcome === "proposed").length;
   const failedCount = relevant.filter((trace) => trace.outcome === "failed").length;
   const repairedCount = relevant.filter((trace) => trace.outcome === "repaired").length;
-  const score = totalAttempts === 0 ? 1 : 1 - failedCount / totalAttempts;
+  const score =
+    totalAttempts === 0 ? 1 : Math.max(0, 1 - (failedCount + repairedCount) / totalAttempts);
   const reason = `${totalAttempts} attempts, ${repairedCount} repaired, ${failedCount} failed`;
   return { score, reason, counts: { totalAttempts, failedCount, repairedCount } };
 }

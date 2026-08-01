@@ -41,6 +41,7 @@ async function main(): Promise<void> {
   const { scriptId: explicitScriptId, runName } = parseArgs(process.argv.slice(2));
 
   const scriptId = await resolveScriptId(appConfig.scriptsDir, explicitScriptId);
+  console.log(`Using script: ${scriptId}`);
 
   const scriptRepository = new ScriptRepository();
   const speakerRepository = new SpeakerRepository();
@@ -61,6 +62,7 @@ async function main(): Promise<void> {
   const runnerStoragePath = path.join(runDir, "mastra.db");
   const tracePath = path.join(runDir, "mastra-traces.jsonl");
 
+  // positions 3-7 (knowledgeLedgerPolicy..roleResolver) use their class defaults; only runtimeConfig (8th) is overridden
   const runner = new MastraScriptWorkflowRunner(
     speechRepository,
     ragService,
@@ -74,7 +76,16 @@ async function main(): Promise<void> {
 
   const experimentWorkflow = createExperimentWorkflow({
     runner,
-    loadScript: (id) => scriptService.getScript(id),
+    loadScript: async (id) => {
+      const script = await scriptService.getScript(id);
+      if (script.speeches.length > 0) {
+        throw new Error(
+          `Script "${id}" already has ${script.speeches.length} speech(es) — it looks like it was already generated. ` +
+            `Pass a different --script-id pointing at a fresh script (speeches: []) so the experiment starts from a clean state.`
+        );
+      }
+      return script;
+    },
   });
 
   const experimentStoragePath = path.join(runDir, "experiment-store.db");
@@ -93,7 +104,8 @@ async function main(): Promise<void> {
     ? await datasets.get({ id: existing.id })
     : await datasets.create({ name: DATASET_NAME });
 
-  const { items: existingItems } = await dataset.listItems({ perPage: 1 });
+  const listed = await dataset.listItems({ perPage: 1 });
+  const existingItems = Array.isArray(listed) ? listed : listed.items;
   if (existingItems.length === 0) {
     await dataset.addItems({ items: buildExperimentItems(scriptId) });
   }
@@ -103,14 +115,19 @@ async function main(): Promise<void> {
     targetType: "workflow",
     targetId: "episodeExperimentRun",
     scorers: [createRejectionRepairRateScorer(tracePath), createTranscriptQualityScorer()],
+    maxConcurrency: 1,
   });
 
   console.log(`Status: ${summary.status}`);
-  console.log(`${summary.succeededCount}/${summary.totalItems} succeeded`);
+  console.log(`${summary.succeededCount}/${summary.totalItems} succeeded (${summary.failedCount} failed)`);
   for (const item of summary.results) {
     console.log(`\nItem ${item.itemId} (input: ${JSON.stringify(item.input)})`);
     for (const score of item.scores) {
-      console.log(`  ${score.scorerName}: ${score.score} — ${score.reason}`);
+      if (score.score === null) {
+        console.log(`  ${score.scorerName}: ${score.score} — ${score.reason} — error: ${score.error}`);
+      } else {
+        console.log(`  ${score.scorerName}: ${score.score} — ${score.reason}`);
+      }
     }
   }
 }
