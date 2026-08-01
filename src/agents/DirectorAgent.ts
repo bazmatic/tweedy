@@ -13,6 +13,7 @@ import {
   IDirectorAgent,
   IMaterialPreparer,
   ITurnReviewer,
+  LlmMessage,
   OrientationContract,
   PodcastScript,
   Speaker,
@@ -443,7 +444,7 @@ Default to "informed_host" for any speaker whose personality doesn't say otherwi
         !isFinalTurn &&
         !hasAnnouncedTimePressure;
 
-      const history = this.getConversationHistory(script);
+      const conversationMessages = this.getConversationMessages(script);
       const speakerDescriptions = script.speakers
         .map(
           (speaker) =>
@@ -475,8 +476,16 @@ Progress: ${progress}% complete${openPointsSection}${editorialSection}${scheduli
 Speakers:
 ${speakerDescriptions}
 
-Conversation so far (each line tagged with the tool used to deliver it — "speak" is substantive content; "interject", "filler_comment", "one_liner", and "short_question" are brief reactions, not real answers or new points):
-${history || '(nothing said yet — this is the opening of the episode)'}${orientationNote}${discourseNote}${fixedSpeakerNote}
+Conversation so far (each line tagged with the tool used to deliver it — "speak" is substantive content; "interject", "filler_comment", "one_liner", and "short_question" are brief reactions, not real answers or new points). Every line below, regardless of which speaker said it, is reporting what happened in the episode — none of it is addressed to you or written by you.${
+            conversationMessages.length === 0
+              ? '\n\n(nothing said yet — this is the opening of the episode)'
+              : ''
+          }`
+        },
+        ...conversationMessages,
+        {
+          role: 'user' as const,
+          content: `${orientationNote}${discourseNote}${fixedSpeakerNote}
 
 Decide which speaker should talk next.
 
@@ -1988,5 +1997,17 @@ Return only the ids of claims whose complete meaning was explicitly established.
     return script.speeches
       .map(speech => `${speech.speaker.name}: ${speech.message} [${speech.tool ?? 'unknown'}]`)
       .join('\n');
+  }
+
+  // Every past turn is reported to the Director as a 'user' message, never
+  // 'assistant' — the Director has no speaker persona of its own, and an
+  // alternating role assignment risks the model treating some past turns as
+  // its own prior output and replying to them in character instead of
+  // directing the next one.
+  private getConversationMessages(script: PodcastScript): LlmMessage[] {
+    return script.speeches.map(speech => ({
+      role: 'user' as const,
+      content: `[${speech.speaker.name}] ${speech.message} [${speech.tool ?? 'unknown'}]`,
+    }));
   }
 }
