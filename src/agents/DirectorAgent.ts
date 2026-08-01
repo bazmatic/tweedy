@@ -427,11 +427,11 @@ Default to "informed_host" for any speaker whose personality doesn't say otherwi
                 .join(
                   "\n"
                 )}\nDo not have this speaker state the claims' content themselves; only set up the handoff.`
-            : `\n\nMandatory listener orientation: before opening any ranked topic, clearly establish these foundational claims in plain language during this turn:\n${orientationTargets
+            : `\n\nMandatory listener orientation: before opening any ranked topic, work toward establishing these foundational claims in plain language, starting with this turn:\n${orientationTargets
                 .map((claim) => `- ${claim.id}: ${claim.text}`)
                 .join(
                   "\n"
-                )}\nState their complete meaning; do not merely mention keywords. State each claim directly and literally in plain words first — name the thing, what kind of thing it is, and its key fact — before reaching for a metaphor, tease, or hook; a listener must be able to follow the claim from the literal statement alone, without needing the figurative framing to decode it. This is a conversational orientation turn, not a list or a full episode summary.`
+                )}\nDo not merely mention keywords — state what you do cover directly and literally in plain words, before reaching for a metaphor, tease, or hook; a listener must be able to follow it from the literal statement alone, without needing figurative framing to decode it. A claim with several parts does not need to land whole in a single turn — cover what fits naturally and cleanly here, and let the remainder continue on a follow-up turn, rather than cramming everything in or leaving a part vague to fit. This is a conversational orientation turn, not a list or a full episode summary.`
           : "";
       const guidanceNote = this.guidance
         ? ` Keep steering the conversation in line with the producer's guidance for this episode: ${this.guidance}`
