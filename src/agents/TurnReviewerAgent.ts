@@ -53,6 +53,9 @@ export class TurnReviewerAgent extends BaseAgent implements ITurnReviewer {
     priorRejectionReason?: string
   ): Promise<ReviewedTurn> {
     const roleProfile = this.roleProfileResolver.resolve(speech.speaker);
+    const personaLine = `${speech.speaker.name}'s persona — personality: ${speech.speaker.personality}; voice style: ${speech.speaker.voiceStyle}${
+      speech.speaker.mannerisms ? `; mannerisms: ${speech.speaker.mannerisms}` : ""
+    }`;
     const relevantCards = cards
       .filter((card) => brief.cardIds.includes(card.id))
       .map((card) => `- ${card.kind}: ${card.content}`)
@@ -132,6 +135,7 @@ Desired energy: ${brief.desiredEnergy}
 Speaker epistemic role: ${roleProfile.epistemicRole}
 Speaker source access: ${roleProfile.sourceAccess}
 Speaker uncertainty style: ${roleProfile.uncertaintyStyle}
+${personaLine}
 Audience profile: ${audienceProfile}
 This episode's actual speakers: ${speakerRoster || "(unknown)"}
 
@@ -203,6 +207,7 @@ Keep your logic terse. When rejected, return one feedback item written as one pl
               content: `Rewrite this rejected podcast turn.
 
 Speaker: ${speech.speaker.name}
+${personaLine}
 Reason: ${feedback || "The turn failed editorial review."}
 Goal: ${brief.goal}
 Relevant prepared material:
