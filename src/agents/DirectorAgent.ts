@@ -609,6 +609,9 @@ Occasionally — at most once every several turns, mid-explanation — assign th
           `Repaired repetitive dialogue cadence (${assignment.cadenceRepairReason})`
         );
       }
+      if (roleAssignment.repaired || assignment.cadenceRepairReason) {
+        assignment.turnBrief.repaired = true;
+      }
 
       const interjectionAcknowledgmentNote = this.getInterjectionAcknowledgmentNote(
         script,
@@ -2009,7 +2012,14 @@ Return only the ids of claims whose complete meaning was explicitly established.
   // speaker to do, and how that landed, before deciding what to say next.
   private getConversationMessages(script: PodcastScript): LlmMessage[] {
     return script.speeches.flatMap(speech => {
-      const priorDirection = speech.turnBrief?.goal?.trim();
+      // A repaired turn's stored goal is the ORIGINAL assignment that role
+      // or cadence repair overrode as invalid (e.g. a goal written for one
+      // speaker that got silently reassigned to another) — showing that
+      // back to the Director as its own past output would surface a known
+      // mistake and risk reinforcing it. Show a generic placeholder instead.
+      const priorDirection = speech.turnBrief?.repaired
+        ? 'Continue the conversation naturally.'
+        : speech.turnBrief?.goal?.trim();
       const directionMessage: LlmMessage[] = priorDirection
         ? [
             {

@@ -98,7 +98,13 @@ describe("SpeakerRolePolicy", () => {
   const expert = makeSpeaker("expert", true);
   const guide = makeSpeaker("guide", false);
 
-  it("reassigns an unseen technical explanation from guide to expert", () => {
+  it("falls back to a safe question rather than reassigning an unseen technical explanation, with exactly two speakers", () => {
+    // With exactly two speakers, turn order is deterministic ping-pong and
+    // the Director's direction is written assuming the proposed speaker
+    // delivers it — sometimes naming them directly. Reassigning to the
+    // other speaker here would hand them a goal written for someone else,
+    // so the policy falls back to a generic safe question instead of
+    // swapping speakers.
     const result = policy.repairAssignment(
       makeScript(expert, guide),
       guide,
@@ -106,13 +112,14 @@ describe("SpeakerRolePolicy", () => {
       "Explain the result."
     );
 
-    expect(result.speaker.id).toBe(expert.id);
-    expect(result.turnBrief.speakerId).toBe(expert.id);
+    expect(result.speaker.id).toBe(guide.id);
+    expect(result.turnBrief.speakerId).toBe(guide.id);
     expect(result.repaired).toBe(true);
-    expect(result.repairReason).toBe(RoleRepairReason.IncompatibleMove);
+    expect(result.repairReason).toBe(RoleRepairReason.NoEligibleSpeaker);
+    expect(result.turnBrief.move).toBe(EditorialMove.Question);
   });
 
-  it("does not let a guide introduce a source-heavy illustration before the expert", () => {
+  it("falls back to a safe question rather than letting a guide introduce a source-heavy illustration, with exactly two speakers", () => {
     const brief = makeBrief(guide.id, EditorialMove.Illustrate);
     brief.cardIds = [];
 
@@ -123,9 +130,28 @@ describe("SpeakerRolePolicy", () => {
       "Describe the technical finding from the source."
     );
 
-    expect(result.speaker.id).toBe(expert.id);
+    expect(result.speaker.id).toBe(guide.id);
     expect(result.repaired).toBe(true);
-    expect(result.repairReason).toBe(RoleRepairReason.InaccessibleKnowledge);
+    expect(result.repairReason).toBe(RoleRepairReason.NoEligibleSpeaker);
+    expect(result.turnBrief.move).toBe(EditorialMove.Question);
+  });
+
+  it("still reassigns to an eligible speaker when there are more than two speakers", () => {
+    const thirdGuide = makeSpeaker("guide-2", false);
+    const script = makeScript(expert, guide);
+    script.speakers = [guide, expert, thirdGuide];
+
+    const result = policy.repairAssignment(
+      script,
+      guide,
+      makeBrief(guide.id, EditorialMove.Explain),
+      "Explain the result."
+    );
+
+    expect(result.speaker.id).toBe(expert.id);
+    expect(result.turnBrief.speakerId).toBe(expert.id);
+    expect(result.repaired).toBe(true);
+    expect(result.repairReason).toBe(RoleRepairReason.IncompatibleMove);
   });
 
   it("keeps listener-centred questions with the audience guide", () => {

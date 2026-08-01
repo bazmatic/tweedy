@@ -409,6 +409,14 @@ export interface TurnBrief {
   targetDiscourseClaimIds?: string[];
   requiredListenerClaimIds?: string[];
   knowledgeState?: "teased" | "established" | "developed";
+  /**
+   * Set when role or cadence repair overrode the Director's original
+   * assignment for this turn. The Director should not see its own repaired
+   * (i.e. bad) goal reflected back in conversation history — callers that
+   * surface `goal` as the Director's past output should substitute a
+   * generic placeholder instead when this is true.
+   */
+  repaired?: boolean;
 }
 
 export interface TurnReview {

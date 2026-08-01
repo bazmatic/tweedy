@@ -68,12 +68,18 @@ describe("speaker attitude consistency flow", () => {
   it("keeps new facts with the expert, then lets the guide summarise heard knowledge naturally", () => {
     const expert = makeSpeaker("Miles", true);
     const guide = makeSpeaker("Ada", false);
+    // A third (unused) speaker keeps repairAssignment's role-based
+    // reassignment path active for this test — with exactly two speakers,
+    // that path now intentionally falls back to a safe generic question
+    // instead of reassigning, since turn order there is deterministic
+    // ping-pong and the goal text may name the originally-intended speaker.
+    const thirdSpeaker = makeSpeaker("Third", false);
     const cards = [makeCard("card-1"), makeCard("card-2")];
     const script: PodcastScript = {
       id: "script-1",
       title: "Test",
       description: "",
-      speakers: [expert, guide],
+      speakers: [expert, guide, thirdSpeaker],
       speeches: [],
       materials: [],
       discussionPoints: [],

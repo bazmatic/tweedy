@@ -148,9 +148,20 @@ export class SpeakerRolePolicy {
       };
     }
 
-    const eligibleSpeaker = script.speakers.find((speaker) =>
-      this.isAssignmentValid(script, speaker, turnBrief)
-    );
+    // With exactly two speakers, turn order is deterministic ping-pong (see
+    // pingPongSpeaker/fixedSpeakerNote in DirectorAgent) and the Director's
+    // direction is written assuming that fixed speaker delivers it —
+    // sometimes naming them directly in the goal text ("Trump's verdict...").
+    // Swapping to the other speaker here would hand them a goal written for
+    // someone else, and would silently break the fixed turn order the
+    // Director was told about. Skip straight to the generic safe-question
+    // fallback below instead of reassigning.
+    const eligibleSpeaker =
+      script.speakers.length === 2
+        ? undefined
+        : script.speakers.find((speaker) =>
+            this.isAssignmentValid(script, speaker, turnBrief)
+          );
     if (eligibleSpeaker) {
       return {
         speaker: eligibleSpeaker,
