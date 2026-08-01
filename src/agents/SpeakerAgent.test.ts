@@ -105,6 +105,86 @@ describe("SpeakerAgent stopReason threading", () => {
   });
 });
 
+describe("SpeakerAgent conversation messages", () => {
+  it("uses system instructions and role-based transcript messages", async () => {
+    const s1 = makeSpeaker("s1");
+    const s2 = makeSpeaker("s2");
+    const agent = new SpeakerAgent(s1);
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.SPEAK,
+      message: "That is my answer.",
+      style: "calm",
+      stopReason: "stop",
+    });
+    const script = makeScript(
+      [
+        {
+          id: "speech-1",
+          speaker: s1,
+          message: "Here is my opening thought.",
+          instructions: "",
+          voice: s1.voice,
+          voiceStyle: s1.voiceStyle,
+          timestamp: new Date(),
+          tool: SpeakerAgentToolName.SPEAK,
+        },
+        {
+          id: "speech-2",
+          speaker: s2,
+          message: "What do you mean by that?",
+          instructions: "",
+          voice: s2.voice,
+          voiceStyle: s2.voiceStyle,
+          timestamp: new Date(),
+          tool: SpeakerAgentToolName.SHORT_QUESTION,
+        },
+      ],
+      [s1, s2]
+    );
+
+    await agent.speak(script, "Answer the question.");
+
+    const messages = call.mock.calls[0][1] as any[];
+    expect(messages).toEqual([
+      expect.objectContaining({ role: "system" }),
+      { role: "assistant", content: "Here is my opening thought." },
+      { role: "user", content: "[Speaker s2] What do you mean by that?" },
+    ]);
+    expect(messages[0].content).not.toContain("Here is my opening thought.");
+    expect(messages.at(-1)?.content).toBe(
+      "[Speaker s2] What do you mean by that?"
+    );
+  });
+
+  it("passes an interjection target as a separate spoken message", async () => {
+    const s1 = makeSpeaker("s1");
+    const s2 = makeSpeaker("s2");
+    const agent = new SpeakerAgent(s1);
+    const call = vi.spyOn(agent as any, "callModelWithTools").mockResolvedValue({
+      toolName: SpeakerAgentToolName.INTERJECT,
+      message: "Really?",
+      style: "surprised",
+      stopReason: "stop",
+    });
+
+    await agent.interject({
+      id: "speech-1",
+      speaker: s2,
+      message: "The result doubled overnight.",
+      instructions: "",
+      voice: s2.voice,
+      voiceStyle: s2.voiceStyle,
+      timestamp: new Date(),
+      tool: SpeakerAgentToolName.SPEAK,
+    });
+
+    expect(call.mock.calls[0][1]).toEqual([
+      expect.objectContaining({ role: "system" }),
+      { role: "user", content: "[Speaker s2] The result doubled overnight." },
+    ]);
+  });
+});
+
 describe("SpeakerAgent output integrity", () => {
   it("falls back instead of persisting an interjection with a leaked model artifact", async () => {
     const lastSpeech = {
@@ -213,9 +293,9 @@ describe("SpeakerAgent editorial context", () => {
     expect(prompt).toContain("Primary audience value: connection");
     expect(prompt).toContain("She kept the rejection letter");
     expect(prompt).toContain("Audience Profile: general");
-    expect(prompt).toContain("everyday language before naming the term");
+    expect(prompt).toContain("likely to be unfamiliar");
     expect(prompt).toContain("Previously explained terms: mycelium");
-    expect(prompt).toContain('Before using shorthand such as "the others"');
+    expect(prompt).toContain("Name what pronouns or shorthand refer to");
   });
 });
 
@@ -620,7 +700,7 @@ describe("SpeakerAgent rules section grouping", () => {
       "never use markdown emphasis"
     );
     expect(prompt.slice(styleIndex, formattingIndex)).toContain(
-      "Use Australian/British spelling"
+      "using Australian/British spelling"
     );
   });
 });
