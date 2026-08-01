@@ -12,7 +12,7 @@
     "start": "node dist/index.js",
     "clean": "rm -rf dist",
     "test": "vitest run",
-    "studio": "mastra dev -d mastra-studio",
+    "studio": "pkill -f 'mastra dev -d mastra-studio' || true; pkill -f '.mastra/output/index.mjs' || true; mastra dev -d mastra-studio",
     "test:workflows": "vitest run src/mastra src/workflow src/services/conversation-engine.test.ts src/services/MastraScriptWorkflowRunner.test.ts src/agents/OpeningSequencePolicy.test.ts src/agents/TurnAssignmentRepairPipeline.test.ts src/agents/DialogueCadencePolicy.test.ts src/agents/CoverageVerifier.test.ts src/agents/KnowledgeLedgerPolicy.test.ts src/agents/TerminologyLedgerPolicy.test.ts"
   },
   "keywords": [
