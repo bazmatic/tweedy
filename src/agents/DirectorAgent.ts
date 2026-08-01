@@ -1999,15 +1999,32 @@ Return only the ids of claims whose complete meaning was explicitly established.
       .join('\n');
   }
 
-  // Every past turn is reported to the Director as a 'user' message, never
+  // Every speech is reported to the Director as a 'user' message, never
   // 'assistant' — the Director has no speaker persona of its own, and an
   // alternating role assignment risks the model treating some past turns as
   // its own prior output and replying to them in character instead of
-  // directing the next one.
+  // directing the next one. The direction the Director itself gave for that
+  // turn (if any) IS its own prior output, so it's surfaced as a preceding
+  // 'assistant' message — letting the model see what it already told a
+  // speaker to do, and how that landed, before deciding what to say next.
   private getConversationMessages(script: PodcastScript): LlmMessage[] {
-    return script.speeches.map(speech => ({
-      role: 'user' as const,
-      content: `[${speech.speaker.name}] ${speech.message} [${speech.tool ?? 'unknown'}]`,
-    }));
+    return script.speeches.flatMap(speech => {
+      const priorDirection = speech.turnBrief?.goal?.trim();
+      const directionMessage: LlmMessage[] = priorDirection
+        ? [
+            {
+              role: 'assistant' as const,
+              content: `[Direction to ${speech.speaker.name}] ${priorDirection}`,
+            },
+          ]
+        : [];
+      return [
+        ...directionMessage,
+        {
+          role: 'user' as const,
+          content: `[${speech.speaker.name}] ${speech.message} [${speech.tool ?? 'unknown'}]`,
+        },
+      ];
+    });
   }
 }
