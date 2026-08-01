@@ -95,13 +95,18 @@ export class AudioService implements IAudioService {
       const isInterjection = speeches.map(
         (speech) => speech.tool === SpeakerAgentToolName.INTERJECT
       );
+      const isColdOpen = speeches.map(
+        (speech) => speech.tool === SpeakerAgentToolName.COLD_OPEN
+      );
 
       // Concatenate all audio files, overlapping interjections with the
-      // preceding clip so they sound like a natural cut-in.
+      // preceding clip so they sound like a natural cut-in, and giving the
+      // clip after a cold open a longer, more deliberate pause.
       const timing = await AudioProcessor.concatenateAudio(
         audioFiles,
         outputPath,
-        isInterjection
+        isInterjection,
+        isColdOpen
       );
 
       await this.writeTimeline(speeches, ttsResults, timing, outputPath, scriptId);
@@ -170,11 +175,15 @@ export class AudioService implements IAudioService {
       const isInterjection = speeches.map(
         (speech) => speech.tool === SpeakerAgentToolName.INTERJECT
       );
+      const isColdOpen = speeches.map(
+        (speech) => speech.tool === SpeakerAgentToolName.COLD_OPEN
+      );
 
       const timing = await AudioProcessor.concatenateAudio(
         audioFiles,
         outputPath,
-        isInterjection
+        isInterjection,
+        isColdOpen
       );
 
       await this.writeTimeline(speeches, ttsResults, timing, outputPath, scriptId);

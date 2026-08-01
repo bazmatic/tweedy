@@ -84,6 +84,21 @@ describe("AudioProcessor.concatenateAudio", () => {
     expect(timing.offsetsSeconds).toEqual([0, 4]);
   });
 
+  it("gives the clip after a cold open a longer gap than the standard inter-clip gap", async () => {
+    vi.spyOn(AudioProcessor, "getSpeechEndSeconds")
+      .mockResolvedValueOnce(5)
+      .mockResolvedValueOnce(3);
+
+    const timing = await AudioProcessor.concatenateAudio(
+      ["clip1.mp3", "clip2.mp3"],
+      "out.mp3",
+      [false, false],
+      [true, false]
+    );
+
+    expect(timing.offsetsSeconds).toEqual([0, 6.2]);
+  });
+
   it("normalizes each clip's loudness before delaying/mixing, and still loudnorms the final mix", async () => {
     vi.spyOn(AudioProcessor, "getSpeechEndSeconds")
       .mockResolvedValueOnce(2)

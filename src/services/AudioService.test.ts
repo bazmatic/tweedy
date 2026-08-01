@@ -143,6 +143,32 @@ describe("AudioService.generateAudio timeline", () => {
     );
   });
 
+  it("flags the cold open clip so AudioProcessor gives it a longer natural pause", async () => {
+    mockConcatenateAudio.mockResolvedValue({
+      offsetsSeconds: [0, 1.5],
+      speechEndSeconds: [1, 2],
+    });
+
+    const service = new AudioService();
+    vi.spyOn(service as any, "generateSpeechAudio").mockImplementation(
+      async (speech: any) => ({ outputPath: `/audio/speeches/${speech.id}.mp3` })
+    );
+
+    const speeches = [
+      makeSpeech({ id: "s1", tool: SpeakerAgentToolName.COLD_OPEN }),
+      makeSpeech({ id: "s2" }),
+    ];
+
+    await service.generateAudio(speeches, "/audio/podcast-abc123.mp3", "abc123");
+
+    expect(mockConcatenateAudio).toHaveBeenCalledWith(
+      ["/audio/speeches/s1.mp3", "/audio/speeches/s2.mp3"],
+      "/audio/podcast-abc123.mp3",
+      [false, false],
+      [true, false]
+    );
+  });
+
   it("omits scriptId from the timeline when none is provided", async () => {
     mockConcatenateAudio.mockResolvedValue({
       offsetsSeconds: [0],

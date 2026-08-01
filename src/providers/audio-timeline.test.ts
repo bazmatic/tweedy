@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { computeClipOffsets, GAP_SECONDS, OVERLAP_SECONDS } from "./audio-timeline";
+import {
+  COLD_OPEN_GAP_SECONDS,
+  computeClipOffsets,
+  GAP_SECONDS,
+  OVERLAP_SECONDS,
+} from "./audio-timeline";
 import type { ClipTiming } from "./audio-timeline";
 
 describe("computeClipOffsets", () => {
@@ -80,5 +85,33 @@ describe("computeClipOffsets", () => {
       firstInterjectionOffset,
       secondInterjectionOffset,
     ]);
+  });
+
+  it("gives the clip after a cold open a longer natural pause than the standard gap", () => {
+    const clips: ClipTiming[] = [
+      { speechEndSeconds: 5, isInterjection: false, isColdOpen: true },
+      { speechEndSeconds: 3, isInterjection: false },
+    ];
+
+    expect(COLD_OPEN_GAP_SECONDS).toBeGreaterThan(GAP_SECONDS);
+    expect(computeClipOffsets(clips)).toEqual([0, 5 + COLD_OPEN_GAP_SECONDS]);
+  });
+
+  it("uses the standard gap between two ordinary clips when neither is a cold open", () => {
+    const clips: ClipTiming[] = [
+      { speechEndSeconds: 5, isInterjection: false, isColdOpen: false },
+      { speechEndSeconds: 3, isInterjection: false },
+    ];
+
+    expect(computeClipOffsets(clips)).toEqual([0, 5 + GAP_SECONDS]);
+  });
+
+  it("still overlaps an interjection immediately after a cold open, ignoring the cold-open gap", () => {
+    const clips: ClipTiming[] = [
+      { speechEndSeconds: 5, isInterjection: false, isColdOpen: true },
+      { speechEndSeconds: 1, isInterjection: true },
+    ];
+
+    expect(computeClipOffsets(clips)).toEqual([0, 5 - OVERLAP_SECONDS]);
   });
 });

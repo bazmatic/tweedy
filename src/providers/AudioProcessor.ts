@@ -47,7 +47,8 @@ export class AudioProcessor {
   static async concatenateAudio(
     inputFiles: string[],
     outputPath: string,
-    isInterjection: boolean[] = inputFiles.map(() => false)
+    isInterjection: boolean[] = inputFiles.map(() => false),
+    isColdOpen: boolean[] = inputFiles.map(() => false)
   ): Promise<ConcatenationTiming> {
     try {
       await fs.ensureDir(path.dirname(outputPath));
@@ -59,6 +60,7 @@ export class AudioProcessor {
       const clips: ClipTiming[] = speechEnds.map((speechEndSeconds, i) => ({
         speechEndSeconds,
         isInterjection: isInterjection[i] ?? false,
+        isColdOpen: isColdOpen[i] ?? false,
       }));
 
       const offsets = computeClipOffsets(clips);
