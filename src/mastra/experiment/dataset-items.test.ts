@@ -1,13 +1,8 @@
 import { mkdtemp, rm, utimes, writeFile } from "fs/promises";
 import * as os from "os";
 import * as path from "path";
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  buildExperimentItems,
-  DEFAULT_RUN_PARAMETER_SETS,
-  REPEATS_PER_PARAMETER_SET,
-  resolveScriptId,
-} from "./dataset-items";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { resolveScriptId, seedExperimentDataset } from "./dataset-items";
 
 const tempDirs: string[] = [];
 
@@ -41,19 +36,20 @@ describe("resolveScriptId", () => {
   });
 });
 
-describe("buildExperimentItems", () => {
-  it("builds one item per parameter set, repeated REPEATS_PER_PARAMETER_SET times", () => {
-    const items = buildExperimentItems("script-1");
-    expect(items).toHaveLength(
-      DEFAULT_RUN_PARAMETER_SETS.length * REPEATS_PER_PARAMETER_SET
-    );
+describe("seedExperimentDataset", () => {
+  it("adds one item per parameter set, repeated twice, all carrying the given scriptId", async () => {
+    const addItems = vi.fn().mockResolvedValue([]);
+    const dataset = { addItems } as any;
+
+    await seedExperimentDataset(dataset, "script-1");
+
+    expect(addItems).toHaveBeenCalledTimes(1);
+    const { items } = addItems.mock.calls[0][0];
+    expect(items).toHaveLength(6); // 3 parameter sets x 2 repeats
     for (const item of items) {
       expect(item.input.scriptId).toBe("script-1");
     }
-    const maxTurnsSeen = items.map((item) => item.input.maxTurns).sort((a, b) => a - b);
-    const expectedMaxTurns = DEFAULT_RUN_PARAMETER_SETS.flatMap((set) =>
-      Array(REPEATS_PER_PARAMETER_SET).fill(set.maxTurns)
-    ).sort((a, b) => a - b);
-    expect(maxTurnsSeen).toEqual(expectedMaxTurns);
+    const maxTurnsSeen = items.map((item: any) => item.input.maxTurns).sort((a: number, b: number) => a - b);
+    expect(maxTurnsSeen).toEqual([8, 8, 16, 16, 24, 24]);
   });
 });

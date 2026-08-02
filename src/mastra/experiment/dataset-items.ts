@@ -1,6 +1,6 @@
 import { readdir, stat } from "fs/promises";
 import * as path from "path";
-import { ExperimentRunInput } from "./experiment-workflow";
+import type { Dataset } from "@mastra/core/datasets";
 
 export async function resolveScriptId(
   scriptsDir: string,
@@ -22,18 +22,16 @@ export async function resolveScriptId(
   return withMtime[0].id;
 }
 
-export const DEFAULT_RUN_PARAMETER_SETS: { maxTurns: number; maxDurationSeconds: number }[] = [
+const DEFAULT_RUN_PARAMETER_SETS: { maxTurns: number; maxDurationSeconds: number }[] = [
   { maxTurns: 8, maxDurationSeconds: 240 },
   { maxTurns: 16, maxDurationSeconds: 480 },
   { maxTurns: 24, maxDurationSeconds: 720 },
 ];
 
-export const REPEATS_PER_PARAMETER_SET = 2;
+const REPEATS_PER_PARAMETER_SET = 2;
 
-export function buildExperimentItems(
-  scriptId: string
-): { input: ExperimentRunInput }[] {
-  return DEFAULT_RUN_PARAMETER_SETS.flatMap((parameters) =>
+export async function seedExperimentDataset(dataset: Dataset, scriptId: string) {
+  const items = DEFAULT_RUN_PARAMETER_SETS.flatMap((parameters) =>
     Array.from({ length: REPEATS_PER_PARAMETER_SET }, () => ({
       input: {
         scriptId,
@@ -42,4 +40,5 @@ export function buildExperimentItems(
       },
     }))
   );
+  return dataset.addItems({ items });
 }
