@@ -1,4 +1,5 @@
 import { PromptTemplate } from "./types";
+import { logger } from "../../utils/logger";
 
 export interface DirectorDirectionPromptVars {
   orientationNote: string;
@@ -38,14 +39,49 @@ Use Australian/British spelling.
 
 ## Device Assignment
 Occasionally — at most once every several turns, mid-explanation — assign the trail_off device so a speaker hands an unfinished sentence to their co-host to complete; never assign it on a closing or summary turn. When a speaker is about to open a brand new beat or point the conversation hasn't touched yet, consider assigning them the tease move instead of explain — a short hook rather than the full explanation — so their co-host can naturally invite them to continue; don't use tease for a beat that's already underway.`,
+
+  // A deliberately shorter alternative to `default`, kept close to the same
+  // Vars interface so it's a drop-in swap. Trims the guidance prose down to
+  // the essentials — useful for experiments measuring whether a leaner
+  // director prompt changes turn quality or pacing.
+  concise: (vars) => `${vars.orientationNote}${vars.discourseNote}${vars.fixedSpeakerNote}
+
+Decide which speaker should talk next.
+
+## Direction
+Give direction only if needed — a brief goal, not a script. Tell them what to address, not what to say.
+
+## Turn-Taking
+A brief reaction isn't a substantive point — direct the next speaker to actually respond, not react to the reaction. A challenge earns a right of reply before the challenger speaks again.
+
+## Avoid Repetition
+Don't direct a speaker back to a fact, example, or question already covered. Mark covered points in coveredPointIds only when explicitly and substantively discussed.
+
+## Editorial Fields
+Choose a subject-neutral editorial move, audience value, energy, beat and prepared card ids.
+
+## Fixed Exclusions
+Never direct anyone to (re)welcome listeners or (re)introduce themselves — that's already handled.
+
+Use Australian/British spelling.
+
+## Pacing & Rhythm${vars.pacingSection}`,
 };
 
 export function resolveDirectorDirectionPromptTemplate(
   variantId: string | undefined
 ): PromptTemplate<DirectorDirectionPromptVars> {
-  return (
-    DIRECTOR_DIRECTION_PROMPT_TEMPLATES[
-      variantId ?? DEFAULT_DIRECTOR_DIRECTION_PROMPT_VARIANT
-    ] ?? DIRECTOR_DIRECTION_PROMPT_TEMPLATES[DEFAULT_DIRECTOR_DIRECTION_PROMPT_VARIANT]
-  );
+  if (variantId === undefined) {
+    return DIRECTOR_DIRECTION_PROMPT_TEMPLATES[DEFAULT_DIRECTOR_DIRECTION_PROMPT_VARIANT];
+  }
+  const template = DIRECTOR_DIRECTION_PROMPT_TEMPLATES[variantId];
+  if (!template) {
+    logger.warn(
+      `Unknown director direction prompt variant "${variantId}" — falling back to "${DEFAULT_DIRECTOR_DIRECTION_PROMPT_VARIANT}". Registered variants: ${Object.keys(
+        DIRECTOR_DIRECTION_PROMPT_TEMPLATES
+      ).join(", ")}.`
+    );
+    return DIRECTOR_DIRECTION_PROMPT_TEMPLATES[DEFAULT_DIRECTOR_DIRECTION_PROMPT_VARIANT];
+  }
+  return template;
 }
