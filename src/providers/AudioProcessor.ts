@@ -9,9 +9,59 @@ import type { ClipTiming } from "./audio-timeline";
 export interface ConcatenationTiming {
   offsetsSeconds: number[];
   speechEndSeconds: number[];
+  /** Leading silence trimmed from the start of each clip, in seconds. */
+  leadTrimSeconds: number[];
 }
 
+interface LoudnormStats {
+  input_i: string;
+  input_tp: string;
+  input_lra: string;
+  input_thresh: string;
+  target_offset: string;
+}
+
+const LOUDNORM_TARGET = "I=-16:LRA=11:TP=-1.5";
+
 export class AudioProcessor {
+  /**
+   * Single-pass loudnorm measures loudness inline and is unreliable on short
+   * or dynamic clips, letting one speaker's voice end up consistently louder
+   * even after "normalization". This runs the measurement pass ffmpeg's docs
+   * recommend, so the real per-clip normalization pass can apply accurate
+   * measured_* values instead of guessing from the same short window.
+   */
+  static async measureLoudness(filePath: string): Promise<LoudnormStats> {
+    return new Promise((resolve, reject) => {
+      let stderr = "";
+      ffmpeg(filePath)
+        .audioFilters(`loudnorm=${LOUDNORM_TARGET}:print_format=json`)
+        .format("null")
+        .output(process.platform === "win32" ? "NUL" : "/dev/null")
+        .on("stderr", (line: string) => {
+          stderr += `${line}\n`;
+        })
+        .on("end", () => {
+          const jsonMatch = stderr.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) {
+            reject(new Error(`loudnorm measurement pass produced no JSON stats for ${filePath}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(jsonMatch[0]));
+          } catch (error) {
+            reject(error);
+          }
+        })
+        .on("error", (error: Error) => reject(error))
+        .run();
+    });
+  }
+
+  static loudnormFilterFromStats(stats: LoudnormStats): string {
+    return `loudnorm=${LOUDNORM_TARGET}:measured_I=${stats.input_i}:measured_LRA=${stats.input_lra}:measured_TP=${stats.input_tp}:measured_thresh=${stats.input_thresh}:offset=${stats.target_offset}:linear=true:print_format=summary`;
+  }
+
   static async processAudio(
     inputPath: string,
     outputPath: string
@@ -57,13 +107,22 @@ export class AudioProcessor {
         inputFiles.map((file) => AudioProcessor.getSpeechEndSeconds(file))
       );
 
+      const leadTrims = await Promise.all(
+        inputFiles.map((file) => AudioProcessor.getSpeechStartSeconds(file))
+      );
+
       const clips: ClipTiming[] = speechEnds.map((speechEndSeconds, i) => ({
         speechEndSeconds,
         isInterjection: isInterjection[i] ?? false,
         isColdOpen: isColdOpen[i] ?? false,
+        leadTrimSeconds: leadTrims[i],
       }));
 
       const offsets = computeClipOffsets(clips);
+
+      const loudnormStats = await Promise.all(
+        inputFiles.map((file) => AudioProcessor.measureLoudness(file))
+      );
 
       return new Promise((resolve, reject) => {
         const command = ffmpeg();
@@ -71,14 +130,20 @@ export class AudioProcessor {
 
         const delayedLabels = offsets.map((offsetSeconds, i) => {
           const offsetMs = Math.round(offsetSeconds * 1000);
+          const trimmedLabel = `t${i}`;
           const normalizedLabel = `n${i}`;
           const label = `a${i}`;
           return {
-            // Normalize each clip individually before mixing so one
+            // Strip leading silence (dead air the TTS provider padded the
+            // clip's start with) before normalizing/delaying, so the next
+            // speaker's audible speech starts right after GAP_SECONDS
+            // instead of GAP_SECONDS plus however long that padding was.
+            trimFilter: `[${i}:a]atrim=start=${leadTrims[i]},asetpts=PTS-STARTPTS[${trimmedLabel}]`,
+            // Two-pass normalize each clip individually before mixing so one
             // speaker's voice isn't consistently louder/quieter than
             // another's — the final loudnorm pass only corrects the
             // mixed stream's overall level, not per-speaker imbalance.
-            normalizeFilter: `[${i}:a]loudnorm=I=-16:LRA=11:TP=-1.5[${normalizedLabel}]`,
+            normalizeFilter: `[${trimmedLabel}]${AudioProcessor.loudnormFilterFromStats(loudnormStats[i])}[${normalizedLabel}]`,
             delayFilter: `[${normalizedLabel}]adelay=${offsetMs}|${offsetMs}[${label}]`,
             label,
           };
@@ -86,6 +151,7 @@ export class AudioProcessor {
 
         const mixInputs = delayedLabels.map(({ label }) => `[${label}]`).join("");
         const filterGraph = [
+          ...delayedLabels.map(({ trimFilter }) => trimFilter),
           ...delayedLabels.map(({ normalizeFilter }) => normalizeFilter),
           ...delayedLabels.map(({ delayFilter }) => delayFilter),
           // normalize=0: amix defaults to dividing volume by input count, which
@@ -103,7 +169,11 @@ export class AudioProcessor {
           .output(outputPath)
           .on("end", () => {
             logger.info(`Audio concatenated: ${outputPath}`);
-            resolve({ offsetsSeconds: offsets, speechEndSeconds: speechEnds });
+            resolve({
+              offsetsSeconds: offsets,
+              speechEndSeconds: speechEnds,
+              leadTrimSeconds: leadTrims,
+            });
           })
           .on("error", (error: Error) => {
             logger.error("Audio concatenation failed:", error);
@@ -174,6 +244,49 @@ export class AudioProcessor {
             (last.end == null || last.end >= duration - endOfFileEpsilon);
 
           resolve(isTrailing ? last!.start : duration);
+        })
+        .on("error", (error: Error) => reject(error))
+        .run();
+    });
+  }
+
+  /**
+   * Returns the timestamp where actual speech content begins, excluding any
+   * leading silence the TTS provider padded the clip's start with. Returns 0
+   * if the clip starts with speech (or has no detectable silence at all).
+   */
+  static async getSpeechStartSeconds(
+    filePath: string,
+    silenceThresholdDb = -40,
+    minSilenceDuration = 0.15
+  ): Promise<number> {
+    const startOfFileEpsilon = 0.05;
+
+    return new Promise((resolve, reject) => {
+      const silences: { start: number; end: number | null }[] = [];
+
+      ffmpeg(filePath)
+        .audioFilters(
+          `silencedetect=noise=${silenceThresholdDb}dB:d=${minSilenceDuration}`
+        )
+        .format("null")
+        .output(process.platform === "win32" ? "NUL" : "/dev/null")
+        .on("stderr", (line: string) => {
+          const startMatch = line.match(/silence_start:\s*([\d.]+)/);
+          if (startMatch) {
+            silences.push({ start: parseFloat(startMatch[1]), end: null });
+          }
+
+          const endMatch = line.match(/silence_end:\s*([\d.]+)/);
+          if (endMatch) {
+            const last = silences[silences.length - 1];
+            if (last) last.end = parseFloat(endMatch[1]);
+          }
+        })
+        .on("end", () => {
+          const first = silences[0];
+          const isLeading = first != null && first.start <= startOfFileEpsilon;
+          resolve(isLeading && first!.end != null ? first!.end! : 0);
         })
         .on("error", (error: Error) => reject(error))
         .run();

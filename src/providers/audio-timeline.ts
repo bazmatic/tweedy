@@ -10,6 +10,13 @@ export interface ClipTiming {
   isInterjection: boolean;
   /** Whether this clip is the episode's cold open. */
   isColdOpen?: boolean;
+  /**
+   * Leading silence trimmed from the start of the clip's audio before it is
+   * placed on the timeline. Since the trimmed audio plays GAP_SECONDS
+   * earlier than the untrimmed speechEndSeconds would suggest, this must be
+   * subtracted when computing where the clip's speech actually ends.
+   */
+  leadTrimSeconds?: number;
 }
 
 export function computeClipOffsets(clips: ClipTiming[]): number[] {
@@ -22,7 +29,8 @@ export function computeClipOffsets(clips: ClipTiming[]): number[] {
     }
 
     const previous = clips[i - 1];
-    const previousSpeechEnd = offsets[i - 1] + previous.speechEndSeconds;
+    const previousSpeechEnd =
+      offsets[i - 1] + previous.speechEndSeconds - (previous.leadTrimSeconds ?? 0);
 
     if (clips[i].isInterjection) {
       offsets.push(Math.max(0, previousSpeechEnd - OVERLAP_SECONDS));

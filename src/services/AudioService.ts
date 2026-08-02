@@ -241,17 +241,22 @@ export class AudioService implements IAudioService {
   private async splitChunksIntoSpeechTimings(
     chunkFiles: string[],
     chunks: MultispeakerTurn[][],
-    chunkOffsetsSeconds: number[]
+    chunkOffsetsSeconds: number[],
+    chunkLeadTrimSeconds: number[] = chunkFiles.map(() => 0)
   ): Promise<{ startSeconds: number; endSeconds: number }[]> {
     const perSpeechTiming: { startSeconds: number; endSeconds: number }[] = [];
 
     for (let i = 0; i < chunkFiles.length; i++) {
       const turnTextLengths = chunks[i].map((turn) => turn.text.length);
       const boundaries = await splitChunkIntoTurns(chunkFiles[i], turnTextLengths);
+      // Boundaries are measured against the untrimmed chunk file, but
+      // chunkOffsetsSeconds[i] already accounts for the chunk's leading
+      // silence being trimmed before it's placed on the timeline.
+      const leadTrim = chunkLeadTrimSeconds[i] ?? 0;
       for (const boundary of boundaries) {
         perSpeechTiming.push({
-          startSeconds: round3(chunkOffsetsSeconds[i] + boundary.startSeconds),
-          endSeconds: round3(chunkOffsetsSeconds[i] + boundary.endSeconds),
+          startSeconds: round3(chunkOffsetsSeconds[i] + boundary.startSeconds - leadTrim),
+          endSeconds: round3(chunkOffsetsSeconds[i] + boundary.endSeconds - leadTrim),
         });
       }
     }
@@ -321,7 +326,8 @@ export class AudioService implements IAudioService {
       const perSpeechTiming = await this.splitChunksIntoSpeechTimings(
         chunkFiles,
         chunks,
-        timing.offsetsSeconds
+        timing.offsetsSeconds,
+        timing.leadTrimSeconds
       );
 
       await this.writeMultispeakerTimeline(speeches, perSpeechTiming, outputPath, scriptId);
@@ -374,7 +380,8 @@ export class AudioService implements IAudioService {
       const perSpeechTiming = await this.splitChunksIntoSpeechTimings(
         chunkFiles,
         chunks,
-        timing.offsetsSeconds
+        timing.offsetsSeconds,
+        timing.leadTrimSeconds
       );
 
       await this.writeMultispeakerTimeline(speeches, perSpeechTiming, outputPath, scriptId);
@@ -430,16 +437,21 @@ export class AudioService implements IAudioService {
   private async writeTimeline(
     speeches: Speech[],
     ttsResults: TtsResult[],
-    timing: { offsetsSeconds: number[]; speechEndSeconds: number[] },
+    timing: { offsetsSeconds: number[]; speechEndSeconds: number[]; leadTrimSeconds?: number[] },
     outputPath: string,
     scriptId?: string
   ): Promise<void> {
     const entries: TimelineEntry[] = speeches.map((speech, i) => {
+      // Clip audio is trimmed of its leading silence before being placed at
+      // offsetsSeconds[i], so a word's original position within the
+      // untrimmed clip must have that same trim subtracted to land on the
+      // actual playback position.
+      const leadTrim = timing.leadTrimSeconds?.[i] ?? 0;
       const startSeconds = round3(timing.offsetsSeconds[i]);
       const wordTimestamps = ttsResults[i].wordTimestamps?.map((w) => ({
         word: w.word,
-        startSeconds: round3(startSeconds + w.startSeconds),
-        endSeconds: round3(startSeconds + w.endSeconds),
+        startSeconds: round3(startSeconds + w.startSeconds - leadTrim),
+        endSeconds: round3(startSeconds + w.endSeconds - leadTrim),
       }));
 
       return {
@@ -453,7 +465,7 @@ export class AudioService implements IAudioService {
         tool: speech.tool,
         isInterjection: speech.tool === SpeakerAgentToolName.INTERJECT,
         startSeconds,
-        endSeconds: round3(timing.offsetsSeconds[i] + timing.speechEndSeconds[i]),
+        endSeconds: round3(timing.offsetsSeconds[i] + timing.speechEndSeconds[i] - leadTrim),
         ...(wordTimestamps?.length ? { wordTimestamps } : {}),
       };
     });
