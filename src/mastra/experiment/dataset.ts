@@ -5,12 +5,13 @@ import { ExperimentRunInputSchema } from "./experiment-workflow";
 export const EXPERIMENT_DATASET_NAME = "podcast-episode-experiments";
 
 export async function ensureExperimentDataset(mastra: Mastra): Promise<Dataset> {
-  const { datasets } = await mastra.datasets.list();
-  const existing = datasets.find((dataset) => dataset.name === EXPERIMENT_DATASET_NAME);
-  if (existing) {
-    return mastra.datasets.get({ id: existing.id });
-  }
+  // `id` is a stable, caller-defined identity: the storage layer atomically
+  // creates the dataset or returns the existing one that already owns this
+  // id, so this is race-free even under concurrent calls (unlike a
+  // list-then-create pattern, which is also capped by list()'s default
+  // pagination page size).
   return mastra.datasets.create({
+    id: EXPERIMENT_DATASET_NAME,
     name: EXPERIMENT_DATASET_NAME,
     description:
       "Podcast episode generation runs, swept across run parameters, guidance, provider and prompt variants.",
