@@ -566,7 +566,7 @@ Occasionally — at most once every several turns, mid-explanation — assign th
       const { speakerId, coveredPointIds } = result;
       const direction = targetPoint
         ? targetDiscourseClaim
-          ? `Establish ${targetDiscourseClaim.id} directly and declaratively: ${targetDiscourseClaim.text} Give the minimum context a new listener needs. Do not ask a question that presupposes this claim, and do not mention dependent material until this is clear. Every pronoun or shorthand reference must point to a person, group, object, or event already named aloud in the conversation or explicitly introduced in this turn.`
+          ? `Establish ${targetDiscourseClaim.id}: ${targetDiscourseClaim.text} If this has already been substantively covered earlier in the conversation, don't re-explain it from scratch — briefly reference it and move the point forward instead. Otherwise, state it directly and declaratively, giving the minimum context a new listener needs. Do not ask a question that presupposes this claim, and do not mention dependent material until this is clear. Every pronoun or shorthand reference must point to a person, group, object, or event already named aloud in the conversation or explicitly introduced in this turn.`
           : `${result.direction ?? ""} Advance the scheduled point ${targetPoint.id}: ${targetPoint.text}.`.trim()
         : orientationTargets.length > 0
           ? `${result.direction ?? ""} Establish this listener foundation before deeper discussion: ${orientationTargets
