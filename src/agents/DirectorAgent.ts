@@ -433,7 +433,7 @@ Default to "informed_host" for any speaker whose personality doesn't say otherwi
       const balanceNote = this.getBalanceNote(script);
       const rhythmNote = this.getRhythmNote(script);
       const signpostNote = this.getSignpostNote(script);
-      const editorialSection = this.getEditorialSection(
+      const editorialSection = await this.getEditorialSection(
         script,
         targetPoint?.id
       );
@@ -2014,10 +2014,10 @@ ${claimsList}`,
     };
   }
 
-  private getEditorialSection(
+  private async getEditorialSection(
     script: PodcastScript,
     targetPointId?: string
-  ): string {
+  ): Promise<string> {
     const allBeats = script.conversationBeats ?? [];
     const beats = allBeats
       .filter(
@@ -2066,7 +2066,37 @@ ${claimsList}`,
           : `- ${card.id} [${card.kind}]: ${card.content}`
       )
       .join('\n');
-    return `\n\nOpen conversation beats:\n${beatText || '(none)'}\n\nPrepared editorial cards:\n${cardText || '(none)'}`;
+    const connectionsText = await this.getConnectionsSection(script);
+
+    return `\n\nOpen conversation beats:\n${beatText || '(none)'}\n\nPrepared editorial cards:\n${cardText || '(none)'}${connectionsText}`;
+  }
+
+  private async getConnectionsSection(script: PodcastScript): Promise<string> {
+    const lastMentionedCardIds = this.getLastMentionedCardIds(script);
+    if (lastMentionedCardIds.length === 0) return '';
+
+    const connections = (
+      await Promise.all(
+        lastMentionedCardIds.map((cardId) =>
+          this.cardGraphService.getConnections(script.id, cardId)
+        )
+      )
+    ).flat();
+    if (connections.length === 0) return '';
+
+    const lines = connections
+      .map((edge) => `- [${edge.relationType}] ${edge.cardIds.join(', ')}: ${edge.rationale}`)
+      .join('\n');
+    return `\n\nConnections to cards just discussed:\n${lines}`;
+  }
+
+  private getLastMentionedCardIds(script: PodcastScript): string[] {
+    const introduced = script.knowledgeLedger?.introducedCards ?? [];
+    if (introduced.length === 0) return [];
+    const maxTurn = Math.max(...introduced.map((entry) => entry.introducedAtTurn));
+    return introduced
+      .filter((entry) => entry.introducedAtTurn === maxTurn)
+      .map((entry) => entry.cardId);
   }
 
   /**

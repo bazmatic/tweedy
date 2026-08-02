@@ -654,6 +654,68 @@ describe("DirectorAgent editorial turn briefs", () => {
 
     expect(script.conversationBeats[0].covered).toBe(false);
   });
+
+  it("surfaces card graph connections for the most recently introduced card", async () => {
+    const script = makeScript({
+      editorialCards: [
+        {
+          id: "m1-card-1",
+          materialId: "m1",
+          kind: EditorialCardKind.EssentialPoint,
+          content: "Card one content.",
+          significance: "sig",
+          evidence: [],
+          relatedCardIds: [],
+          tags: [],
+          keyTerms: [],
+          storyValue: 5,
+        },
+      ],
+      knowledgeLedger: {
+        introducedCards: [
+          {
+            cardId: "m1-card-1",
+            introducedBySpeakerId: "s1",
+            introducedAtTurn: 1,
+            source: "prepared_card" as any,
+            state: "established",
+          },
+        ],
+      },
+    });
+    const cardGraphService = {
+      build: vi.fn().mockResolvedValue([]),
+      getConnections: vi.fn().mockResolvedValue([
+        {
+          id: "edge-1",
+          scriptId: script.id,
+          cardIds: ["m1-card-1", "m2-card-1"],
+          relationType: "extends",
+          rationale: "Deepens the same point.",
+          weight: 0.9,
+        },
+      ]),
+    };
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      undefined,
+      { cardGraphService: cardGraphService as any }
+    );
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
+      speakerId: script.speakers[0].id,
+      direction: "continue",
+    });
+
+    await agent.chooseNextSpeaker(script);
+
+    expect(cardGraphService.getConnections).toHaveBeenCalledWith(script.id, "m1-card-1");
+    const promptContent = (
+      (agent as any).callModelForStructuredOutput as any
+    ).mock.calls[0][1][0].content as string;
+    expect(promptContent).toContain("Connections to cards just discussed");
+    expect(promptContent).toContain("[extends] m1-card-1, m2-card-1");
+  });
 });
 
 describe("DirectorAgent listener orientation", () => {
@@ -808,7 +870,7 @@ describe("DirectorAgent listener orientation", () => {
     );
   });
 
-  it("hides beats until their prerequisite beats are covered", () => {
+  it("hides beats until their prerequisite beats are covered", async () => {
     const script = makeScript({
       conversationBeats: [
         {
@@ -838,12 +900,12 @@ describe("DirectorAgent listener orientation", () => {
       maxDuration: 600,
     });
 
-    const before = (agent as any).getEditorialSection(script);
+    const before = await (agent as any).getEditorialSection(script);
     expect(before).toContain("Establish the subject");
     expect(before).not.toContain("advanced payoff");
 
     script.conversationBeats![0].covered = true;
-    const after = (agent as any).getEditorialSection(script);
+    const after = await (agent as any).getEditorialSection(script);
     expect(after).toContain("advanced payoff");
   });
 });
