@@ -10,6 +10,7 @@ export enum ModelTask {
   Interjection = "interjection",
   SpeechEffectTagging = "speech_effect_tagging",
   SpeechCondensing = "speech_condensing",
+  CardRelationExtraction = "card_relation_extraction",
 }
 
 export enum ModelTier {
@@ -30,6 +31,7 @@ const DEFAULT_TIER_BY_TASK: Record<ModelTask, ModelTier> = {
   [ModelTask.Interjection]: ModelTier.Economy,
   [ModelTask.SpeechEffectTagging]: ModelTier.Economy,
   [ModelTask.SpeechCondensing]: ModelTier.Economy,
+  [ModelTask.CardRelationExtraction]: ModelTier.Balanced,
 };
 
 // Speech-facing tasks get a higher temperature for more varied, natural-

@@ -14,6 +14,7 @@ describe("ModelRoutingPolicy", () => {
 
   it("uses balanced models for direction selection", () => {
     expect(policy.resolve(ModelTask.DirectionSelection)).toBe(ModelTier.Balanced);
+    expect(policy.resolve(ModelTask.CardRelationExtraction)).toBe(ModelTier.Balanced);
   });
 
   it("uses economy models for constrained checks and short transformations", () => {
