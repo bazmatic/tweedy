@@ -19,6 +19,7 @@ import {
   AiProviderName,
 } from "../types";
 import { appConfig } from "../utils/config";
+import { SPEAKER_SPEECH_PROMPT_TEMPLATES } from "./prompt-templates/speaker-speech-prompt";
 
 function makeSpeaker(id: string, isExpert = false): Speaker {
   return {
@@ -1010,5 +1011,32 @@ describe("SpeakerAgent provider override", () => {
   it("falls back to BaseAgent's default provider when none is given", () => {
     const agent = new SpeakerAgent(makeSpeaker("s1"));
     expect((agent as any).provider).toBe(appConfig.defaultAiProvider);
+  });
+});
+
+describe("SpeakerAgent prompt variant selection", () => {
+  it("uses the speech prompt registered under promptVariantId instead of the default", async () => {
+    SPEAKER_SPEECH_PROMPT_TEMPLATES["test-variant"] = () =>
+      "CUSTOM SPEECH PROMPT MARKER";
+    try {
+      const agent = new SpeakerAgent(makeSpeaker("s1"), undefined, {
+        promptVariantId: "test-variant",
+      });
+      const call = vi
+        .spyOn(agent as any, "callModelWithTools")
+        .mockResolvedValue({
+          toolName: "SPEAK",
+          message: "hi",
+          style: "neutral",
+          stopReason: "stop",
+        });
+
+      await agent.speak(makeScript(), "Talk about the topic.", {});
+
+      const systemContent = (call.mock.calls[0][1] as any)[0].content as string;
+      expect(systemContent).toBe("CUSTOM SPEECH PROMPT MARKER");
+    } finally {
+      delete SPEAKER_SPEECH_PROMPT_TEMPLATES["test-variant"];
+    }
   });
 });
