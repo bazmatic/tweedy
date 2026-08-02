@@ -30,9 +30,29 @@ const DEFAULT_RUN_PARAMETER_SETS: { maxTurns: number; maxDurationSeconds: number
 
 const REPEATS_PER_PARAMETER_SET = 2;
 
+/**
+ * Builds a deterministic externalId from the parameters that make an item
+ * unique within a seed run: the script being swept, the run parameters, and
+ * which repeat of that parameter set this is. Re-running `seedExperimentDataset`
+ * for the same scriptId therefore submits the same externalId + payload pairs
+ * every time. The dataset storage layer treats a repeated `externalId` with an
+ * identical payload as idempotent (reuses the existing item instead of
+ * appending a duplicate) and only errors if the payload for that externalId
+ * has changed — so seeding twice for the same script is a no-op, not a
+ * doubling.
+ */
+function buildSeedExternalId(
+  scriptId: string,
+  parameters: { maxTurns: number; maxDurationSeconds: number },
+  repeatIndex: number
+): string {
+  return `${scriptId}:${parameters.maxTurns}:${parameters.maxDurationSeconds}:${repeatIndex}`;
+}
+
 export async function seedExperimentDataset(dataset: Dataset, scriptId: string) {
   const items = DEFAULT_RUN_PARAMETER_SETS.flatMap((parameters) =>
-    Array.from({ length: REPEATS_PER_PARAMETER_SET }, () => ({
+    Array.from({ length: REPEATS_PER_PARAMETER_SET }, (_, repeatIndex) => ({
+      externalId: buildSeedExternalId(scriptId, parameters, repeatIndex),
       input: {
         scriptId,
         maxTurns: parameters.maxTurns,
