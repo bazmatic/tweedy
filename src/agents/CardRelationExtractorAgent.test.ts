@@ -60,5 +60,21 @@ describe("CardRelationExtractorAgent", () => {
     expect(promptContent).toContain("m1-card-2");
     expect(promptContent).toContain("m3-card-1");
     expect(promptContent).toContain("Feedback loop in system A.");
+    expect(callModel.mock.calls[0][3]).toBe(1500);
+  });
+
+  it("uses the caller's token budget when one is supplied", async () => {
+    const agent = new CardRelationExtractorAgent();
+    const group = [
+      makeCard({ id: "m1-card-1", materialId: "m1" }),
+      makeCard({ id: "m2-card-1", materialId: "m2" }),
+    ];
+    const callModel = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({ edges: [] });
+
+    await agent.extractRelations([group], 2000);
+
+    expect(callModel.mock.calls[0][3]).toBe(2000);
   });
 });

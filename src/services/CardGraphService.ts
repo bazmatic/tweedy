@@ -8,10 +8,24 @@ const PREFILTER_SIMILARITY = 0.55;
 const CLUSTER_SIMILARITY = 0.75;
 const TOP_K_PER_CARD = 5;
 const MAX_GROUP_SIZE = 4;
+/**
+ * Hard cap on how many candidate groups reach the relation extractor. Without
+ * it, a multi-material episode produces one leftover group per unmerged pair in
+ * the 0.55-0.75 band — easily 50-100+ groups — which overruns the extractor's
+ * token budget and truncates its structured output.
+ */
+const MAX_CANDIDATE_GROUPS = 30;
 
 interface CandidatePair {
   aId: string;
   bId: string;
+  score: number;
+}
+
+/** A candidate group plus the strongest pairwise similarity inside it, used to
+ * rank groups when more are found than {@link MAX_CANDIDATE_GROUPS}. */
+interface ScoredGroup {
+  cardIds: string[];
   score: number;
 }
 
@@ -91,7 +105,7 @@ function capGroupSize(members: string[], pairs: CandidatePair[]): string[] {
     .slice(0, MAX_GROUP_SIZE);
 }
 
-function clusterIntoGroups(pairs: CandidatePair[]): string[][] {
+function clusterIntoGroups(pairs: CandidatePair[]): ScoredGroup[] {
   const unionFind = new UnionFind();
   for (const pair of pairs) {
     if (pair.score > CLUSTER_SIMILARITY) unionFind.union(pair.aId, pair.bId);
@@ -106,31 +120,39 @@ function clusterIntoGroups(pairs: CandidatePair[]): string[][] {
     membersByRoot.get(root)!.add(id);
   }
 
-  const groups: string[][] = [];
+  const groups: ScoredGroup[] = [];
   const consumed = new Set<string>();
 
   for (const members of membersByRoot.values()) {
     if (members.size < 2) continue;
     const capped = capGroupSize([...members], pairs);
-    groups.push(capped);
+    let score = 0;
     for (const pair of pairs) {
       if (capped.includes(pair.aId) && capped.includes(pair.bId)) {
         consumed.add([pair.aId, pair.bId].sort().join("|"));
+        score = Math.max(score, pair.score);
       }
     }
+    groups.push({ cardIds: capped, score });
   }
 
   for (const pair of pairs) {
     const key = [pair.aId, pair.bId].sort().join("|");
     if (consumed.has(key)) continue;
     consumed.add(key);
-    groups.push([pair.aId, pair.bId]);
+    groups.push({ cardIds: [pair.aId, pair.bId], score: pair.score });
   }
 
   return groups;
 }
 
 export class CardGraphService {
+  /** Per-script hyperedge cache. `getConnections` is called once per
+   * last-mentioned card on every conversational turn, and the underlying
+   * repository lookup scans every hyperedge file ever written across all
+   * scripts — so it is loaded once per script and filtered in memory. */
+  private readonly edgesByScript = new Map<string, CardHyperedge[]>();
+
   constructor(
     private readonly repository: CardGraphRepository = new CardGraphRepository(),
     private readonly embeddingService: EmbeddingService = new LocalEmbeddingService(),
@@ -140,6 +162,10 @@ export class CardGraphService {
   async build(scriptId: string, cards: EditorialCard[]): Promise<CardHyperedge[]> {
     if (cards.length < 2) return [];
 
+    // Declared outside the try so a mid-loop persistence failure still reports
+    // the edges already durably written, rather than claiming none exist while
+    // later turns read them back off disk.
+    const edges: CardHyperedge[] = [];
     try {
       const vectors = await this.embeddingService.embedDocuments(
         cards.map((card) => `${card.content} ${card.significance}`)
@@ -147,17 +173,31 @@ export class CardGraphService {
       const pairs = findCandidatePairs(cards, vectors);
       if (pairs.length === 0) return [];
 
-      const groups = clusterIntoGroups(pairs);
+      const groups = clusterIntoGroups(pairs)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, MAX_CANDIDATE_GROUPS);
       const cardsById = new Map(cards.map((card) => [card.id, card]));
       const vectorById = new Map(cards.map((card, index) => [card.id, vectors[index]]));
 
-      const candidateCardGroups = groups.map((group) => group.map((id) => cardsById.get(id)!));
-      const extracted = await this.relationExtractor.extractRelations(candidateCardGroups);
+      const candidateCardGroups = groups.map((group) =>
+        group.cardIds.map((id) => cardsById.get(id)!)
+      );
+      const maxTokens = Math.min(4000, 200 + groups.length * 60);
+      const extracted = await this.relationExtractor.extractRelations(
+        candidateCardGroups,
+        maxTokens
+      );
 
-      const edges: CardHyperedge[] = [];
+      const persistedKeys = new Set<string>();
       for (const candidate of extracted) {
         const memberIds = candidate.cardIds.filter((id) => cardsById.has(id));
         if (memberIds.length < 2) continue;
+
+        // The model can emit the same member set twice (in any order); persist
+        // it once.
+        const key = [...new Set(memberIds)].sort().join("|");
+        if (persistedKeys.has(key)) continue;
+        persistedKeys.add(key);
 
         const weight = this.averageSimilarity(memberIds, vectorById);
         const saved = await this.repository.create({
@@ -175,20 +215,30 @@ export class CardGraphService {
           card.relatedCardIds = Array.from(new Set([...card.relatedCardIds, ...others]));
         }
       }
+      this.edgesByScript.set(scriptId, edges);
       return edges;
     } catch (error) {
       logger.warn("Card graph construction unavailable; skipping", error);
-      return [];
+      return edges;
     }
   }
 
   async getConnections(scriptId: string, cardId: string): Promise<CardHyperedge[]> {
     try {
-      return await this.repository.findByCardId(scriptId, cardId);
+      const edges = await this.getScriptEdges(scriptId);
+      return edges.filter((edge) => edge.cardIds.includes(cardId));
     } catch (error) {
       logger.warn("Card graph lookup unavailable", error);
       return [];
     }
+  }
+
+  private async getScriptEdges(scriptId: string): Promise<CardHyperedge[]> {
+    const cached = this.edgesByScript.get(scriptId);
+    if (cached) return cached;
+    const edges = await this.repository.findByScriptId(scriptId);
+    this.edgesByScript.set(scriptId, edges);
+    return edges;
   }
 
   private averageSimilarity(memberIds: string[], vectorById: Map<string, number[]>): number {
