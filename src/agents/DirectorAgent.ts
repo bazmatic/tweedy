@@ -28,10 +28,12 @@ import { TurnReviewerAgent } from './TurnReviewerAgent';
 import { logger } from '../utils/logger';
 import {
   AssignSpeakerRolesInput,
+  BeatClosureClaimInput,
   CheckConversationCompleteInput,
   CreatePodcastPlanInput,
   SelectNextSpeakerInput,
   VerifyCoveredPointsInput,
+  beatClosureClaimSchema,
   checkConversationCompleteSchema,
   createAssignSpeakerRolesSchema,
   createPodcastPlanSchema,
@@ -58,6 +60,21 @@ const DOMINANT_SPEAKER_SHARE_THRESHOLD = 0.55;
 const MIN_SPEECHES_FOR_BALANCE_CHECK = 3;
 const CLOSING_STAGE_PROGRESS_THRESHOLD = 85;
 const MAX_LATE_STAGE_TURNS = 2;
+
+// A beat that raises evidence, a complication, or a surprise but never
+// states what it means gets marked "covered" the moment that claim is
+// established — the discussion point completes with no conclusion ever
+// spoken. These roles mark an open thread; a claim in one of the closure
+// roles is required to resolve it.
+const NEEDS_CLOSURE_DISCOURSE_ROLES: ReadonlySet<string> = new Set([
+  'evidence',
+  'complication',
+  'surprise',
+]);
+const CLOSURE_DISCOURSE_ROLES: ReadonlySet<string> = new Set([
+  'payoff',
+  'implication',
+]);
 
 export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private script: PodcastScript;
@@ -246,8 +263,9 @@ Also nominate one central analogy — a concrete, physical, everyday comparison 
       });
       this.script.discussionPoints = this.points;
       const normalisedBeats = await this.normaliseDiscourseRoles(beats);
+      const closedBeats = await this.ensureBeatClosure(normalisedBeats);
       this.script.conversationBeats = this.toConversationBeats(
-        normalisedBeats,
+        closedBeats,
         this.points
       );
       this.script.centralAnalogy = centralAnalogy;
@@ -1837,6 +1855,86 @@ Return only the ids of claims whose complete meaning was explicitly established.
           : beat.claims,
       }))
     );
+  }
+
+  /**
+   * Appends one payoff/implication claim to any beat that raises evidence, a
+   * complication, or a surprise but never states what it means. Without
+   * this, a beat can complete (and its discussion point be marked covered)
+   * the instant the evidence claim is established, leaving the point
+   * abandoned with no conclusion ever spoken. Falls back to a generic
+   * closing claim if the repair call itself fails, so plan creation never
+   * blocks on this.
+   */
+  private async ensureBeatClosure(
+    beats: CreatePodcastPlanInput["beats"]
+  ): Promise<CreatePodcastPlanInput["beats"]> {
+    if (!beats) return beats;
+    return Promise.all(
+      beats.map(async (beat) => {
+        const claims = beat.claims ?? [];
+        const hasOpenThread = claims.some((claim) =>
+          NEEDS_CLOSURE_DISCOURSE_ROLES.has(claim.role)
+        );
+        const hasClosure = claims.some((claim) =>
+          CLOSURE_DISCOURSE_ROLES.has(claim.role)
+        );
+        if (!hasOpenThread || hasClosure) {
+          return beat;
+        }
+
+        const closingClaim = await this.generateBeatClosureClaim(beat, claims);
+        return {
+          ...beat,
+          claims: [
+            ...claims,
+            {
+              text: closingClaim,
+              role: 'payoff',
+              prerequisiteClaimIndexes: claims.map((_, index) => index),
+            },
+          ],
+        };
+      })
+    );
+  }
+
+  private async generateBeatClosureClaim(
+    beat: ConversationBeatInput,
+    claims: NonNullable<ConversationBeatInput["claims"]>
+  ): Promise<string> {
+    const claimsList = claims
+      .map((claim, index) => `${index}. [${claim.role}] ${claim.text}`)
+      .join('\n');
+
+    try {
+      const { text } = await this.callModelForStructuredOutput<BeatClosureClaimInput>(
+        ModelTask.EpisodePlanning,
+        [
+          {
+            role: 'user' as const,
+            content: `A podcast conversation beat states evidence, a complication, or a surprise but never says what it means. Write one payoff or implication claim that concludes it: the single takeaway a listener should draw, grounded in the claims already planned below. Do not restate the evidence, ask a question, or introduce a new fact not implied by these claims.
+
+Beat goal: ${beat.goal}
+
+Claims already planned for this beat:
+${claimsList}`,
+          },
+        ],
+        beatClosureClaimSchema,
+        200
+      );
+      logger.warn(
+        `Beat "${beat.goal}" raised evidence/complication/surprise with no payoff — appended a closing claim`
+      );
+      return text;
+    } catch (error) {
+      logger.warn(
+        `Beat "${beat.goal}" raised evidence/complication/surprise with no payoff, and the repair call failed; appending a generic closing claim`,
+        error
+      );
+      return `What this means: ${beat.goal}`;
+    }
   }
 
   private toOrientationContract(

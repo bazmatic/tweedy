@@ -44,6 +44,16 @@ const discourseClaimSchema = z.object({
     ),
 });
 
+export const beatClosureClaimSchema = z.object({
+  text: z
+    .string()
+    .describe(
+      "One atomic payoff or implication claim: the takeaway a listener should draw, grounded in the beat's existing claims. Not a restatement of the evidence, not a question, not a new fact."
+    ),
+});
+
+export type BeatClosureClaimInput = z.infer<typeof beatClosureClaimSchema>;
+
 export const conversationBeatSchema = z.object({
   purpose: z
     .nativeEnum(BeatPurpose)

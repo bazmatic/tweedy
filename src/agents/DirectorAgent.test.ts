@@ -199,6 +199,116 @@ describe("DirectorAgent.createPodcastPlan", () => {
     ]);
   });
 
+  it("appends a payoff claim when a planned beat raises evidence but never states what it means", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    const call = vi.spyOn(agent as any, "callModelForStructuredOutput");
+    call.mockResolvedValueOnce({ assignments: [] }); // assignSpeakerRoles
+    call.mockResolvedValueOnce({
+      narrative: "Dig into the eDNA survey.",
+      points: ["The eDNA survey found no reptile DNA"],
+      beats: [
+        {
+          purpose: BeatPurpose.Explain,
+          goal: "Explain the eDNA survey results.",
+          claims: [
+            { text: "Loch Ness is a large Scottish loch.", role: "context" },
+            {
+              text: "The eDNA survey found eel DNA but no reptile DNA.",
+              role: "evidence",
+              prerequisiteClaimIndexes: [0],
+            },
+          ],
+        },
+      ],
+    }); // main plan
+    call.mockResolvedValueOnce({
+      text: "So whatever people are seeing, the DNA evidence rules out a surviving reptile.",
+    }); // beat-closure repair
+
+    await agent.createPodcastPlan();
+
+    expect(call).toHaveBeenCalledTimes(3);
+    expect(call.mock.calls[2][0]).toBe(ModelTask.EpisodePlanning);
+    const claims = script.conversationBeats?.[0].discourseClaims ?? [];
+    expect(claims).toHaveLength(3);
+    expect(claims[2]).toEqual(
+      expect.objectContaining({
+        role: "payoff",
+        text: "So whatever people are seeing, the DNA evidence rules out a surviving reptile.",
+        prerequisiteClaimIds: [claims[0].id, claims[1].id],
+      })
+    );
+  });
+
+  it("does not call the repair model when a planned beat already resolves its evidence with a payoff or implication", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    const call = vi.spyOn(agent as any, "callModelForStructuredOutput");
+    call.mockResolvedValueOnce({ assignments: [] }); // assignSpeakerRoles
+    call.mockResolvedValueOnce({
+      narrative: "Dig into the eDNA survey.",
+      points: ["The eDNA survey found no reptile DNA"],
+      beats: [
+        {
+          purpose: BeatPurpose.Explain,
+          goal: "Explain the eDNA survey results.",
+          claims: [
+            {
+              text: "The eDNA survey found eel DNA but no reptile DNA.",
+              role: "evidence",
+            },
+            {
+              text: "So a surviving reptile is ruled out.",
+              role: "payoff",
+              prerequisiteClaimIndexes: [0],
+            },
+          ],
+        },
+      ],
+    }); // main plan
+
+    await agent.createPodcastPlan();
+
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(script.conversationBeats?.[0].discourseClaims).toHaveLength(2);
+  });
+
+  it("falls back to a generic closing claim when the repair call itself fails", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    const call = vi.spyOn(agent as any, "callModelForStructuredOutput");
+    call.mockResolvedValueOnce({ assignments: [] }); // assignSpeakerRoles
+    call.mockResolvedValueOnce({
+      narrative: "Dig into the eDNA survey.",
+      points: ["The eDNA survey found no reptile DNA"],
+      beats: [
+        {
+          purpose: BeatPurpose.Explain,
+          goal: "Explain the eDNA survey results.",
+          claims: [
+            {
+              text: "The eDNA survey found eel DNA but no reptile DNA.",
+              role: "evidence",
+            },
+          ],
+        },
+      ],
+    }); // main plan
+    call.mockRejectedValueOnce(new Error("model unavailable")); // beat-closure repair fails
+
+    await agent.createPodcastPlan();
+
+    const claims = script.conversationBeats?.[0].discourseClaims ?? [];
+    expect(claims).toHaveLength(2);
+    expect(claims[1]).toEqual(
+      expect.objectContaining({
+        role: "payoff",
+        text: "What this means: Explain the eDNA survey results.",
+      })
+    );
+  });
+
   it("sorts script.editorialCards by storyValue descending", async () => {
     const material = makeMaterial();
     const script = makeScript({ materials: [material] });
