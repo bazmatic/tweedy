@@ -716,6 +716,76 @@ describe("DirectorAgent editorial turn briefs", () => {
     expect(promptContent).toContain("Connections to cards just discussed");
     expect(promptContent).toContain("[extends] m1-card-1, m2-card-1");
   });
+
+  it("lists a hyperedge once when two cards introduced on the same turn share it", async () => {
+    const makeEditorialCard = (id: string, materialId: string) => ({
+      id,
+      materialId,
+      kind: EditorialCardKind.EssentialPoint,
+      content: `Content for ${id}.`,
+      significance: "sig",
+      evidence: [],
+      relatedCardIds: [],
+      tags: [],
+      keyTerms: [],
+      storyValue: 5,
+    });
+    const script = makeScript({
+      editorialCards: [
+        makeEditorialCard("m1-card-1", "m1"),
+        makeEditorialCard("m2-card-1", "m2"),
+      ],
+      knowledgeLedger: {
+        introducedCards: [
+          {
+            cardId: "m1-card-1",
+            introducedBySpeakerId: "s1",
+            introducedAtTurn: 1,
+            source: "prepared_card" as any,
+            state: "established",
+          },
+          {
+            cardId: "m2-card-1",
+            introducedBySpeakerId: "s1",
+            introducedAtTurn: 1,
+            source: "prepared_card" as any,
+            state: "established",
+          },
+        ],
+      },
+    });
+    // Both cards belong to the same hyperedge, so each lookup returns it.
+    const sharedEdge = {
+      id: "edge-1",
+      scriptId: script.id,
+      cardIds: ["m1-card-1", "m2-card-1"],
+      relationType: "extends",
+      rationale: "Deepens the same point.",
+      weight: 0.9,
+    };
+    const cardGraphService = {
+      build: vi.fn().mockResolvedValue([]),
+      getConnections: vi.fn().mockResolvedValue([sharedEdge]),
+    };
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      undefined,
+      { cardGraphService: cardGraphService as any }
+    );
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
+      speakerId: script.speakers[0].id,
+      direction: "continue",
+    });
+
+    await agent.chooseNextSpeaker(script);
+
+    const promptContent = (
+      (agent as any).callModelForStructuredOutput as any
+    ).mock.calls[0][1][0].content as string;
+    const occurrences = promptContent.split("[extends] m1-card-1, m2-card-1").length - 1;
+    expect(occurrences).toBe(1);
+  });
 });
 
 describe("DirectorAgent listener orientation", () => {

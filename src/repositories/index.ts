@@ -4,3 +4,4 @@ export { SpeakerRepository } from "./SpeakerRepository";
 export { ScriptRepository } from "./ScriptRepository";
 export { MaterialRepository } from "./MaterialRepository";
 export { SpeechRepository } from "./SpeechRepository";
+export { CardGraphRepository } from "./CardGraphRepository";

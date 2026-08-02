@@ -303,10 +303,15 @@ Also nominate one central analogy — a concrete, physical, everyday comparison 
 
   private formatConnections(hyperedges: CardHyperedge[]): string {
     if (hyperedges.length === 0) return '';
-    const lines = hyperedges
+    return `\n\nKnown connections between cards:\n${this.formatConnectionLines(hyperedges)}`;
+  }
+
+  /** Shared rendering for both connection prompt sections; each call site adds
+   * its own header. */
+  private formatConnectionLines(edges: CardHyperedge[]): string {
+    return edges
       .map((edge) => `- [${edge.relationType}] ${edge.cardIds.join(', ')}: ${edge.rationale}`)
       .join('\n');
-    return `\n\nKnown connections between cards:\n${lines}`;
   }
 
   /**
@@ -2075,19 +2080,19 @@ ${claimsList}`,
     const lastMentionedCardIds = this.getLastMentionedCardIds(script);
     if (lastMentionedCardIds.length === 0) return '';
 
-    const connections = (
+    const found = (
       await Promise.all(
         lastMentionedCardIds.map((cardId) =>
           this.cardGraphService.getConnections(script.id, cardId)
         )
       )
     ).flat();
+    // Two cards introduced on the same turn can share a hyperedge, which would
+    // otherwise print the same line once per card.
+    const connections = [...new Map(found.map((edge) => [edge.id, edge])).values()];
     if (connections.length === 0) return '';
 
-    const lines = connections
-      .map((edge) => `- [${edge.relationType}] ${edge.cardIds.join(', ')}: ${edge.rationale}`)
-      .join('\n');
-    return `\n\nConnections to cards just discussed:\n${lines}`;
+    return `\n\nConnections to cards just discussed:\n${this.formatConnectionLines(connections)}`;
   }
 
   private getLastMentionedCardIds(script: PodcastScript): string[] {
