@@ -79,7 +79,7 @@ export function createExperimentCommands(): Command {
     )
     .action(async (options) => {
       try {
-        const maxConcurrency = parseInt(options.concurrency, 10);
+        const maxConcurrency = Number(options.concurrency);
         if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1) {
           logger.error(`Invalid --concurrency value: ${options.concurrency}`);
           return;
