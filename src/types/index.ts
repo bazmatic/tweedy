@@ -556,6 +556,9 @@ export interface GenerateScriptParams {
   maxDuration: number; // in seconds
   allocation: SpeakerAllocation;
   audienceProfile?: AudienceProfile;
+  provider?: AiProviderName;
+  directorPromptVariantId?: string;
+  speakerPromptVariantId?: string;
 }
 
 // Repository Types
