@@ -14,6 +14,7 @@ import {
   StopReason,
   TerminologyLedger,
   TurnBrief,
+  AiProviderName,
 } from "../types";
 import { BaseAgent, appendTruncationFiller } from "./BaseAgent";
 import { logger } from "../utils/logger";
@@ -57,13 +58,14 @@ export class SpeakerAgent extends BaseAgent implements ISpeakerAgent {
   constructor(
     speaker: Speaker,
     ragService?: RAGService,
+    options: { provider?: AiProviderName; promptVariantId?: string } = {},
     roleProfileResolver = new SpeakerRoleProfileResolver(),
     naturalSpeechStylePolicy = new NaturalSpeechStylePolicy(),
     responseModePolicy = new ResponseModePolicy(roleProfileResolver),
     audienceAccessibilityPolicy = new AudienceAccessibilityPolicy(),
     speechIntegrityPolicy = new SpeechIntegrityPolicy()
   ) {
-    super();
+    super(options.provider);
     this.speaker = speaker;
     this.ragService = ragService;
     this.roleProfileResolver = roleProfileResolver;

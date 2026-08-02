@@ -16,7 +16,9 @@ import {
   Speaker,
   Speech,
   VocalProviderName,
+  AiProviderName,
 } from "../types";
+import { appConfig } from "../utils/config";
 
 function makeSpeaker(id: string): Speaker {
   return {
@@ -2197,5 +2199,23 @@ describe("DirectorAgent guidance", () => {
       .content as string;
     expect(promptContent).not.toContain("producer");
   });
+});
 
+describe("DirectorAgent provider override", () => {
+  it("passes an explicit provider through to BaseAgent", () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 4, maxDuration: 120 },
+      undefined,
+      { provider: AiProviderName.OpenAI }
+    );
+    expect((agent as any).provider).toBe(AiProviderName.OpenAI);
+  });
+
+  it("falls back to BaseAgent's default provider when none is given", () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 4, maxDuration: 120 });
+    expect((agent as any).provider).toBe(appConfig.defaultAiProvider);
+  });
 });

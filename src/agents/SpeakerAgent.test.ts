@@ -16,7 +16,9 @@ import {
   SourceType,
   UncertaintyStyle,
   VocalProviderName,
+  AiProviderName,
 } from "../types";
+import { appConfig } from "../utils/config";
 
 function makeSpeaker(id: string, isExpert = false): Speaker {
   return {
@@ -994,5 +996,19 @@ describe("SpeakerAgent expert material lookup via RAGService", () => {
 
     const prompt = (spy.mock.calls[0] as any)[1][0].content as string;
     expect(prompt).toContain("Fallback Material: Naive content.");
+  });
+});
+
+describe("SpeakerAgent provider override", () => {
+  it("passes an explicit provider through to BaseAgent", () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"), undefined, {
+      provider: AiProviderName.OpenAI,
+    });
+    expect((agent as any).provider).toBe(AiProviderName.OpenAI);
+  });
+
+  it("falls back to BaseAgent's default provider when none is given", () => {
+    const agent = new SpeakerAgent(makeSpeaker("s1"));
+    expect((agent as any).provider).toBe(appConfig.defaultAiProvider);
   });
 });

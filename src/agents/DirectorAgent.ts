@@ -20,6 +20,7 @@ import {
   Speaker,
   Speech,
   TurnBrief,
+  AiProviderName,
 } from '../types';
 import { LocalEmbeddingService } from '../rag/LocalEmbeddingService';
 import { BaseAgent } from './BaseAgent';
@@ -115,9 +116,10 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
       episodeConclusionPolicy?: EpisodeConclusionPolicy;
       discourseRoleMatcher?: DiscourseRoleMatcher;
       cardGraphService?: CardGraphService;
+      provider?: AiProviderName;
     } = {}
   ) {
-    super();
+    super(dependencies.provider);
     this.script = script;
     this.maxTurns = budget.maxTurns;
     this.maxDuration = budget.maxDuration;
