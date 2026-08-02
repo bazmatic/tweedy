@@ -282,6 +282,27 @@ export interface EditorialCard {
   storyValue: number;
 }
 
+export enum CardRelationType {
+  Supports = "supports",
+  Contrasts = "contrasts",
+  CausesOrLeadsTo = "causes_or_leads_to",
+  SharesConcept = "shares_concept",
+  Extends = "extends",
+  AnswersQuestion = "answers_question",
+}
+
+/** A hyperedge connects 2+ EditorialCards that share a concept, contrast,
+ * cause/effect, or narrative link. Scoped per script — see
+ * docs/CARD_HYPERGRAPH.md for why this isn't a cross-episode graph. */
+export interface CardHyperedge {
+  id: string;
+  scriptId: string;
+  cardIds: string[];
+  relationType: CardRelationType;
+  rationale: string;
+  weight: number;
+}
+
 export interface PreparedMaterial {
   materialId: string;
   synopsis: string;
