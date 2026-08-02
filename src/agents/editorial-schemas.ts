@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EditorialCardKind } from "../types";
+import { CardRelationType, EditorialCardKind } from "../types";
 
 export const preparedCardSchema = z.object({
   kind: z
@@ -169,3 +169,30 @@ export const condenseSpeechSchema = z
   );
 
 export type CondenseSpeechInput = z.infer<typeof condenseSpeechSchema>;
+
+export const cardRelationSchema = z
+  .object({
+    edges: z
+      .array(
+        z.object({
+          cardIds: z
+            .array(z.string())
+            .min(2)
+            .describe(
+              "Ids of the cards in this group that genuinely connect, using the exact ids given in the prompt."
+            ),
+          relationType: z
+            .nativeEnum(CardRelationType)
+            .describe("How the cards in this group relate to each other."),
+          rationale: z
+            .string()
+            .describe("One sentence explaining why these cards connect."),
+        })
+      )
+      .describe(
+        "One edge per candidate group that is genuinely related; omit groups with no real connection."
+      ),
+  })
+  .describe("Labelled connections between prepared editorial cards.");
+
+export type CardRelationExtractionInput = z.infer<typeof cardRelationSchema>;

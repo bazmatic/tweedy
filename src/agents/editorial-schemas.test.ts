@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { EditorialCardKind } from "../types";
+import { CardRelationType, EditorialCardKind } from "../types";
 import {
+  cardRelationSchema,
   prepareMaterialSchema,
   reviewTurnSchema,
 } from "./editorial-schemas";
@@ -70,5 +71,24 @@ describe("editorial structured-output schemas", () => {
     });
 
     expect(parsed.feedback).toEqual(["Add the missing listener context."]);
+  });
+
+  it("validates card relation edges and rejects single-card groups", () => {
+    const input = {
+      edges: [
+        {
+          cardIds: ["m1-card-2", "m3-card-1"],
+          relationType: CardRelationType.SharesConcept,
+          rationale: "Both describe the same feedback loop.",
+        },
+      ],
+    };
+
+    expect(cardRelationSchema.parse(input)).toEqual(input);
+    expect(() =>
+      cardRelationSchema.parse({
+        edges: [{ ...input.edges[0], cardIds: ["m1-card-2"] }],
+      })
+    ).toThrow();
   });
 });
