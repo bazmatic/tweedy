@@ -19,6 +19,7 @@ import {
   AiProviderName,
 } from "../types";
 import { appConfig } from "../utils/config";
+import { DIRECTOR_DIRECTION_PROMPT_TEMPLATES } from "./prompt-templates/director-direction-prompt";
 
 function makeSpeaker(id: string): Speaker {
   return {
@@ -2217,5 +2218,31 @@ describe("DirectorAgent provider override", () => {
     const script = makeScript();
     const agent = new DirectorAgent(script, { maxTurns: 4, maxDuration: 120 });
     expect((agent as any).provider).toBe(appConfig.defaultAiProvider);
+  });
+});
+
+describe("DirectorAgent prompt variant selection", () => {
+  it("uses the direction prompt registered under promptVariantId instead of the default", async () => {
+    DIRECTOR_DIRECTION_PROMPT_TEMPLATES["test-variant"] = () =>
+      "CUSTOM DIRECTION PROMPT MARKER";
+    const script = makeScript();
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      undefined,
+      { promptVariantId: "test-variant" }
+    );
+    const call = vi.spyOn(agent as any, "callModelForStructuredOutput");
+    call.mockResolvedValue({ speakerId: "s1", direction: "Continue.", coveredPointIds: [] });
+
+    await agent.chooseNextSpeaker(script);
+
+    const allContent = call.mock.calls
+      .flatMap((args) => args[1] as { content: string }[])
+      .map((message) => message.content)
+      .join("\n");
+    expect(allContent).toContain("CUSTOM DIRECTION PROMPT MARKER");
+
+    delete DIRECTOR_DIRECTION_PROMPT_TEMPLATES["test-variant"];
   });
 });
