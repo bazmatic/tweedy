@@ -1,13 +1,18 @@
 import { randomUUID } from "crypto";
 import { createStep, createWorkflow } from "@mastra/core/workflows";
 import { z } from "zod";
-import { PodcastScript, SpeakerAllocation } from "../../types";
+import { AiProviderName, AudienceProfile, PodcastScript, SpeakerAllocation } from "../../types";
 import { MastraEpisodeRunner } from "../../services/conversation-engine";
 
 export const ExperimentRunInputSchema = z.object({
   scriptId: z.string().min(1),
   maxTurns: z.number().int().positive(),
   maxDurationSeconds: z.number().positive(),
+  provider: z.nativeEnum(AiProviderName).optional(),
+  guidanceOverride: z.string().optional(),
+  audienceProfileOverride: z.nativeEnum(AudienceProfile).optional(),
+  directorPromptVariantId: z.string().optional(),
+  speakerPromptVariantId: z.string().optional(),
 });
 export type ExperimentRunInput = z.infer<typeof ExperimentRunInputSchema>;
 
@@ -38,13 +43,16 @@ export function createExperimentWorkflow(deps: ExperimentWorkflowDependencies) {
         params: {
           title: script.title,
           description: script.description,
-          guidance: script.guidance,
+          guidance: inputData.guidanceOverride ?? script.guidance,
           speakers: script.speakers,
           materials: script.materials,
           maxTurns: inputData.maxTurns,
           maxDuration: inputData.maxDurationSeconds,
           allocation: SpeakerAllocation.Managed,
-          audienceProfile: script.audienceProfile,
+          audienceProfile: inputData.audienceProfileOverride ?? script.audienceProfile,
+          provider: inputData.provider,
+          directorPromptVariantId: inputData.directorPromptVariantId,
+          speakerPromptVariantId: inputData.speakerPromptVariantId,
         },
         workflowRunId,
       });
