@@ -124,6 +124,60 @@ describe("DirectorAgent.createPodcastPlan", () => {
     expect(promptContent).not.toContain(material.content);
   });
 
+  it("includes known card connections in the planning prompt when the card graph finds any", async () => {
+    const material = makeMaterial();
+    const script = makeScript({ materials: [material] });
+    const materialPreparer = {
+      prepare: vi.fn().mockResolvedValue({
+        materialId: material.id,
+        synopsis: "A concise podcast-ready summary of the article.",
+        cards: [
+          {
+            id: "m1-card-1",
+            materialId: material.id,
+            kind: EditorialCardKind.Surprise,
+            content: "A memorable detail.",
+            evidence: [],
+            relatedCardIds: [],
+            tags: [],
+          },
+        ],
+      }),
+    };
+    const cardGraphService = {
+      build: vi.fn().mockResolvedValue([
+        {
+          id: "edge-1",
+          scriptId: script.id,
+          cardIds: ["m1-card-1", "m2-card-1"],
+          relationType: "shares_concept",
+          rationale: "Both describe the same feedback loop.",
+          weight: 0.8,
+        },
+      ]),
+      getConnections: vi.fn().mockResolvedValue([]),
+    };
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      undefined,
+      { materialPreparer, cardGraphService: cardGraphService as any }
+    );
+    const callModelForStructuredOutputSpy = vi
+      .spyOn(agent as any, "callModelForStructuredOutput")
+      .mockResolvedValue({ narrative: "Open with intros, then dig in.", points: ["Point A"] });
+
+    await agent.createPodcastPlan();
+
+    expect(cardGraphService.build).toHaveBeenCalledWith(script.id, script.editorialCards);
+    // Call 0 is the internal assignSpeakerRoles casting prompt; call 1 is the
+    // main episode-planning prompt where connectionsText is appended.
+    const promptContent = (callModelForStructuredOutputSpy.mock.calls[1][1] as any)[0]
+      .content as string;
+    expect(promptContent).toContain("Known connections between cards");
+    expect(promptContent).toContain("[shares_concept] m1-card-1, m2-card-1");
+  });
+
   it("stores the planned central analogy on the script", async () => {
     const script = makeScript();
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });

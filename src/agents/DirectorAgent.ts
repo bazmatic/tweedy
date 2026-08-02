@@ -5,6 +5,7 @@ import {
   ConversationBeat,
   DiscussionPoint,
   DiscussionPointPriority,
+  CardHyperedge,
   DiscourseRole,
   EditorialCard,
   EditorialMove,
@@ -49,6 +50,7 @@ import { DialogueCadencePolicy } from './DialogueCadencePolicy';
 import { AudienceAccessibilityPolicy } from './AudienceAccessibilityPolicy';
 import { EpisodeConclusionPolicy } from './EpisodeConclusionPolicy';
 import { DiscourseRoleMatcher } from './DiscourseRoleMatcher';
+import { CardGraphService } from '../services/CardGraphService';
 import { SHORT_REACTION_TOOLS, SpeakerAgentToolName } from './speaker-tools';
 import { ModelTask } from '../providers/ModelRoutingPolicy';
 
@@ -94,6 +96,7 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
   private audienceAccessibilityPolicy: AudienceAccessibilityPolicy;
   private episodeConclusionPolicy: EpisodeConclusionPolicy;
   private discourseRoleMatcher: DiscourseRoleMatcher;
+  private cardGraphService: CardGraphService;
   private guidance?: string;
 
   constructor(
@@ -111,6 +114,7 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
       audienceAccessibilityPolicy?: AudienceAccessibilityPolicy;
       episodeConclusionPolicy?: EpisodeConclusionPolicy;
       discourseRoleMatcher?: DiscourseRoleMatcher;
+      cardGraphService?: CardGraphService;
     } = {}
   ) {
     super();
@@ -139,6 +143,7 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
     this.discourseRoleMatcher =
       dependencies.discourseRoleMatcher ??
       new DiscourseRoleMatcher(new LocalEmbeddingService());
+    this.cardGraphService = dependencies.cardGraphService ?? new CardGraphService();
   }
 
   /**
@@ -172,6 +177,11 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
       this.script.editorialCards = preparedMaterials
         .flatMap((prepared) => prepared.cards)
         .sort((a, b) => b.storyValue - a.storyValue);
+      const hyperedges = await this.cardGraphService.build(
+        this.script.id,
+        this.script.editorialCards
+      );
+      const connectionsText = this.formatConnections(hyperedges);
       const materialText = this.script.materials
         .map((material, index) => {
           const prepared = preparedMaterials[index];
@@ -206,7 +216,7 @@ Duration: Approximately ${Math.round(durationMinutes)} minutes, across up to ${t
 Speakers: ${this.script.speakers.map(s => s.name).join(', ')}
 
 Available prepared materials:
-${materialText || '(No source materials were supplied.)'}
+${materialText || '(No source materials were supplied.)'}${connectionsText}
 
 Create a detailed plan for how the conversation should flow, including:
 1. Opening segment — a warm, friendly welcome where the interviewer greets listeners, introduces the episode by name ("${this.script.title}"), and introduces the speakers, before any points are mentioned. After naming the speakers, the speaker must stop and let them respond.
@@ -289,6 +299,14 @@ Also nominate one central analogy — a concrete, physical, everyday comparison 
       logger.error('Failed to create podcast plan:', error);
       throw error;
     }
+  }
+
+  private formatConnections(hyperedges: CardHyperedge[]): string {
+    if (hyperedges.length === 0) return '';
+    const lines = hyperedges
+      .map((edge) => `- [${edge.relationType}] ${edge.cardIds.join(', ')}: ${edge.rationale}`)
+      .join('\n');
+    return `\n\nKnown connections between cards:\n${lines}`;
   }
 
   /**
