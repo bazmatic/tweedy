@@ -30,6 +30,12 @@ describe("ProviderModelCatalogue", () => {
     }
   });
 
+  it("resolves every Kimi tier", () => {
+    for (const tier of Object.values(ModelTier)) {
+      expect(catalogue.resolve(AiProviderName.Kimi, tier)).toBeTruthy();
+    }
+  });
+
   it("keeps provider-specific model choices independent", () => {
     expect(
       catalogue.resolve(AiProviderName.Anthropic, ModelTier.Economy)
@@ -59,6 +65,18 @@ describe("ProviderModelCatalogue", () => {
     );
     expect(catalogue.resolve(AiProviderName.Grok, ModelTier.Premium)).toBe(
       "grok-4.5"
+    );
+  });
+
+  it("resolves Kimi tiers to expected model ids", () => {
+    expect(catalogue.resolve(AiProviderName.Kimi, ModelTier.Economy)).toBe(
+      "kimi-k2.6"
+    );
+    expect(catalogue.resolve(AiProviderName.Kimi, ModelTier.Balanced)).toBe(
+      "kimi-k2.6"
+    );
+    expect(catalogue.resolve(AiProviderName.Kimi, ModelTier.Premium)).toBe(
+      "kimi-k3"
     );
   });
 });

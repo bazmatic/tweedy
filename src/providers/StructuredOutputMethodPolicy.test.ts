@@ -31,4 +31,10 @@ describe("StructuredOutputMethodPolicy", () => {
       StructuredOutputMethod.FunctionCalling
     );
   });
+
+  it("uses LangChain's compatible function-calling strategy for Kimi", () => {
+    expect(policy.resolve(AiProviderName.Kimi)).toBe(
+      StructuredOutputMethod.FunctionCalling
+    );
+  });
 });
