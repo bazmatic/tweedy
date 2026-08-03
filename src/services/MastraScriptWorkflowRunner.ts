@@ -174,7 +174,11 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
         maxTurns: Math.max(1, params.maxTurns - (script.speakers.length + 1)),
         maxDuration: params.maxDuration,
       },
-      params.guidance
+      params.guidance,
+      {
+        provider: params.provider,
+        promptVariantId: params.directorPromptVariantId,
+      }
     );
     const opening = new OpeningSequencePolicy();
     const closing = new ClosingSequencePolicy();
@@ -356,14 +360,22 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
           }
           const speakerAgent = new SpeakerAgent(
             selected.speaker,
-            this.ragService
+            this.ragService,
+            {
+              provider: params.provider,
+              promptVariantId: params.speakerPromptVariantId,
+            }
           );
           speakerAgent.attachObservability(tracingContext?.currentSpan);
           speech = await speakerAgent.interject(previous);
         } else {
           const speakerAgent = new SpeakerAgent(
             selected.speaker,
-            this.ragService
+            this.ragService,
+            {
+              provider: params.provider,
+              promptVariantId: params.speakerPromptVariantId,
+            }
           );
           speakerAgent.attachObservability(tracingContext?.currentSpan);
           speech = await speakerAgent.speak(script, selected.direction, {

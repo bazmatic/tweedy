@@ -8,6 +8,7 @@ import {
   MastraScriptWorkflowRunner,
 } from "./MastraScriptWorkflowRunner";
 import {
+  AiProviderName,
   AudienceProfile,
   AudienceValue,
   EditorialMove,
@@ -25,12 +26,16 @@ const directorChoose = vi.fn();
 const directorReview = vi.fn();
 const directorComplete = vi.fn();
 const speakerSpeak = vi.fn();
+const directorAgentCalls: any[] = [];
+const speakerAgentCalls: any[] = [];
 
 vi.mock("../agents", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../agents")>();
   return {
     ...actual,
-    DirectorAgent: vi.fn().mockImplementation(function (script) {
+    DirectorAgent: vi.fn().mockImplementation(function (...args: any[]) {
+      directorAgentCalls.push(args);
+      const script = args[0];
       directorCreatePlan.mockImplementation(async () => {
         script.discussionPoints = [
           { id: "point-1", text: "Point one", covered: false },
@@ -65,7 +70,8 @@ vi.mock("../agents", async (importOriginal) => {
         attachObservability: vi.fn(),
       };
     }),
-    SpeakerAgent: vi.fn().mockImplementation(function () {
+    SpeakerAgent: vi.fn().mockImplementation(function (...args: any[]) {
+      speakerAgentCalls.push(args);
       return {
       speak: speakerSpeak,
       interject: vi.fn(),
@@ -79,6 +85,8 @@ const tempDirectories: string[] = [];
 
 afterEach(async () => {
   vi.clearAllMocks();
+  directorAgentCalls.length = 0;
+  speakerAgentCalls.length = 0;
   await Promise.all(
     tempDirectories
       .splice(0)
@@ -299,6 +307,142 @@ describe("MastraScriptWorkflowRunner", () => {
     );
     expect(speechesVisibleWhenLedgerRecorded).toBe(result.speeches.length - 1);
     expect(directorCreatePlan).toHaveBeenCalledOnce();
+  });
+
+  it("forwards provider and prompt-variant choices from params to DirectorAgent and SpeakerAgent", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "tweedy-mastra-runner-provider-")
+    );
+    tempDirectories.push(directory);
+    const speaker = {
+      id: "speaker-1",
+      slug: "host",
+      name: "Host",
+      personality: "curious host",
+      voice: {
+        id: "voice-1",
+        name: "Voice",
+        description: "",
+        provider: VocalProviderName.ElevenLabs,
+        providerId: "provider-1",
+        settings: {},
+      },
+      voiceStyle: "natural",
+    };
+    const script = {
+      id: "",
+      title: "Mastra episode",
+      description: "",
+      speakers: [speaker],
+      speeches: [],
+      materials: [],
+      discussionPoints: [],
+      audienceProfile: AudienceProfile.General,
+      createdAt: new Date("2026-07-29T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-29T00:00:00.000Z"),
+    };
+    const speech = {
+      id: "",
+      speaker,
+      message: "A concise opening and final thought.",
+      instructions: "natural",
+      voice: speaker.voice,
+      voiceStyle: speaker.voiceStyle,
+      timestamp: new Date("2026-07-29T00:00:01.000Z"),
+      stopReason: "stop" as const,
+      tool: SpeakerAgentToolName.CLOSING_STATEMENT,
+    };
+    let generatedSpeechNumber = 0;
+    speakerSpeak.mockImplementation(async (...args) => {
+      const isFinalTurn = args[2]?.isFinalTurn === true;
+      generatedSpeechNumber += 1;
+      return {
+        ...speech,
+        message: isFinalTurn
+          ? `A distinct closing thought ${generatedSpeechNumber}.`
+          : `A distinct production thought ${generatedSpeechNumber}.`,
+        tool: isFinalTurn
+          ? SpeakerAgentToolName.CLOSING_STATEMENT
+          : SpeakerAgentToolName.SPEAK,
+      };
+    });
+    directorReview.mockImplementation(async (candidate) => ({
+      ...candidate,
+      message:
+        candidate.tool === SpeakerAgentToolName.CLOSING_STATEMENT
+          ? `${candidate.message} Thanks for listening, and until next time.`
+          : `Reviewer improved: ${candidate.message}`,
+    }));
+    directorComplete.mockResolvedValue(false);
+    directorChoose.mockResolvedValue({
+      speaker,
+      direction: "sign off",
+      timeStatus: "",
+      forceNearlyOutOfTime: false,
+      requestSummary: true,
+      isFinalTurn: true,
+      turnBrief: undefined,
+    });
+    const createOrReturn = vi.fn(async (record, idempotencyKey) => ({
+      ...record,
+      id: `speech-${idempotencyKey}`,
+      idempotencyKey,
+    }));
+    const knowledgeLedgerPolicy = {
+      createLedger: () => ({ introducedCards: [] }),
+      getAccessibleCards: () => [],
+      recordAcceptedTurn: () => {},
+    };
+    const runner = new MastraScriptWorkflowRunner(
+      { createOrReturn } as any,
+      { addMaterials: vi.fn() } as any,
+      knowledgeLedgerPolicy as any,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        storagePath: path.join(directory, "workflow.db"),
+        tracePath: path.join(directory, "traces.jsonl"),
+      },
+      undefined,
+      { evaluate: vi.fn().mockResolvedValue({ accepted: true }) } as any,
+      {
+        audit: vi.fn().mockResolvedValue([]),
+        rewrite: vi.fn(),
+        attachObservability: vi.fn(),
+      } as any
+    );
+
+    await runner.run({
+      script,
+      params: {
+        title: script.title,
+        description: "",
+        speakers: [speaker],
+        materials: [],
+        maxTurns: 1,
+        maxDuration: 60,
+        allocation: SpeakerAllocation.Sequential,
+        provider: AiProviderName.OpenAI,
+        directorPromptVariantId: "director-variant",
+        speakerPromptVariantId: "speaker-variant",
+      },
+      workflowRunId: "run-provider",
+    });
+
+    expect(directorAgentCalls[0][3]).toEqual(
+      expect.objectContaining({
+        provider: AiProviderName.OpenAI,
+        promptVariantId: "director-variant",
+      })
+    );
+    expect(speakerAgentCalls[0][2]).toEqual(
+      expect.objectContaining({
+        provider: AiProviderName.OpenAI,
+        promptVariantId: "speaker-variant",
+      })
+    );
   });
 
   it("forces a turn through after the rejection budget is used up, instead of looping indefinitely", async () => {

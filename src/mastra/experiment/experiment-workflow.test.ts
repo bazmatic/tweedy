@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Mastra } from "@mastra/core/mastra";
 import { LibSQLStore } from "@mastra/libsql";
 import { createExperimentWorkflow } from "./experiment-workflow";
-import { PodcastScript, Speaker, SpeakerAllocation } from "../../types";
+import { AiProviderName, PodcastScript, Speaker, SpeakerAllocation } from "../../types";
 
 const tempDirs: string[] = [];
 
@@ -79,6 +79,44 @@ describe("createExperimentWorkflow", () => {
           maxTurns: 8,
           maxDuration: 240,
           allocation: SpeakerAllocation.Managed,
+        }),
+      })
+    );
+  });
+
+  it("applies guidanceOverride and provider from the input instead of the stored script's guidance", async () => {
+    const resultScript = stubScript({ guidance: "stored guidance" });
+    const runner = { run: vi.fn().mockResolvedValue(resultScript) };
+    const loadScript = vi
+      .fn()
+      .mockResolvedValue(stubScript({ guidance: "stored guidance" }));
+
+    const workflow = createExperimentWorkflow({ runner, loadScript });
+    const mastra = new Mastra({
+      storage: new LibSQLStore({ id: "test-store", url: `file:${await storagePath()}` }),
+      workflows: { episodeExperimentRun: workflow },
+    });
+
+    const run = await mastra.getWorkflow("episodeExperimentRun").createRun({});
+    await run.start({
+      inputData: {
+        scriptId: "script-1",
+        maxTurns: 8,
+        maxDurationSeconds: 240,
+        provider: AiProviderName.OpenAI,
+        guidanceOverride: "sweep this guidance instead",
+        directorPromptVariantId: "director-variant",
+        speakerPromptVariantId: "speaker-variant",
+      },
+    });
+
+    expect(runner.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          guidance: "sweep this guidance instead",
+          provider: AiProviderName.OpenAI,
+          directorPromptVariantId: "director-variant",
+          speakerPromptVariantId: "speaker-variant",
         }),
       })
     );

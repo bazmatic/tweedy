@@ -16,7 +16,10 @@ import {
   Speaker,
   Speech,
   VocalProviderName,
+  AiProviderName,
 } from "../types";
+import { appConfig } from "../utils/config";
+import { DIRECTOR_DIRECTION_PROMPT_TEMPLATES } from "./prompt-templates/director-direction-prompt";
 
 function makeSpeaker(id: string): Speaker {
   return {
@@ -2197,5 +2200,49 @@ describe("DirectorAgent guidance", () => {
       .content as string;
     expect(promptContent).not.toContain("producer");
   });
+});
 
+describe("DirectorAgent provider override", () => {
+  it("passes an explicit provider through to BaseAgent", () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 4, maxDuration: 120 },
+      undefined,
+      { provider: AiProviderName.OpenAI }
+    );
+    expect((agent as any).provider).toBe(AiProviderName.OpenAI);
+  });
+
+  it("falls back to BaseAgent's default provider when none is given", () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 4, maxDuration: 120 });
+    expect((agent as any).provider).toBe(appConfig.defaultAiProvider);
+  });
+});
+
+describe("DirectorAgent prompt variant selection", () => {
+  it("uses the direction prompt registered under promptVariantId instead of the default", async () => {
+    DIRECTOR_DIRECTION_PROMPT_TEMPLATES["test-variant"] = () =>
+      "CUSTOM DIRECTION PROMPT MARKER";
+    const script = makeScript();
+    const agent = new DirectorAgent(
+      script,
+      { maxTurns: 10, maxDuration: 600 },
+      undefined,
+      { promptVariantId: "test-variant" }
+    );
+    const call = vi.spyOn(agent as any, "callModelForStructuredOutput");
+    call.mockResolvedValue({ speakerId: "s1", direction: "Continue.", coveredPointIds: [] });
+
+    await agent.chooseNextSpeaker(script);
+
+    const allContent = call.mock.calls
+      .flatMap((args) => args[1] as { content: string }[])
+      .map((message) => message.content)
+      .join("\n");
+    expect(allContent).toContain("CUSTOM DIRECTION PROMPT MARKER");
+
+    delete DIRECTOR_DIRECTION_PROMPT_TEMPLATES["test-variant"];
+  });
 });

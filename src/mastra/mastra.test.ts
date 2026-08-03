@@ -1,7 +1,7 @@
 import { mkdtemp, readFile } from "fs/promises";
 import * as os from "os";
 import * as path from "path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AiProviderName } from "../types";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
 import { createTweedyMastra } from ".";
@@ -79,6 +79,30 @@ describe("Tweedy Mastra composition root", () => {
     });
     expect(Object.keys(routes).sort()).toEqual(Object.values(ModelTask).sort());
     expect(Object.values(routes).every((route) => route.path === "langchain-compatibility")).toBe(true);
+  });
+
+  it("registers the experiment workflow and scorers when experiment dependencies are supplied", () => {
+    const runner = { run: vi.fn() };
+    const loadScript = vi.fn();
+    const { mastra } = createTweedyMastra({
+      storagePath: ":memory:",
+      traceSink: new InMemoryTraceSink(),
+      experimentWorkflowDependencies: { runner, loadScript },
+    });
+
+    expect(mastra.getWorkflow("episodeExperimentRun").id).toBe(
+      "episode-experiment-run"
+    );
+  });
+
+  it("always registers the transcript-quality and rejection-repair-rate scorers", () => {
+    const { mastra } = createTweedyMastra({
+      storagePath: ":memory:",
+      traceSink: new InMemoryTraceSink(),
+    });
+
+    expect(mastra.getScorerById("transcript-quality")).toBeDefined();
+    expect(mastra.getScorerById("rejection-repair-rate")).toBeDefined();
   });
 });
 

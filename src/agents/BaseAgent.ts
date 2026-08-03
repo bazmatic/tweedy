@@ -12,7 +12,7 @@ import { AiModelFactory } from "../providers/AiModelFactory";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
 import { StructuredOutputMethodPolicy } from "../providers/StructuredOutputMethodPolicy";
 import { appConfig } from "../utils/config";
-import { LlmMessage, LlmTool, StopReason } from "../types";
+import { AiProviderName, LlmMessage, LlmTool, StopReason } from "../types";
 import { logger } from "../utils/logger";
 
 function toOpenAiTools(tools: LlmTool[]) {
@@ -326,6 +326,10 @@ export abstract class BaseAgent {
   private observabilityParent?: AnySpan;
   private observabilityInstance?: ObservabilityInstance;
 
+  constructor(
+    protected readonly provider: AiProviderName = appConfig.defaultAiProvider
+  ) {}
+
   /**
    * Wires this agent's model calls into real Mastra spans so each call is
    * recorded as a full (unredacted) model_generation span — input messages
@@ -353,7 +357,7 @@ export abstract class BaseAgent {
     input: unknown
   ): Span<typeof SpanType.MODEL_GENERATION> | undefined {
     const name = `${this.constructor.name}.${task}`;
-    const attributes = { provider: appConfig.defaultAiProvider };
+    const attributes = { provider: this.provider };
     if (this.observabilityParent) {
       return this.observabilityParent.createChildSpan({
         type: SpanType.MODEL_GENERATION,
@@ -378,7 +382,7 @@ export abstract class BaseAgent {
     const span = this.startModelSpan(task, messages);
     try {
       const model = AiModelFactory.getModel(
-        appConfig.defaultAiProvider,
+        this.provider,
         task,
         maxTokens
       );
@@ -408,7 +412,7 @@ export abstract class BaseAgent {
     const span = this.startModelSpan(task, messages);
     try {
       const model = AiModelFactory.getModel(
-        appConfig.defaultAiProvider,
+        this.provider,
         task,
         maxTokens
       );
@@ -474,14 +478,14 @@ export abstract class BaseAgent {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const model = AiModelFactory.getModel(
-          appConfig.defaultAiProvider,
+          this.provider,
           task,
           maxTokens
         );
         const result = await model
           .withStructuredOutput<T>(schema, {
             method: structuredOutputMethodPolicy.resolve(
-              appConfig.defaultAiProvider
+              this.provider
             ),
           })
           .invoke(toBaseMessages(messages));

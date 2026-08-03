@@ -328,3 +328,49 @@ describe("callModelForStructuredOutput", () => {
     });
   });
 });
+
+describe("BaseAgent provider override", () => {
+  it("uses the constructor-provided provider instead of appConfig.defaultAiProvider", async () => {
+    const getModel = vi.spyOn(AiModelFactory, "getModel").mockReturnValue({
+      withStructuredOutput: () => ({
+        invoke: async () => ({ ok: true }),
+      }),
+    } as any);
+    const agent = new TestAgent(AiProviderName.OpenAI);
+
+    await agent.callModelForStructuredOutput(
+      ModelTask.SpeechGeneration,
+      [{ role: "user", content: "hi" }],
+      z.object({ ok: z.boolean() }),
+      50
+    );
+
+    expect(getModel).toHaveBeenCalledWith(
+      AiProviderName.OpenAI,
+      ModelTask.SpeechGeneration,
+      50
+    );
+  });
+
+  it("defaults to appConfig.defaultAiProvider when no provider is given", async () => {
+    const getModel = vi.spyOn(AiModelFactory, "getModel").mockReturnValue({
+      withStructuredOutput: () => ({
+        invoke: async () => ({ ok: true }),
+      }),
+    } as any);
+    const agent = new TestAgent();
+
+    await agent.callModelForStructuredOutput(
+      ModelTask.SpeechGeneration,
+      [{ role: "user", content: "hi" }],
+      z.object({ ok: z.boolean() }),
+      50
+    );
+
+    expect(getModel).toHaveBeenCalledWith(
+      appConfig.defaultAiProvider,
+      ModelTask.SpeechGeneration,
+      50
+    );
+  });
+});
