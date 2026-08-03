@@ -33,6 +33,7 @@ export enum AiProviderName {
   DeepSeek = "deepseek",
   OpenAI = "openai",
   Grok = "grok",
+  Kimi = "kimi",
 }
 
 export enum ResearchProviderName {

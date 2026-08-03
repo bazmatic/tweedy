@@ -21,6 +21,8 @@ export class StructuredOutputMethodPolicy {
         return StructuredOutputMethod.FunctionCalling;
       case AiProviderName.Grok:
         return StructuredOutputMethod.FunctionCalling;
+      case AiProviderName.Kimi:
+        return StructuredOutputMethod.FunctionCalling;
       default:
         throw new Error(
           `No structured-output method configured for provider: ${provider}`

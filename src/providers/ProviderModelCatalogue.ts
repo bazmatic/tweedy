@@ -21,6 +21,11 @@ enum GrokModelId {
   Premium = "grok-4.5",
 }
 
+enum KimiModelId {
+  Economy = "kimi-k2.6",
+  Premium = "kimi-k3",
+}
+
 const ANTHROPIC_MODELS: Record<ModelTier, string> = {
   [ModelTier.Economy]: AnthropicModelId.Economy,
   [ModelTier.Balanced]: AnthropicModelId.Premium,
@@ -45,6 +50,12 @@ const GROK_MODELS: Record<ModelTier, string> = {
   [ModelTier.Premium]: GrokModelId.Premium,
 };
 
+const KIMI_MODELS: Record<ModelTier, string> = {
+  [ModelTier.Economy]: KimiModelId.Economy,
+  [ModelTier.Balanced]: KimiModelId.Economy,
+  [ModelTier.Premium]: KimiModelId.Premium,
+};
+
 const MODELS_BY_PROVIDER: Record<
   AiProviderName,
   Record<ModelTier, string>
@@ -53,6 +64,7 @@ const MODELS_BY_PROVIDER: Record<
   [AiProviderName.DeepSeek]: DEEPSEEK_MODELS,
   [AiProviderName.OpenAI]: OPENAI_MODELS,
   [AiProviderName.Grok]: GROK_MODELS,
+  [AiProviderName.Kimi]: KIMI_MODELS,
 };
 
 /**

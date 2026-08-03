@@ -121,6 +121,23 @@ export class AiModelFactory {
           this.models.set(key, model);
           break;
         }
+        case AiProviderName.Kimi: {
+          const apiKey = process.env.MOONSHOT_API_KEY;
+          if (!apiKey) {
+            throw new Error(
+              "MOONSHOT_API_KEY environment variable is required"
+            );
+          }
+          const model = new ChatOpenAI({
+            apiKey,
+            model: modelId,
+            maxTokens,
+            temperature,
+            configuration: { baseURL: "https://api.moonshot.ai/v1" },
+          });
+          this.models.set(key, model);
+          break;
+        }
         default:
           throw new Error(`Unknown AI provider: ${provider}`);
       }
