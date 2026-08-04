@@ -1,6 +1,8 @@
 import {
+  CachingMaterialPreparer,
   ClaimEditorialGate,
   DirectorAgent,
+  MaterialPreparerAgent,
   SpeakerAgent,
   SpeechRepetitionPolicy,
 } from "../agents";
@@ -178,6 +180,9 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
       {
         provider: params.provider,
         promptVariantId: params.directorPromptVariantId,
+        materialPreparer: new CachingMaterialPreparer(
+          new MaterialPreparerAgent()
+        ),
       }
     );
     const opening = new OpeningSequencePolicy();

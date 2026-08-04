@@ -79,6 +79,12 @@ vi.mock("../agents", () => ({
         },
     };
   }),
+  MaterialPreparerAgent: vi.fn().mockImplementation(function () {
+    return { prepare: vi.fn() };
+  }),
+  CachingMaterialPreparer: vi.fn().mockImplementation(function () {
+    return { prepare: vi.fn() };
+  }),
 }));
 
 function makeScript(): PodcastScript {

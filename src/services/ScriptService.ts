@@ -22,7 +22,9 @@ import {
   SpeechRepository,
 } from "../repositories";
 import {
+  CachingMaterialPreparer,
   DirectorAgent,
+  MaterialPreparerAgent,
   SpeakerAgent,
   SpeakerAgentToolName,
   SpeechRepetitionPolicy,
@@ -459,7 +461,12 @@ export class ScriptService implements IScriptService {
         ),
         maxDuration: params.maxDuration,
       },
-      params.guidance
+      params.guidance,
+      {
+        materialPreparer: new CachingMaterialPreparer(
+          new MaterialPreparerAgent()
+        ),
+      }
     );
     const openingSequence = new OpeningSequencePolicy();
     const closingSequence = new ClosingSequencePolicy();

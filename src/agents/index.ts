@@ -2,6 +2,7 @@ export { BaseAgent } from './BaseAgent';
 export { DirectorAgent } from './DirectorAgent';
 export { MaterialSummarizerAgent } from './MaterialSummarizerAgent';
 export { MaterialPreparerAgent } from './MaterialPreparerAgent';
+export { CachingMaterialPreparer } from './CachingMaterialPreparer';
 export { ConversationRhythmPolicy } from './ConversationRhythmPolicy';
 export { OpeningSequencePolicy, OpeningStage } from './OpeningSequencePolicy';
 export { ClosingSequencePolicy, ClosingStage } from './ClosingSequencePolicy';
