@@ -11,8 +11,8 @@ import { ProviderModelCatalogue } from "./ProviderModelCatalogue";
 // or it can return truncated or missing output. Premium tasks reason at
 // "medium" effort (see below) and burn through more reasoning tokens than
 // "minimal", so they get a larger buffer.
-const OPENAI_REASONING_TOKEN_BUFFER = 500;
-const OPENAI_PREMIUM_REASONING_TOKEN_BUFFER = 1500;
+const OPENAI_REASONING_TOKEN_BUFFER = 3000;
+const OPENAI_PREMIUM_REASONING_TOKEN_BUFFER = 6000;
 
 // DeepSeek routinely overshoots the brevity guidance baked into our prompts
 // (e.g. "1-2 sentences, under 50 words") and burns through maxTokens before
@@ -21,6 +21,13 @@ const OPENAI_PREMIUM_REASONING_TOKEN_BUFFER = 1500;
 // reasoning models get above, so a verbose response still finishes inside
 // its JSON structure instead of being cut off mid-argument.
 const DEEPSEEK_TOKEN_BUFFER = 100;
+
+// Kimi has the same tendency as DeepSeek to overshoot this app's brevity
+// guidance (e.g. "1-2 sentences, 15-35 words") and run out of maxTokens
+// mid-sentence, which surfaces as speeches truncated by stopReason
+// "max_tokens" far more often than other providers. Give it the same kind
+// of headroom so a verbose turn finishes its thought before hitting the cap.
+const KIMI_TOKEN_BUFFER = 100;
 
 export class AiModelFactory {
   private static models: Map<string, BaseChatModel> = new Map();
@@ -128,12 +135,22 @@ export class AiModelFactory {
               "MOONSHOT_API_KEY environment variable is required"
             );
           }
+          // Moonshot's API rejects any temperature other than the default of
+          // 1 ("invalid temperature: only 1 is allowed for this model"), so
+          // omit it rather than pass the task-specific value other
+          // providers get — same reasoning as the Anthropic case above.
+          //
+          // kimi-k3 also has thinking mode enabled by default, and rejects a
+          // forced tool_choice outright ("tool_choice 'specified' is
+          // incompatible with thinking enabled") — this app relies on forced
+          // tool calls for every turn, so disable it, same as the DeepSeek
+          // case above.
           const model = new ChatOpenAI({
             apiKey,
             model: modelId,
-            maxTokens,
-            temperature,
+            maxTokens: maxTokens + KIMI_TOKEN_BUFFER,
             configuration: { baseURL: "https://api.moonshot.ai/v1" },
+            modelKwargs: { thinking: { type: "disabled" } },
           });
           this.models.set(key, model);
           break;
