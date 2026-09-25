@@ -48,7 +48,8 @@ export function createJudgmentCommands(): Command {
 
           const disagreements = records
             .filter((r) => r.judgment === summary.judgment && r.agreed === false)
-            .slice(-disagreementLimit);
+            // slice(-0) would return everything, so 0 must mean none.
+            .slice(disagreementLimit > 0 ? -disagreementLimit : Infinity);
           for (const record of disagreements) {
             printDisagreement(record);
           }
