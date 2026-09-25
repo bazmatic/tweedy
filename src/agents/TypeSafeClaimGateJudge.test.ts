@@ -36,7 +36,7 @@ describe("gateClaimsWithTypeSafe", () => {
   it("asks descriptively named yes/no questions over the whole turn", async () => {
     const provider = answering({});
 
-    await gateClaimsWithTypeSafe(request(), provider, 0.5);
+    await gateClaimsWithTypeSafe(request(), provider);
 
     const [state, questions] = provider.judge.mock.calls[0];
     expect(state).toEqual({
@@ -51,7 +51,7 @@ describe("gateClaimsWithTypeSafe", () => {
   });
 
   it("accepts a new, in-order turn", async () => {
-    expect(await gateClaimsWithTypeSafe(request(), answering({}), 0.5)).toMatchObject({
+    expect(await gateClaimsWithTypeSafe(request(), answering({}))).toMatchObject({
       status: "ok",
       value: { accepted: true },
     });
@@ -63,8 +63,7 @@ describe("gateClaimsWithTypeSafe", () => {
       answering({
         states_claim_before_prerequisites_payoff: 0.9,
         establishes_planned_claim_mechanism: 0.9,
-      }),
-      0.5
+      })
     );
 
     expect(decision).toMatchObject({
@@ -79,8 +78,7 @@ describe("gateClaimsWithTypeSafe", () => {
   it("rejects repetition that establishes no planned claim", async () => {
     const decision = await gateClaimsWithTypeSafe(
       request(),
-      answering({ repeats_what_listeners_already_heard: 0.9 }),
-      0.5
+      answering({ repeats_what_listeners_already_heard: 0.9 })
     );
 
     expect(decision).toMatchObject({
@@ -97,11 +95,32 @@ describe("gateClaimsWithTypeSafe", () => {
       answering({
         repeats_what_listeners_already_heard: 0.9,
         establishes_planned_claim_mechanism: 0.8,
-      }),
-      0.5
+      })
     );
 
     expect(decision).toMatchObject({ value: { accepted: true } });
+  });
+
+  it("needs clear evidence to reject: 0.75 before-setup and 0.6 repetition still pass", async () => {
+    const decision = await gateClaimsWithTypeSafe(
+      request(),
+      answering({
+        states_claim_before_prerequisites_payoff: 0.75,
+        repeats_what_listeners_already_heard: 0.6,
+      })
+    );
+
+    expect(decision).toMatchObject({ value: { accepted: true } });
+  });
+
+  it("accepts per-check threshold overrides", async () => {
+    const decision = await gateClaimsWithTypeSafe(
+      request(),
+      answering({ states_claim_before_prerequisites_payoff: 0.6 }),
+      { prerequisite: 0.5, repetition: 0.7, establishesTarget: 0.5 }
+    );
+
+    expect(decision).toMatchObject({ value: { accepted: false } });
   });
 
   it("does not ask about repetition on the first turn, or call at all with nothing to ask", async () => {
@@ -109,8 +128,7 @@ describe("gateClaimsWithTypeSafe", () => {
 
     const decision = await gateClaimsWithTypeSafe(
       request({ saidSoFar: [], blockedClaims: [], contributionTargets: [] }),
-      provider,
-      0.5
+      provider
     );
 
     expect(decision).toEqual({ status: "ok", value: { accepted: true } });

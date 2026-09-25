@@ -70,7 +70,7 @@ describe.skipIf(!process.env.TYPESAFE_API_KEY)("TypeSafe claim gate (live)", () 
       cases.map(async ([name, request, expected]) => ({
         name,
         expected,
-        decision: await gateClaimsWithTypeSafe(request, provider, 0.5),
+        decision: await gateClaimsWithTypeSafe(request, provider),
       }))
     );
     console.log(

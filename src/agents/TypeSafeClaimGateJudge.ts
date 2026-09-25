@@ -6,7 +6,29 @@ import {
 } from "../services/judgment-runtime";
 
 export const CLAIM_GATE_JUDGMENT = "claim-gate";
-export const DEFAULT_CLAIM_GATE_THRESHOLD = 0.5;
+
+/**
+ * Per-check thresholds. The first all-on run rejected 17 of 28 candidate
+ * turns at a flat 0.5, mostly for "states a claim before its prerequisites"
+ * at 0.5-0.75 — including the episode's core pitch — and once for a
+ * four-word reaction judged 0.52 repetitive. Rejecting a turn discards it,
+ * so the reject conditions need clear evidence; the establish-a-target
+ * exception, which only rescues a turn, stays at an even split.
+ */
+export interface ClaimGateThresholds {
+  /** Reject when a blocked claim is stated with at least this probability. */
+  prerequisite: number;
+  /** Reject as repetitive at or above this probability. */
+  repetition: number;
+  /** A repetitive turn is kept if it establishes a target at or above this. */
+  establishesTarget: number;
+}
+
+export const DEFAULT_CLAIM_GATE_THRESHOLDS: ClaimGateThresholds = {
+  prerequisite: 0.8,
+  repetition: 0.7,
+  establishesTarget: 0.5,
+};
 
 export interface ClaimGateVerdict {
   accepted: boolean;
@@ -33,7 +55,7 @@ export interface ClaimGateRequest {
 export interface ClaimGateJudgeDeps {
   runner?: JudgmentRunner;
   provider?: IJudgmentProvider;
-  threshold?: number;
+  thresholds?: Partial<ClaimGateThresholds>;
 }
 
 /**
@@ -55,7 +77,7 @@ export function gateClaims(
       gateClaimsWithTypeSafe(
         request,
         deps.provider ?? getJudgmentProvider(),
-        deps.threshold ?? DEFAULT_CLAIM_GATE_THRESHOLD
+        { ...DEFAULT_CLAIM_GATE_THRESHOLDS, ...deps.thresholds }
       ),
     state: {
       candidateTurn: request.candidateTurn,
@@ -69,7 +91,7 @@ export function gateClaims(
 export async function gateClaimsWithTypeSafe(
   request: ClaimGateRequest,
   provider: IJudgmentProvider,
-  threshold: number
+  thresholds: ClaimGateThresholds = DEFAULT_CLAIM_GATE_THRESHOLDS
 ): Promise<TypeSafeDecision<ClaimGateVerdict>> {
   const questions: Record<string, NoulQuestion> = {};
   if (request.saidSoFar.length > 0) {
@@ -113,7 +135,8 @@ export async function gateClaimsWithTypeSafe(
 
   const prematureClaim = request.blockedClaims.find(
     (claim) =>
-      result.answers[`states_claim_before_prerequisites_${claim.id}`].probability >= threshold
+      result.answers[`states_claim_before_prerequisites_${claim.id}`].probability >=
+      thresholds.prerequisite
   );
   if (prematureClaim) {
     return decide({
@@ -123,12 +146,13 @@ export async function gateClaimsWithTypeSafe(
   }
 
   const repeats = result.answers.repeats_what_listeners_already_heard;
-  if (!repeats || repeats.probability < threshold) {
+  if (!repeats || repeats.probability < thresholds.repetition) {
     return decide({ accepted: true });
   }
   const establishesTarget = request.contributionTargets.some(
     (claim) =>
-      result.answers[`establishes_planned_claim_${claim.id}`].probability >= threshold
+      result.answers[`establishes_planned_claim_${claim.id}`].probability >=
+      thresholds.establishesTarget
   );
   return decide(
     establishesTarget
