@@ -1,6 +1,9 @@
 import { VectorStore, Document, PodcastMaterial } from '../types';
 import { LangChainVectorStore } from './VectorStore';
 import { logger } from '../utils/logger';
+import { rerankByRelevance } from './TypeSafeRelevanceJudge';
+
+const CANDIDATE_MULTIPLIER = 2;
 
 export class RAGService {
   private vectorStore: VectorStore;
@@ -32,7 +35,18 @@ export class RAGService {
 
   async searchRelevantContent(query: string, limit: number = 5): Promise<Document[]> {
     try {
-      const results = await this.vectorStore.similaritySearch(query, limit);
+      // Over-fetch so a relevance rerank has candidates to promote; the
+      // similarity-only result is still just the nearest `limit`.
+      const candidates = await this.vectorStore.similaritySearch(
+        query,
+        limit * CANDIDATE_MULTIPLIER
+      );
+      const results = await rerankByRelevance({
+        query,
+        candidates,
+        limit,
+        current: async () => candidates.slice(0, limit),
+      });
       logger.debug(`Found ${results.length} relevant documents for query: ${query}`);
       return results;
     } catch (error) {
