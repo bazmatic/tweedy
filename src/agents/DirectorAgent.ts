@@ -54,6 +54,7 @@ import { DiscourseRoleMatcher } from './DiscourseRoleMatcher';
 import { verifyCoverage } from './TypeSafeCoverageJudge';
 import { verifyConversationComplete } from './TypeSafeConclusionJudge';
 import { chooseEditorialMove } from './TypeSafeEditorialMoveJudge';
+import { judgmentMode } from '../services/judgment-runtime';
 import { CardGraphService } from '../services/CardGraphService';
 import { SHORT_REACTION_TOOLS, SpeakerAgentToolName } from './speaker-tools';
 import { ModelTask } from '../providers/ModelRoutingPolicy';
@@ -1251,9 +1252,10 @@ Return only the ids of points that were genuinely, substantively covered.`,
     // checking the turn's explicitly targeted claims leaves those claims
     // permanently "unestablished" even though a listener already heard them,
     // so the director re-assigns the same already-spoken content as a fresh
-    // target on a later turn, guaranteeing a repetition rejection. Bounded to
-    // a handful of untargeted-but-eligible claims to avoid an unbounded LLM
-    // call per turn.
+    // target on a later turn, guaranteeing a repetition rejection. With the
+    // LLM verifier this is bounded to a handful of untargeted-but-eligible
+    // claims to avoid an unbounded call per turn; when TypeSafe verifies
+    // discourse coverage it sweeps every unheard claim (see below).
     await this.recordOpportunisticDiscourseCoverage(
       script,
       speech,
@@ -1270,12 +1272,20 @@ Return only the ids of points that were genuinely, substantively covered.`,
   }
 
   private static readonly MAX_OPPORTUNISTIC_DISCOURSE_CLAIMS = 3;
+  private static readonly MAX_SWEPT_DISCOURSE_CLAIMS = 60;
 
   private async recordOpportunisticDiscourseCoverage(
     script: PodcastScript,
     speech: Speech,
     alreadyTargetedClaimIds: string[]
   ): Promise<void> {
+    // When TypeSafe decides discourse coverage, checking every unheard claim
+    // costs one parallel yes/no per claim, so sweep them all — including
+    // claims whose prerequisites aren't recorded yet. Otherwise claims only
+    // become established when a turn was aimed at them, the record lags far
+    // behind what listeners heard, and the claim gate blocks later claims
+    // as premature. The LLM path keeps its small, prerequisite-ready bound.
+    const sweepAll = judgmentMode("coverage.discourse") === "on";
     const untargetedEligibleIds = this.allDiscourseClaims()
       .filter(
         (claim) =>
@@ -1283,12 +1293,18 @@ Return only the ids of points that were genuinely, substantively covered.`,
           claim.state !== "established" &&
           claim.state !== "developed" &&
           claim.state !== "unresolved" &&
-          claim.prerequisiteClaimIds.every((id) =>
-            this.isDiscourseClaimEstablished(id)
-          )
+          (sweepAll ||
+            claim.prerequisiteClaimIds.every((id) =>
+              this.isDiscourseClaimEstablished(id)
+            ))
       )
       .map((claim) => claim.id)
-      .slice(0, DirectorAgent.MAX_OPPORTUNISTIC_DISCOURSE_CLAIMS);
+      .slice(
+        0,
+        sweepAll
+          ? DirectorAgent.MAX_SWEPT_DISCOURSE_CLAIMS
+          : DirectorAgent.MAX_OPPORTUNISTIC_DISCOURSE_CLAIMS
+      );
     if (untargetedEligibleIds.length === 0) return;
     const verifiedIds = await this.verifyDiscourseClaims(
       script,
