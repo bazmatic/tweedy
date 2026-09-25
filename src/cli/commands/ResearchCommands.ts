@@ -31,14 +31,22 @@ export function createResearchCommands(): Command {
         const provider = options.provider as ResearchProviderName;
         const researchService = new ResearchService(materialService, provider);
 
-        const materials = await researchService.research(query, options.name, {
-          followUpQueries: parseInt(options.depth, 10),
-        });
+        const { materials, rejected } = await researchService.researchWithReport(
+          query,
+          options.name,
+          { followUpQueries: parseInt(options.depth, 10) }
+        );
 
         logger.success(`Added ${materials.length} material(s) from research:`);
         materials.forEach((material) => {
           console.log(`  [ID: ${material.id}] ${material.title} (${material.source})`);
         });
+        if (rejected.length > 0) {
+          logger.warn(`Skipped ${rejected.length} research result(s):`);
+          rejected.forEach((result) => {
+            console.log(`  ${result.title} — ${result.reason}`);
+          });
+        }
       } catch (error) {
         logger.error("Failed to research topic:", error);
       }
