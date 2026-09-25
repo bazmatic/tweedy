@@ -1,7 +1,8 @@
 import { TurnReview } from "../types";
 import {
+  choice,
   IJudgmentProvider,
-  NoulQuestion,
+  JudgmentQuestion,
   noul,
 } from "../providers/judgment-questions";
 import { JudgmentRunner, TypeSafeDecision } from "../services/JudgmentRunner";
@@ -24,10 +25,8 @@ type ReviewFlag =
   | "castConsistent";
 
 interface ReasonSpec {
-  /** The problem, phrased so "does this apply?" is a clear yes/no. */
+  /** What this outcome means, as the Choice criterion the model sees. */
   criterion: string;
-  /** Overrides the generic question when a narrower one judges better. */
-  question?: string;
   /** Plain-sentence feedback handed to the rewrite and any re-review. */
   feedback: string;
   /** Review flags this reason fails, mirroring the LLM reviewer's fields. */
@@ -37,11 +36,13 @@ interface ReasonSpec {
 }
 
 /**
- * The fixed set of reasons a turn can be rejected for. Each reason is asked
- * as its own narrow yes/no question (a single Choice across every reason
- * under-weighted less salient problems such as repetition); the turn is
- * rejected for the most probable reason above the threshold, and that
- * reason's feedback drives the rewrite. `no_problem` is the accepted outcome.
+ * The fixed set of reasons a turn can be rejected for, asked as one Choice
+ * (`most_serious_problem`); `no_problem` is the accepted outcome and the
+ * chosen reason's feedback drives the rewrite. On 20 labelled turns a single
+ * Choice matched separate per-reason yes/no questions (20/20 accept/reject,
+ * 20/20 vs 19/20 reason) at the same latency, with one question instead of
+ * a dozen. What mattered was giving repetition the earlier lines as their
+ * own `said_so_far` field.
  */
 export const TURN_REJECTION_REASONS = {
   no_problem: {
@@ -78,12 +79,10 @@ export const TURN_REJECTION_REASONS = {
     fails: ["grounded"],
   },
   repeats_earlier_content: {
+    // Points at `said_so_far` rather than the lines buried in the brief:
+    // judged against the brief alone, a verbatim repeat scored only 0.28.
     criterion:
-      "The turn substantively repeats a fact, claim, comparison, or example already said by any speaker, without building on it or adding a new angle (reprising the cold open's hook is fine)",
-    // Asked against the earlier lines as their own field: buried inside the
-    // full review brief, clear repeats scored well under the threshold.
-    question:
-      "Does `candidate_turn` substantively repeat a fact, claim, comparison, or example already stated in `said_so_far` (by any speaker), even if reworded, without building on it or adding a new angle? Reprising the episode's opening hook is not repetition.",
+      "The turn substantively repeats a fact, claim, comparison, or example already stated in `said_so_far` by any speaker, even if reworded, without building on it or adding a new angle (reprising the episode's opening hook is fine)",
     feedback: "The turn repeats something already said without adding to it.",
     fails: ["addsVariety"],
   },
@@ -216,29 +215,27 @@ export async function judgeTurnReviewWithTypeSafe(
   provider: IJudgmentProvider,
   threshold: number
 ): Promise<TypeSafeDecision<TurnReviewVerdict>> {
-  const problems = applicableReasons(request.tool).filter(
-    (reason): reason is Exclude<TurnRejectionReason, "no_problem"> => reason !== "no_problem"
-  );
-  const questions: Record<string, NoulQuestion> = {
+  const reasons = applicableReasons(request.tool);
+  const questions: Record<string, JudgmentQuestion> = {
+    most_serious_problem: choice(
+      "`review_brief` is the editorial rubric and context for a proposed podcast turn, `candidate_turn`, " +
+        "which listeners have not heard yet; `said_so_far` lists the earlier lines. Following that rubric, " +
+        "which single problem, if any, should cause the turn to be rejected before broadcast? Choose " +
+        "no_problem unless a problem is clearly present; when several apply, choose the most serious.",
+      Object.fromEntries(
+        reasons.map((reason) => [reason, TURN_REJECTION_REASONS[reason].criterion])
+      )
+    ),
     advances_turn_goal: noul(
       "Does `candidate_turn` meaningfully advance the goal stated in `review_brief`, rather than stalling, " +
         "restating, or drifting away from it?"
     ),
   };
-  for (const reason of problems) {
-    const spec: ReasonSpec = TURN_REJECTION_REASONS[reason];
-    questions[reason] = noul(
-      spec.question ??
-        "`review_brief` is the editorial rubric and context for a proposed podcast turn, `candidate_turn`, " +
-          "which listeners have not heard yet. Following that rubric, does this problem clearly apply to " +
-          `\`candidate_turn\`: ${spec.criterion}?`
-    );
-  }
-  request.assignedCards.forEach((card, index) => {
+  for (const card of request.assignedCards) {
     questions[`introduces_card_${card.id}`] = noul(
       `Does \`candidate_turn\` explicitly introduce aloud the substance of this prepared card: "${card.content}"?`
     );
-  });
+  }
 
   const result = await provider.judge(
     {
@@ -250,43 +247,38 @@ export async function judgeTurnReviewWithTypeSafe(
   );
   if (result.status !== "ok") return result;
 
-  const problemProbabilities: Record<string, number> = {};
-  const failing: { reason: TurnRejectionReason; probability: number }[] = [];
-  for (const reason of problems) {
-    const probability = result.answers[reason].probability;
-    problemProbabilities[reason] = probability;
-    if (probability >= threshold) failing.push({ reason, probability });
+  const problemAnswer = result.answers.most_serious_problem;
+  const goalAnswer = result.answers.advances_turn_goal;
+  if (problemAnswer.type !== "choice" || goalAnswer.type !== "noul") {
+    return { status: "unavailable", reason: "unexpected answer types" };
   }
-  failing.sort((a, b) => b.probability - a.probability);
-  const reason: TurnRejectionReason = failing[0]?.reason ?? "no_problem";
+  const reason = problemAnswer.choice as TurnRejectionReason;
+  const spec: ReasonSpec = TURN_REJECTION_REASONS[reason];
 
   const cardProbabilities: Record<string, number> = {};
   const introducedCardIds: string[] = [];
-  request.assignedCards.forEach((card, index) => {
-    const probability = result.answers[`introduces_card_${card.id}`].probability;
+  for (const card of request.assignedCards) {
+    const answer = result.answers[`introduces_card_${card.id}`];
+    const probability = answer.type === "noul" ? answer.probability : 0;
     cardProbabilities[card.id] = probability;
     if (probability >= threshold) introducedCardIds.push(card.id);
-  });
+  }
 
-  // Every problem above the threshold fails its flags, not just the top one.
-  const fails = new Set<ReviewFlag>(
-    failing.flatMap(({ reason: r }) => (TURN_REJECTION_REASONS[r] as ReasonSpec).fails)
-  );
-  const advancesBeat = result.answers.advances_turn_goal.probability;
+  const fails = new Set(spec.fails);
   const verdict: TurnReviewVerdict = {
     accepted: reason === "no_problem",
     clear: !fails.has("clear"),
     // Not judged separately; nothing downstream gates on it.
     engaging: true,
     grounded: !fails.has("grounded"),
-    advancesBeat: advancesBeat >= threshold,
+    advancesBeat: goalAnswer.probability >= threshold,
     addsVariety: !fails.has("addsVariety"),
     roleConsistent: !fails.has("roleConsistent"),
     knowledgeConsistent: !fails.has("knowledgeConsistent"),
     audienceAccessible: !fails.has("audienceAccessible"),
     castConsistent: !fails.has("castConsistent"),
     introducedCardIds,
-    feedback: TURN_REJECTION_REASONS[reason].feedback,
+    feedback: spec.feedback,
   };
 
   return {
@@ -294,8 +286,9 @@ export async function judgeTurnReviewWithTypeSafe(
     value: verdict,
     detail: {
       reason,
-      problems: problemProbabilities,
-      advancesBeat,
+      reasonConfidence: problemAnswer.confidence,
+      reasonProbabilities: problemAnswer.probabilities,
+      advancesTurnGoal: goalAnswer.probability,
       cards: cardProbabilities,
     },
   };

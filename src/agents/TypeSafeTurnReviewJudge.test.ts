@@ -28,26 +28,34 @@ function fakeProvider(answers: (questions: JudgmentQuestions) => Answers) {
 }
 
 /**
- * Answers every question: the named problems get the given probabilities,
- * every other problem 0.05, the goal question `advances`, and each
- * `introduces_card_<id>` question its entry in `cards` (default 0).
+ * Answers every question: `most_serious_problem` chooses `reason`, the goal
+ * question gets `advances`, and each `introduces_card_<id>` question its
+ * entry in `cards` (default 0).
  */
 const verdict = (
-  problems: Record<string, number>,
+  reason: string,
   advances = 0.8,
   cards: Record<string, number> = {}
 ) =>
   fakeProvider((questions) =>
     Object.fromEntries(
-      Object.keys(questions).map((id) => {
-        const probability =
-          id === "advances_turn_goal"
-            ? advances
-            : id.startsWith("introduces_card_")
-              ? cards[id.slice("introduces_card_".length)] ?? 0
-              : problems[id] ?? 0.05;
-        return [id, { type: "noul", probability }];
-      })
+      Object.keys(questions).map((id) => [
+        id,
+        id === "most_serious_problem"
+          ? {
+              type: "choice",
+              choice: reason,
+              probabilities: { [reason]: 0.9 },
+              confidence: 0.85,
+            }
+          : {
+              type: "noul",
+              probability:
+                id === "advances_turn_goal"
+                  ? advances
+                  : cards[id.slice("introduces_card_".length)] ?? 0,
+            },
+      ])
     )
   );
 
@@ -106,8 +114,8 @@ describe("applicableReasons", () => {
 });
 
 describe("judgeTurnReviewWithTypeSafe", () => {
-  it("accepts when no problem reaches the threshold, and maps goal and card probabilities", async () => {
-    const provider = verdict({ repeats_earlier_content: 0.49 }, 0.7, { c1: 0.9, c2: 0.2 });
+  it("accepts on no_problem and maps goal and card probabilities", async () => {
+    const provider = verdict("no_problem", 0.7, { c1: 0.9, c2: 0.2 });
 
     const decision = await judgeTurnReviewWithTypeSafe(request(), provider, 0.5);
 
@@ -126,8 +134,8 @@ describe("judgeTurnReviewWithTypeSafe", () => {
     });
   });
 
-  it("asks one descriptively named yes/no per applicable problem and per card", async () => {
-    const provider = verdict({});
+  it("asks one Choice over applicable problems plus a yes/no per card", async () => {
+    const provider = verdict("no_problem");
 
     await judgeTurnReviewWithTypeSafe(request(), provider, 0.5);
 
@@ -137,20 +145,24 @@ describe("judgeTurnReviewWithTypeSafe", () => {
       said_so_far: request().saidSoFar,
       candidate_turn: request().candidateTurn,
     });
-    const ids = Object.keys(questions);
-    expect(ids).toContain("advances_turn_goal");
-    expect(ids).toContain("repeats_earlier_content");
-    expect(ids).toContain("introduces_card_c1");
-    expect(ids).toContain("introduces_card_c2");
-    expect(ids).not.toContain("no_problem");
-    expect(ids).not.toContain("closing_lacks_farewell");
-    expect(Object.values(questions).every((q) => q.type === "noul")).toBe(true);
+    expect(Object.keys(questions).sort()).toEqual(
+      [
+        "advances_turn_goal",
+        "introduces_card_c1",
+        "introduces_card_c2",
+        "most_serious_problem",
+      ].sort()
+    );
+    const options = (questions.most_serious_problem as any).criteria;
+    expect(Object.keys(options)).toContain("no_problem");
+    expect(Object.keys(options)).toContain("repeats_earlier_content");
+    expect(Object.keys(options)).not.toContain("closing_lacks_farewell");
+    expect(options.repeats_earlier_content).toContain("`said_so_far`");
     expect(questions.introduces_card_c1.instructions).toContain("square CO2 filters");
-    expect(questions.repeats_earlier_content.instructions).toContain("`said_so_far`");
   });
 
-  it("asks closing-only problems for a closing statement", async () => {
-    const provider = verdict({});
+  it("offers closing-only problems for a closing statement", async () => {
+    const provider = verdict("no_problem");
 
     await judgeTurnReviewWithTypeSafe(
       request({ tool: SpeakerAgentToolName.CLOSING_STATEMENT }),
@@ -158,25 +170,28 @@ describe("judgeTurnReviewWithTypeSafe", () => {
       0.5
     );
 
-    expect(Object.keys(provider.judge.mock.calls[0][1])).toContain(
+    const questions = provider.judge.mock.calls[0][1] as any;
+    expect(Object.keys(questions.most_serious_problem.criteria)).toContain(
       "closing_lacks_farewell"
     );
   });
 
-  it("names the most probable problem and fails every flag above the threshold", async () => {
+  it("uses the chosen problem's feedback and records the distribution", async () => {
     const decision = await judgeTurnReviewWithTypeSafe(
       request(),
-      verdict({ addresses_someone_not_in_cast: 0.92, breaks_speaker_role: 0.6 }),
+      verdict("addresses_someone_not_in_cast"),
       0.5
     );
 
     if (decision.status !== "ok") throw new Error("expected ok");
-    expect(decision.detail).toMatchObject({ reason: "addresses_someone_not_in_cast" });
     expect(decision.value.feedback).toBe(
       TURN_REJECTION_REASONS.addresses_someone_not_in_cast.feedback
     );
     expect(decision.value.castConsistent).toBe(false);
-    expect(decision.value.roleConsistent).toBe(false);
+    expect(decision.detail).toMatchObject({
+      reason: "addresses_someone_not_in_cast",
+      reasonConfidence: 0.85,
+    });
   });
 
   it.each([
@@ -188,7 +203,7 @@ describe("judgeTurnReviewWithTypeSafe", () => {
   ])("rejects on %s by failing %s", async (reason, flag) => {
     const decision = await judgeTurnReviewWithTypeSafe(
       request(),
-      verdict({ [reason]: 0.9 }),
+      verdict(reason),
       0.5
     );
 
@@ -201,7 +216,7 @@ describe("judgeTurnReviewWithTypeSafe", () => {
   it("rejects on a problem that fails no flag (ignoring the preceding exchange)", async () => {
     const decision = await judgeTurnReviewWithTypeSafe(
       request(),
-      verdict({ ignores_preceding_exchange: 0.9 }),
+      verdict("ignores_preceding_exchange"),
       0.5
     );
 
@@ -228,7 +243,7 @@ describe("reviewTurn", () => {
 
     const result = await reviewTurn(request(), {
       runner,
-      provider: verdict({}, 0.1, { c1: 0.9, c2: 0.9 }),
+      provider: verdict("no_problem", 0.1, { c1: 0.9, c2: 0.9 }),
     });
 
     expect(result).toBe(currentVerdict);
@@ -245,7 +260,7 @@ describe("reviewTurn", () => {
 
     await reviewTurn(request(), {
       runner,
-      provider: verdict({ repeats_earlier_content: 0.94 }),
+      provider: verdict("repeats_earlier_content"),
     });
 
     expect(records[0].agreed).toBe(false);

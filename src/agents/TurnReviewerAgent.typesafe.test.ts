@@ -64,22 +64,16 @@ const cards = [
   { id: "c1", kind: "fact", content: "Scrubbers remove CO2 from cabin air." } as any,
 ];
 
-/** Scripts TypeSafe's answers: `failingProblem` (if any) is clearly present. */
-function scriptVerdict(failingProblem?: string) {
+/** Scripts TypeSafe's answers: the Choice picks `problem`; card c1 is introduced. */
+function scriptVerdict(problem = "no_problem") {
   judgeMock.mockImplementationOnce(async (_state, questions) => ({
     status: "ok",
     answers: Object.fromEntries(
       Object.keys(questions).map((id) => [
         id,
-        {
-          type: "noul",
-          probability:
-            id === "advances_turn_goal" || id === "introduces_card_c1"
-              ? 0.9
-              : id === failingProblem
-                ? 0.94
-                : 0.05,
-        },
+        id === "most_serious_problem"
+          ? { type: "choice", choice: problem, probabilities: {}, confidence: 0.9 }
+          : { type: "noul", probability: 0.9 },
       ])
     ),
   }));
