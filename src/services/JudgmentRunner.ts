@@ -4,7 +4,8 @@ import { JudgmentModes, resolveJudgmentMode } from "./judgment-modes";
 
 /** A TypeSafe-backed decision, or the reason it could not be made. */
 export type TypeSafeDecision<T> =
-  | { status: "ok"; value: T }
+  /** `detail` (e.g. raw probabilities) is logged to help inspect disagreements. */
+  | { status: "ok"; value: T; detail?: unknown }
   | { status: "unavailable"; reason: string };
 
 export interface JudgmentCall<T> {
@@ -104,7 +105,12 @@ export class JudgmentRunner {
       actedOn: outcome.actedOn,
       ...(hasCurrent ? { current: outcome.current } : {}),
       ...(outcome.decision.status === "ok"
-        ? { typesafe }
+        ? {
+            typesafe,
+            ...(outcome.decision.detail !== undefined
+              ? { typesafeDetail: outcome.decision.detail }
+              : {}),
+          }
         : { typesafeUnavailableReason: outcome.decision.reason }),
     };
     if (hasCurrent && outcome.decision.status === "ok") {

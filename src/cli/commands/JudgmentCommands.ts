@@ -66,6 +66,9 @@ function printDisagreement(record: JudgmentRecord): void {
   console.log(chalk.gray(`  ${record.timestamp}`));
   console.log(`    current:  ${JSON.stringify(record.current)}`);
   console.log(`    typesafe: ${JSON.stringify(record.typesafe)}`);
+  if (record.typesafeDetail !== undefined) {
+    console.log(`    detail:   ${JSON.stringify(record.typesafeDetail)}`);
+  }
   if (record.state !== undefined) {
     const state = JSON.stringify(record.state);
     console.log(

@@ -11,8 +11,10 @@ const VALID_MODES: readonly JudgmentMode[] = ["off", "shadow", "on"];
 
 /**
  * Parses TYPESAFE_JUDGMENTS, a comma-separated list of `name=mode` pairs,
- * e.g. `coverage=shadow,conversation-complete=on`. `*=mode` sets the default
- * for any judgment not named explicitly. Unset or empty means everything off.
+ * e.g. `coverage=shadow,conversation-complete=on`. A dotted judgment such as
+ * `coverage.point` inherits from `coverage` unless named itself. `*=mode`
+ * sets the default for any judgment not otherwise matched. Unset or empty
+ * means everything off.
  */
 export function parseJudgmentModes(value: string | undefined): JudgmentModes {
   const modes: Record<string, JudgmentMode> = {};
@@ -41,5 +43,10 @@ export function resolveJudgmentMode(
   modes: JudgmentModes,
   judgment: string
 ): JudgmentMode {
-  return modes[judgment] ?? modes[WILDCARD] ?? "off";
+  const segments = judgment.split(".");
+  for (let length = segments.length; length > 0; length--) {
+    const mode = modes[segments.slice(0, length).join(".")];
+    if (mode) return mode;
+  }
+  return modes[WILDCARD] ?? "off";
 }

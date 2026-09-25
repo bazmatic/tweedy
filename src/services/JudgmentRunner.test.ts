@@ -42,6 +42,13 @@ describe("parseJudgmentModes", () => {
     expect(resolveJudgmentMode(modes, "anything-else")).toBe("shadow");
   });
 
+  it("lets dotted judgments inherit from their prefix unless named", () => {
+    const modes = parseJudgmentModes("coverage=shadow,coverage.point=on");
+    expect(resolveJudgmentMode(modes, "coverage.point")).toBe("on");
+    expect(resolveJudgmentMode(modes, "coverage.discourse")).toBe("shadow");
+    expect(resolveJudgmentMode(modes, "coverageish")).toBe("off");
+  });
+
   it("rejects malformed entries and unknown modes", () => {
     expect(() => parseJudgmentModes("coverage")).toThrow(/expected name=mode/);
     expect(() => parseJudgmentModes("coverage=maybe")).toThrow(/off, shadow or on/);

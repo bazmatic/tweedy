@@ -44,12 +44,18 @@ export interface ScoreAnswer {
   confidence: number;
 }
 
+// Distributes over a union of question types, so a generic question record
+// yields a union of answers rather than collapsing to one branch.
+export type JudgmentAnswer<Q> = Q extends ChoiceQuestion<infer K>
+  ? ChoiceAnswer<K>
+  : Q extends NoulQuestion
+    ? NoulAnswer
+    : Q extends ScoreQuestion
+      ? ScoreAnswer
+      : never;
+
 export type JudgmentAnswers<Q extends JudgmentQuestions> = {
-  [Id in keyof Q]: Q[Id] extends ChoiceQuestion<infer K>
-    ? ChoiceAnswer<K>
-    : Q[Id] extends NoulQuestion
-      ? NoulAnswer
-      : ScoreAnswer;
+  [Id in keyof Q]: JudgmentAnswer<Q[Id]>;
 };
 
 export type JudgmentResult<Q extends JudgmentQuestions> =

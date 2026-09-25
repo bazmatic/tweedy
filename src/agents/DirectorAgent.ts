@@ -51,6 +51,7 @@ import { DialogueCadencePolicy } from './DialogueCadencePolicy';
 import { AudienceAccessibilityPolicy } from './AudienceAccessibilityPolicy';
 import { EpisodeConclusionPolicy } from './EpisodeConclusionPolicy';
 import { DiscourseRoleMatcher } from './DiscourseRoleMatcher';
+import { verifyCoverage } from './TypeSafeCoverageJudge';
 import { CardGraphService } from '../services/CardGraphService';
 import { SHORT_REACTION_TOOLS, SpeakerAgentToolName } from './speaker-tools';
 import { ModelTask } from '../providers/ModelRoutingPolicy';
@@ -912,14 +913,20 @@ Return only the ids of points that were genuinely, substantively covered.`,
     ];
 
     try {
-      const { confirmedPointIds } =
-        await this.callModelForStructuredOutput<VerifyCoveredPointsInput>(
-          ModelTask.CoverageVerification,
-          messages,
-          verifyCoveredPointsSchema,
-          150
-        );
-      return confirmedPointIds;
+      return await verifyCoverage({
+        kind: 'point',
+        items: candidatePoints,
+        transcript: recentHistory,
+        current: async () =>
+          (
+            await this.callModelForStructuredOutput<VerifyCoveredPointsInput>(
+              ModelTask.CoverageVerification,
+              messages,
+              verifyCoveredPointsSchema,
+              150
+            )
+          ).confirmedPointIds,
+      });
     } catch (error) {
       logger.error(
         'Failed to verify covered points; treating claims as unconfirmed:',
@@ -1306,13 +1313,14 @@ Return only the ids of points that were genuinely, substantively covered.`,
       targetClaimIds.includes(claim.id)
     );
     if (candidates.length === 0) return [];
+    const transcript = this.getConversationHistory(script);
     const messages = [
       {
         role: "user" as const,
         content: `Verify whether each atomic discourse claim is clearly established by the accepted podcast transcript. The complete causal or explanatory meaning must be recoverable by a new listener. A teaser, keyword, unexplained proper noun, consequence without its cause, or question that assumes the answer does NOT establish a claim.
 
 Accepted transcript:
-${this.getConversationHistory(script) || "(nothing said yet)"}
+${transcript || "(nothing said yet)"}
 ${candidateMessage ? `\nCandidate accepted turn:\n${candidateMessage}` : ""}
 
 Target claims:
@@ -1322,14 +1330,21 @@ Return only the ids whose complete meaning is established.`,
       },
     ];
     try {
-      const { confirmedPointIds } =
-        await this.callModelForStructuredOutput<VerifyCoveredPointsInput>(
-          ModelTask.CoverageVerification,
-          messages,
-          verifyCoveredPointsSchema,
-          150
-        );
-      return confirmedPointIds;
+      return await verifyCoverage({
+        kind: "discourse",
+        items: candidates,
+        transcript,
+        candidateTurn: candidateMessage,
+        current: async () =>
+          (
+            await this.callModelForStructuredOutput<VerifyCoveredPointsInput>(
+              ModelTask.CoverageVerification,
+              messages,
+              verifyCoveredPointsSchema,
+              150
+            )
+          ).confirmedPointIds,
+      });
     } catch (error) {
       logger.error(
         "Failed to verify discourse claims; treating claims as unconfirmed:",
@@ -1451,13 +1466,14 @@ Return only the ids whose complete meaning is established.`,
     const claimsList = candidates
       .map((claim) => `- ${claim.id}: ${claim.text}`)
       .join("\n");
+    const transcript = this.getConversationHistory(script);
     const messages = [
       {
         role: "user" as const,
         content: `Verify whether each foundational orientation claim is clearly established by the accepted podcast transcript. A new listener must be able to recover the claim's complete meaning. Mere keyword mentions, implications, scattered fragments, or assumed prior knowledge do NOT count.
 
 Accepted transcript:
-${this.getConversationHistory(script) || "(nothing said yet)"}
+${transcript || "(nothing said yet)"}
 
 Orientation claims:
 ${claimsList}
@@ -1466,13 +1482,20 @@ Return only the ids of claims whose complete meaning was explicitly established.
       },
     ];
     try {
-      const { confirmedPointIds } =
-        await this.callModelForStructuredOutput<VerifyCoveredPointsInput>(
-          ModelTask.CoverageVerification,
-          messages,
-          verifyCoveredPointsSchema,
-          150
-        );
+      const confirmedPointIds = await verifyCoverage({
+        kind: "orientation",
+        items: candidates,
+        transcript,
+        current: async () =>
+          (
+            await this.callModelForStructuredOutput<VerifyCoveredPointsInput>(
+              ModelTask.CoverageVerification,
+              messages,
+              verifyCoveredPointsSchema,
+              150
+            )
+          ).confirmedPointIds,
+      });
       for (const claim of candidates) {
         if (confirmedPointIds.includes(claim.id) && !claim.covered) {
           claim.covered = true;

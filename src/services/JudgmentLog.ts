@@ -11,6 +11,8 @@ export interface JudgmentRecord {
   current?: unknown;
   /** TypeSafe's decision, when it was available. */
   typesafe?: unknown;
+  /** Supporting detail for the TypeSafe decision, e.g. raw probabilities. */
+  typesafeDetail?: unknown;
   typesafeUnavailableReason?: string;
   /** Present only when both decisions exist and could be compared. */
   agreed?: boolean;
