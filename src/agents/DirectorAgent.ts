@@ -53,6 +53,7 @@ import { EpisodeConclusionPolicy } from './EpisodeConclusionPolicy';
 import { DiscourseRoleMatcher } from './DiscourseRoleMatcher';
 import { verifyCoverage } from './TypeSafeCoverageJudge';
 import { verifyConversationComplete } from './TypeSafeConclusionJudge';
+import { chooseEditorialMove } from './TypeSafeEditorialMoveJudge';
 import { CardGraphService } from '../services/CardGraphService';
 import { SHORT_REACTION_TOOLS, SpeakerAgentToolName } from './speaker-tools';
 import { ModelTask } from '../providers/ModelRoutingPolicy';
@@ -587,6 +588,18 @@ Conversation so far (each line tagged with the tool used to deliver it — "spea
         velocityAfterThisTurn.openCount >= 2 &&
         this.remainingWorkExceedsCapacity(velocityAfterThisTurn);
       const turnBrief = this.toTurnBrief(result, direction);
+      // A targeted discourse claim sets its move deterministically below.
+      if (!targetDiscourseClaim) {
+        const proposedMove = turnBrief.move;
+        turnBrief.move = await chooseEditorialMove({
+          recentSpeeches: script.speeches.slice(-4),
+          nextSpeaker:
+            knownNextSpeaker ?? this.resolveSpeakerReference(script, speakerId),
+          direction,
+          rhythmGuidance: rhythmNote.trim() || undefined,
+          current: async () => proposedMove,
+        });
+      }
       if (targetPoint) {
         turnBrief.targetPointId = targetPoint.id;
         turnBrief.goal = direction;
