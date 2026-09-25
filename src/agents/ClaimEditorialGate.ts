@@ -7,10 +7,13 @@ import {
 import { LocalEmbeddingService } from "../rag/LocalEmbeddingService";
 import { logger } from "../utils/logger";
 import { SpeakerAgentToolName } from "./speaker-tools";
+import { gateClaims } from "./TypeSafeClaimGateJudge";
 
 const NOVELTY_SIMILARITY = 0.82;
 const CLAIM_MATCH_SIMILARITY = 0.7;
 const REPEATED_PROPORTION = 0.6;
+// A turn shorter than this carries no gateable claim (e.g. "Oh, wow.").
+const MIN_CLAIM_WORDS = 5;
 const CONTRIBUTIVE_ROLES = new Set([
   "explanation",
   "implication",
@@ -55,6 +58,25 @@ export class ClaimEditorialGate {
     if (candidate.tool === SpeakerAgentToolName.CLOSING_STATEMENT) {
       return { accepted: true };
     }
+    if (candidate.message.trim().split(/\s+/).length < MIN_CLAIM_WORDS) {
+      return { accepted: true };
+    }
+    const claims = this.allClaims(script);
+    return gateClaims({
+      candidateTurn: candidate.message,
+      saidSoFar: script.speeches.map(
+        (speech) => `${speech.speaker.name}: ${speech.message}`
+      ),
+      blockedClaims: this.blockedClaims(claims),
+      contributionTargets: this.contributionTargets(candidate, claims),
+      current: () => this.evaluateBySimilarity(candidate, script),
+    });
+  }
+
+  private async evaluateBySimilarity(
+    candidate: Speech,
+    script: PodcastScript
+  ): Promise<ClaimGateResult> {
     const candidateClaims = this.propositions(candidate.message);
     if (candidateClaims.length === 0) return { accepted: true };
 
@@ -106,11 +128,9 @@ export class ClaimEditorialGate {
     }
   }
 
-  private async findDependencyFailure(
-    candidateVectors: number[][],
-    claims: DiscourseClaim[]
-  ): Promise<DiscourseClaim | undefined> {
-    const blocked = claims.filter(
+  /** Planned claims whose listener prerequisites are not yet established. */
+  private blockedClaims(claims: DiscourseClaim[]): DiscourseClaim[] {
+    return claims.filter(
       (claim) =>
         claim.state !== "established" &&
         claim.state !== "developed" &&
@@ -118,6 +138,28 @@ export class ClaimEditorialGate {
           (id) => !this.isEstablished(id, claims)
         )
     );
+  }
+
+  /** Ready, contributive claims the candidate's brief targets. */
+  private contributionTargets(
+    candidate: Speech,
+    claims: DiscourseClaim[]
+  ): DiscourseClaim[] {
+    return claims.filter(
+      (claim) =>
+        candidate.turnBrief?.targetDiscourseClaimIds?.includes(claim.id) &&
+        claim.state !== "established" &&
+        claim.state !== "developed" &&
+        CONTRIBUTIVE_ROLES.has(claim.role) &&
+        claim.prerequisiteClaimIds.every((id) => this.isEstablished(id, claims))
+    );
+  }
+
+  private async findDependencyFailure(
+    candidateVectors: number[][],
+    claims: DiscourseClaim[]
+  ): Promise<DiscourseClaim | undefined> {
+    const blocked = this.blockedClaims(claims);
     if (blocked.length === 0) return undefined;
     const blockedVectors = await this.embedMany(
       blocked.map((claim) => claim.text)
@@ -141,14 +183,7 @@ export class ClaimEditorialGate {
     candidateVectors: number[][],
     claims: DiscourseClaim[]
   ): Promise<boolean> {
-    const targets = claims.filter(
-      (claim) =>
-        candidate.turnBrief?.targetDiscourseClaimIds?.includes(claim.id) &&
-        claim.state !== "established" &&
-        claim.state !== "developed" &&
-        CONTRIBUTIVE_ROLES.has(claim.role) &&
-        claim.prerequisiteClaimIds.every((id) => this.isEstablished(id, claims))
-    );
+    const targets = this.contributionTargets(candidate, claims);
     if (targets.length === 0) return false;
     const targetVectors = await this.embedMany(
       targets.map((claim) => claim.text)
