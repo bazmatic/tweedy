@@ -13,6 +13,7 @@ import {
   prepareMaterialSchema,
 } from "./editorial-schemas";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
+import { scoreStoryValues } from "./TypeSafeStoryValueJudge";
 
 const MAX_PREPARATION_TOKENS = 3000;
 const FALLBACK_CONTENT_LENGTH = 700;
@@ -54,7 +55,14 @@ ${material.content}`,
           prepareMaterialSchema,
           MAX_PREPARATION_TOKENS
         );
-      return this.toPreparedMaterial(material, result);
+      const prepared = this.toPreparedMaterial(material, result);
+      await this.scoreStoryValues(prepared, context.title);
+      for (const card of prepared.cards) {
+        logger.info(
+          `Prepared card ${card.id} [${card.kind}, storyValue=${card.storyValue}]: ${card.content}`
+        );
+      }
+      return prepared;
     } catch (error) {
       logger.warn(
         `Failed to prepare material "${material.title}"; using a basic editorial card:`,
@@ -86,17 +94,33 @@ ${material.content}`,
       storyValue: card.storyValue,
     }));
 
-    for (const card of cards) {
-      logger.info(
-        `Prepared card ${card.id} [${card.kind}, storyValue=${card.storyValue}]: ${card.content}`
-      );
-    }
-
     return {
       materialId: material.id,
       synopsis: input.synopsis ?? "",
       cards,
     };
+  }
+
+  /**
+   * Re-scores story value through the card-story-value judgment. The
+   * extraction model's own scores are the current path, so this is a no-op
+   * unless the judgment is enabled.
+   */
+  private async scoreStoryValues(
+    prepared: PreparedMaterial,
+    podcastTitle: string
+  ): Promise<void> {
+    const values = await scoreStoryValues({
+      podcastTitle,
+      cards: prepared.cards,
+      current: async () =>
+        Object.fromEntries(
+          prepared.cards.map((card) => [card.id, card.storyValue])
+        ),
+    });
+    for (const card of prepared.cards) {
+      card.storyValue = values[card.id] ?? card.storyValue;
+    }
   }
 
   private createFallback(material: PodcastMaterial): PreparedMaterial {
