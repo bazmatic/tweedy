@@ -450,7 +450,7 @@ Default to "informed_host" for any speaker whose personality doesn't say otherwi
       const velocityNote = this.getVelocityNote(velocityBeforeThisTurn);
       const openPointsSection = this.getOpenPointsSection();
       const balanceNote = this.getBalanceNote(script);
-      const rhythmNote = this.getRhythmNote(script);
+      const rhythmNote = await this.getRhythmNote(script);
       const signpostNote = this.getSignpostNote(script);
       const editorialSection = await this.getEditorialSection(
         script,
@@ -2140,8 +2140,10 @@ ${claimsList}`,
     return " The conversation just completed a beat — consider directing this speaker to voice the transition out loud in their own words (e.g. connecting what was just established to what comes next, or flagging that the next part is where it gets interesting) rather than jumping topics silently.";
   }
 
-  private getRhythmNote(script: PodcastScript): string {
-    const recommendation = this.rhythmPolicy.recommend(script.speeches);
+  private async getRhythmNote(script: PodcastScript): Promise<string> {
+    const recommendation = await this.rhythmPolicy.recommendJudged(
+      script.speeches
+    );
     if (!recommendation) return '';
     return ` Rhythm guidance: ${recommendation.reason} Prefer ${recommendation.preferredMoves.join(
       ', '
