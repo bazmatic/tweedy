@@ -107,6 +107,20 @@ export const reviewTurnSchema = z
 
 export type ReviewTurnInput = z.infer<typeof reviewTurnSchema>;
 
+export const extractIntroducedTermsSchema = z
+  .object({
+    introducedTerms: z
+      .array(introducedTermSchema)
+      .describe(
+        "Necessary technical terms first explained in this speech. Exclude incidental names and terms explained earlier."
+      ),
+  })
+  .describe("Technical terms an accepted podcast turn explained to listeners.");
+
+export type ExtractIntroducedTermsInput = z.infer<
+  typeof extractIntroducedTermsSchema
+>;
+
 export const rewriteRejectedTurnSchema = z
   .object({
     message: z

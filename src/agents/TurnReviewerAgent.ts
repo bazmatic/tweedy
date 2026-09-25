@@ -13,11 +13,15 @@ import {
 } from "../types";
 import { BaseAgent } from "./BaseAgent";
 import {
+  ExtractIntroducedTermsInput,
+  extractIntroducedTermsSchema,
   ReviewTurnInput,
   reviewTurnSchema,
   RewriteRejectedTurnInput,
   rewriteRejectedTurnSchema,
 } from "./editorial-schemas";
+import { isTurnAccepted, reviewTurn } from "./TypeSafeTurnReviewJudge";
+import { logger } from "../utils/logger";
 import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
 import { AudienceAccessibilityPolicy } from "./AudienceAccessibilityPolicy";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
@@ -27,6 +31,7 @@ const EMPTY_KNOWLEDGE_LEDGER: KnowledgeLedger = { introducedCards: [] };
 const EMPTY_TERMINOLOGY_LEDGER: TerminologyLedger = { explainedTerms: [] };
 const MAX_REVIEW_TOKENS = 850;
 const MAX_REWRITE_TOKENS = 180;
+const MAX_TERM_EXTRACTION_TOKENS = 200;
 // Wider than the 6-turn recentText window used for conversational flow —
 // repeated content is often said by a DIFFERENT speaker further back than
 // that, and the old same-speaker-only history missed it entirely since it
@@ -175,21 +180,36 @@ Keep your logic terse. When rejected, return one feedback item written as one pl
       },
     ];
 
-    const result = await this.callModelForStructuredOutput<ReviewTurnInput>(
-      ModelTask.TurnReview,
-      messages,
-      reviewTurnSchema,
-      MAX_REVIEW_TOKENS
-    );
-    const { feedback: feedbackItems, ...judgement } = result;
-    const feedback = feedbackItems?.[0] ?? "";
-    const accepted =
-      judgement.accepted &&
-      judgement.addsVariety &&
-      judgement.roleConsistent &&
-      judgement.knowledgeConsistent &&
-      judgement.audienceAccessible &&
-      judgement.castConsistent;
+    const { feedback, ...judgement } = await reviewTurn({
+      reviewBrief: messages[0].content,
+      saidSoFar: recentSpeeches
+        .slice(-REPETITION_HISTORY_LIMIT)
+        .map((item) => `${item.speaker.name}: ${item.message}`),
+      candidateTurn: speech.message,
+      tool: speech.tool,
+      assignedCards: cards
+        .filter((card) => brief.cardIds.includes(card.id))
+        .map((card) => ({ id: card.id, content: card.content })),
+      current: async () => {
+        const { feedback: feedbackItems, ...result } =
+          await this.callModelForStructuredOutput<ReviewTurnInput>(
+            ModelTask.TurnReview,
+            messages,
+            reviewTurnSchema,
+            MAX_REVIEW_TOKENS
+          );
+        return { ...result, feedback: feedbackItems?.[0] ?? "" };
+      },
+    });
+    const accepted = isTurnAccepted(judgement);
+    // A TypeSafe verdict judges but cannot write term meanings, so an
+    // accepted turn it reviewed still needs its explained terms extracted.
+    if (accepted && judgement.introducedTerms === undefined) {
+      judgement.introducedTerms = await this.extractIntroducedTerms(
+        speech,
+        explainedTerms
+      );
+    }
     let revisedMessage = "";
     if (!accepted) {
       const wordBudget =
@@ -240,5 +260,37 @@ Return only one complete corrected spoken turn in the same voice, no longer than
       revisedMessage,
       accepted,
     };
+  }
+
+  private async extractIntroducedTerms(
+    speech: Speech,
+    explainedTerms: string
+  ): Promise<ExtractIntroducedTermsInput["introducedTerms"]> {
+    try {
+      const { introducedTerms } =
+        await this.callModelForStructuredOutput<ExtractIntroducedTermsInput>(
+          ModelTask.TermExtraction,
+          [
+            {
+              role: "user",
+              content: `List the necessary technical terms this podcast turn explains to listeners for the first time, each with the plain-language meaning it gives. Exclude incidental names and any term already explained below. Return an empty list if there are none.
+
+Technical terms already explained aloud:
+${explainedTerms || "(None.)"}
+
+${speech.speaker.name} said: "${speech.message}"`,
+            },
+          ],
+          extractIntroducedTermsSchema,
+          MAX_TERM_EXTRACTION_TOKENS
+        );
+      return introducedTerms;
+    } catch (error) {
+      logger.warn(
+        "Failed to extract introduced terms; recording none for this turn:",
+        error
+      );
+      return [];
+    }
   }
 }
