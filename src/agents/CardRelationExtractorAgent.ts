@@ -2,6 +2,7 @@ import { EditorialCard } from "../types";
 import { BaseAgent } from "./BaseAgent";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
 import { cardRelationSchema, CardRelationExtractionInput } from "./editorial-schemas";
+import { extractCardRelations } from "./TypeSafeCardRelationJudge";
 
 const DEFAULT_MAX_EXTRACTION_TOKENS = 1500;
 
@@ -40,12 +41,17 @@ Return one edge per group that is genuinely related. Use the exact card ids give
       },
     ];
 
-    const { edges } = await this.callModelForStructuredOutput<CardRelationExtractionInput>(
-      ModelTask.CardRelationExtraction,
-      messages,
-      cardRelationSchema,
-      maxTokens
-    );
-    return edges;
+    return extractCardRelations({
+      candidateGroups,
+      current: async () =>
+        (
+          await this.callModelForStructuredOutput<CardRelationExtractionInput>(
+            ModelTask.CardRelationExtraction,
+            messages,
+            cardRelationSchema,
+            maxTokens
+          )
+        ).edges,
+    });
   }
 }
