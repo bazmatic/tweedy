@@ -34,7 +34,7 @@ import {
   TurnBrief,
 } from "../types";
 import { appConfig } from "../utils/config";
-import { shouldInterject } from "./interjection-policy";
+import { decideInterjection } from "./interjection-policy";
 import {
   ConversationGenerationRequest,
   MastraEpisodeRunner,
@@ -582,7 +582,7 @@ export class MastraScriptWorkflowRunner implements MastraEpisodeRunner {
         const last = script.speeches[script.speeches.length - 1];
         if (
           !last ||
-          !shouldInterject(last, script.speakers.length, Math.random())
+          !(await decideInterjection(last, script.speakers.length, Math.random()))
         ) {
           return null;
         }

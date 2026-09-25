@@ -34,7 +34,7 @@ import {
   EpisodeAuditAgent,
 } from "../agents";
 import { logger } from "../utils/logger";
-import { shouldInterject } from "./interjection-policy";
+import { decideInterjection } from "./interjection-policy";
 import { RAGService } from "../rag";
 import { OpeningSequencePolicy, OpeningTurn } from "../agents/OpeningSequencePolicy";
 import {
@@ -666,7 +666,7 @@ export class ScriptService implements IScriptService {
         !openingTurn &&
         !closingTurn &&
         !isFinalTurn &&
-        shouldInterject(speech, script.speakers.length, Math.random())
+        (await decideInterjection(speech, script.speakers.length, Math.random()))
       ) {
         // Experts carry the episode's substantive content, so forcing one
         // into a cheap, capped-length reaction turn would misrepresent
