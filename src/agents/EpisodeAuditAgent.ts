@@ -1,7 +1,8 @@
-import { PodcastScript, Speech } from "../types";
+import { LlmMessage, PodcastScript, Speech } from "../types";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
 import { logger } from "../utils/logger";
 import { BaseAgent } from "./BaseAgent";
+import { auditEpisodeTurns } from "./TypeSafeEpisodeAuditJudge";
 import {
   EpisodeAuditInput,
   EpisodeAuditIssue,
@@ -32,25 +33,33 @@ export class EpisodeAuditAgent extends BaseAgent {
           `[${speech.id}] ${speech.speaker.name}: ${speech.message}`
       )
       .join("\n");
-    try {
-      const result = await this.callModelForStructuredOutput<EpisodeAuditInput>(
-        ModelTask.TurnReview,
-        [
-          {
-            role: "user",
-            content: `Audit this completed podcast as a listener who knows only the spoken transcript.
+    const auditMessages: LlmMessage[] = [
+      {
+        role: "user",
+        content: `Audit this completed podcast as a listener who knows only the spoken transcript.
 
 Transcript:
 ${transcript}
 
 Report only local defects repairable by rewriting one existing turn: missing audible context or antecedents, a consequence spoken before its setup, substantial repetition, speaker-role inversion, broken adjacent continuity, an inaccurate closing summary, implausible duration language, or malformed speech. Do not report a planned topic merely because it was omitted. Do not propose rewrites. Return at most ${MAX_ISSUES} issues, each with the exact bracketed speechId, one category, and a plain reason fragment of at most 12 words. Prefer the earliest turn responsible for a problem.`,
-          },
-        ],
-        episodeAuditSchema,
-        MAX_AUDIT_TOKENS
-      );
+      },
+    ];
+    try {
+      const issues = await auditEpisodeTurns({
+        speeches: script.speeches,
+        maxIssues: MAX_ISSUES - deterministic.length,
+        current: async () =>
+          (
+            await this.callModelForStructuredOutput<EpisodeAuditInput>(
+              ModelTask.TurnReview,
+              auditMessages,
+              episodeAuditSchema,
+              MAX_AUDIT_TOKENS
+            )
+          ).issues,
+      });
       const validIds = new Set(script.speeches.map((speech) => speech.id));
-      const combined = [...deterministic, ...result.issues]
+      const combined = [...deterministic, ...issues]
         .filter((issue) => validIds.has(issue.speechId))
         .map((issue) => ({
           ...issue,
