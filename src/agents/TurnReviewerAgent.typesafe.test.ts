@@ -80,7 +80,9 @@ function scriptVerdict(problem = "no_problem") {
 }
 
 describe("TurnReviewerAgent with turn-review=on", () => {
-  beforeEach(() => judgeMock.mockReset());
+  beforeEach(() => {
+    judgeMock.mockReset();
+  });
 
   it("accepts via TypeSafe, skips the Premium review, and extracts terms on Economy", async () => {
     scriptVerdict();

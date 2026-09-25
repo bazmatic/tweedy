@@ -200,6 +200,73 @@ describe("JudgmentRunner", () => {
   });
 });
 
+describe("JudgmentRunner.predict", () => {
+  it("off: never asks TypeSafe and settle logs nothing", async () => {
+    const { log, runner } = setup("");
+    const typesafe = vi.fn();
+
+    const prediction = await runner.predict({ judgment: "tool", typesafe });
+    await prediction.settle("speak");
+
+    expect(prediction.actOn).toBeUndefined();
+    expect(typesafe).not.toHaveBeenCalled();
+    expect(log.records).toEqual([]);
+  });
+
+  it("shadow: gives nothing to act on, then compares against the settled outcome", async () => {
+    const { log, runner } = setup("tool=shadow");
+
+    const prediction = await runner.predict({
+      judgment: "tool",
+      typesafe: async () => ok("one_liner"),
+      state: { allowed: ["speak", "one_liner"] },
+    });
+    expect(prediction.actOn).toBeUndefined();
+    await prediction.settle("speak");
+
+    expect(log.records[0]).toMatchObject({
+      judgment: "tool",
+      mode: "shadow",
+      current: "speak",
+      typesafe: "one_liner",
+      agreed: false,
+      actedOn: "current",
+      state: { allowed: ["speak", "one_liner"] },
+    });
+  });
+
+  it("on: returns the decision to act on and logs it as acted on", async () => {
+    const { log, runner } = setup("tool=on");
+
+    const prediction = await runner.predict({
+      judgment: "tool",
+      typesafe: async () => ok("one_liner"),
+    });
+    await prediction.settle("one_liner");
+
+    expect(prediction.actOn).toBe("one_liner");
+    expect(log.records[0]).toMatchObject({ mode: "on", actedOn: "typesafe" });
+  });
+
+  it("on: falls back to nothing to act on when TypeSafe is unavailable", async () => {
+    const { log, runner } = setup("tool=on");
+
+    const prediction = await runner.predict({
+      judgment: "tool",
+      typesafe: async () => unavailable,
+    });
+    await prediction.settle("speak");
+
+    expect(prediction.actOn).toBeUndefined();
+    expect(log.records[0]).toMatchObject({
+      mode: "on",
+      actedOn: "current",
+      current: "speak",
+      typesafeUnavailableReason: "HTTP 529",
+    });
+  });
+});
+
 describe("JsonlJudgmentLog and summarizeAgreement", () => {
   it("round-trips records and summarises agreement per judgment", async () => {
     const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "judgments-"));

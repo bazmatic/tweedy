@@ -22,6 +22,24 @@ export interface JudgmentCall<T> {
 }
 
 /**
+ * A decision whose current outcome is only known later — e.g. the tool a
+ * model picks while generating a turn — so it cannot be compared up front.
+ */
+export interface JudgmentPredictionCall<T> {
+  judgment: string;
+  typesafe: () => Promise<TypeSafeDecision<T>>;
+  state?: unknown;
+  agrees?: (current: T, typesafe: T) => boolean;
+}
+
+export interface JudgmentPrediction<T> {
+  /** TypeSafe's decision to act on; set only in "on" mode when available. */
+  actOn?: T;
+  /** Records what was actually decided, for agreement in shadow mode. */
+  settle(outcome: T): Promise<void>;
+}
+
+/**
  * Routes one decision point through its configured rollout mode. In shadow
  * mode the acted-on decision is always the current one, and TypeSafe or log
  * failures never propagate — shadowing must not change generation behaviour.
@@ -36,6 +54,34 @@ export class JudgmentRunner {
     const mode = resolveJudgmentMode(this.modes, call.judgment);
     if (mode === "off") return call.current();
     return mode === "shadow" ? this.shadow(call) : this.live(call);
+  }
+
+  /**
+   * Like run(), for decisions settled later. Shadow mode asks TypeSafe now
+   * and compares once settle() reports the outcome; "on" mode returns the
+   * decision as actOn, or nothing if TypeSafe is unavailable.
+   */
+  async predict<T>(call: JudgmentPredictionCall<T>): Promise<JudgmentPrediction<T>> {
+    const mode = resolveJudgmentMode(this.modes, call.judgment);
+    if (mode === "off") return { settle: async () => {} };
+
+    const decision = await this.safeTypeSafe(call);
+    if (mode === "on" && decision.status === "ok") {
+      return {
+        actOn: decision.value,
+        settle: () =>
+          this.record(call, { mode: "on", decision, actedOn: "typesafe" }),
+      };
+    }
+    if (mode === "on" && decision.status === "unavailable") {
+      logger.warn(
+        `TypeSafe judgment "${call.judgment}" unavailable (${decision.reason}); falling back to current behaviour`
+      );
+    }
+    return {
+      settle: (outcome) =>
+        this.record(call, { mode, current: outcome, decision, actedOn: "current" }),
+    };
   }
 
   private async shadow<T>(call: JudgmentCall<T>): Promise<T> {
@@ -73,7 +119,7 @@ export class JudgmentRunner {
   }
 
   private async safeTypeSafe<T>(
-    call: JudgmentCall<T>
+    call: Pick<JudgmentCall<T>, "typesafe">
   ): Promise<TypeSafeDecision<T>> {
     try {
       return await call.typesafe();
@@ -86,7 +132,7 @@ export class JudgmentRunner {
   }
 
   private async record<T>(
-    call: JudgmentCall<T>,
+    call: Pick<JudgmentCall<T>, "judgment" | "state" | "agrees">,
     outcome: {
       mode: JudgmentRecord["mode"];
       current?: T;

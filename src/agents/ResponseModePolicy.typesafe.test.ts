@@ -52,7 +52,9 @@ function typesafeChooses(option: string) {
 
 describe("ResponseModePolicy.resolveObligation with response-obligation=on", () => {
   const policy = new ResponseModePolicy();
-  beforeEach(() => judgeMock.mockReset());
+  beforeEach(() => {
+    judgeMock.mockReset();
+  });
 
   it("treats an unpunctuated request as a question to answer", async () => {
     typesafeChooses("answer_the_question_just_asked");
