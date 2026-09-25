@@ -52,6 +52,7 @@ import { AudienceAccessibilityPolicy } from './AudienceAccessibilityPolicy';
 import { EpisodeConclusionPolicy } from './EpisodeConclusionPolicy';
 import { DiscourseRoleMatcher } from './DiscourseRoleMatcher';
 import { verifyCoverage } from './TypeSafeCoverageJudge';
+import { verifyConversationComplete } from './TypeSafeConclusionJudge';
 import { CardGraphService } from '../services/CardGraphService';
 import { SHORT_REACTION_TOOLS, SpeakerAgentToolName } from './speaker-tools';
 import { ModelTask } from '../providers/ModelRoutingPolicy';
@@ -715,14 +716,18 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
     ];
 
     try {
-      const { isComplete } =
-        await this.callModelForStructuredOutput<CheckConversationCompleteInput>(
-          ModelTask.ConclusionCheck,
-          messages,
-          checkConversationCompleteSchema,
-          50
-        );
-      return isComplete;
+      return await verifyConversationComplete({
+        transcript: history,
+        current: async () =>
+          (
+            await this.callModelForStructuredOutput<CheckConversationCompleteInput>(
+              ModelTask.ConclusionCheck,
+              messages,
+              checkConversationCompleteSchema,
+              50
+            )
+          ).isComplete,
+      });
     } catch (error) {
       logger.error(
         'Failed to judge conversation completeness; continuing production:',
