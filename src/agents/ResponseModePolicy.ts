@@ -12,6 +12,7 @@ import {
   SpeakerAgentToolName,
 } from "./speaker-tools";
 import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
+import { judgeResponseObligation } from "./TypeSafeObligationJudge";
 
 export enum ConversationalObligation {
   AnswerChallenge = "answer_challenge",
@@ -30,6 +31,8 @@ export interface ResponseModeContext {
   requestSummary: boolean;
   forceColdOpen?: boolean;
   turnBrief?: TurnBrief;
+  /** From resolveObligation; the rule-based obligation is used when omitted. */
+  obligation?: ConversationalObligation;
 }
 
 const QUESTION_MARK = "?";
@@ -135,7 +138,9 @@ export class ResponseModePolicy {
     }
 
     const profile = this.roleProfileResolver.resolve(context.speaker);
-    const obligation = this.getObligation(context.speeches, context.speaker);
+    const obligation =
+      context.obligation ??
+      this.getObligation(context.speeches, context.speaker);
     let selected: SpeakerAgentToolName[];
     if (obligation === ConversationalObligation.InviteContinuation) {
       selected = [...INVITE_CONTINUATION_TOOLS];
@@ -175,10 +180,45 @@ export class ResponseModePolicy {
     return selected;
   }
 
-  private getObligation(
+  /**
+   * Resolves the speaker's conversational obligation for selectTools. The
+   * tool-label protocol (tease, invite, challenge) stays deterministic; only
+   * "was a question asked?" goes through the response-obligation judgment,
+   * which also catches rhetorical questions, unpunctuated requests, and
+   * pushback delivered as ordinary speech. Undefined when selectTools would
+   * not consult an obligation.
+   */
+  async resolveObligation(
+    context: ResponseModeContext
+  ): Promise<ConversationalObligation | undefined> {
+    if (
+      context.forceColdOpen ||
+      context.isFinalTurn ||
+      context.forceNearlyOutOfTime ||
+      context.isSolo
+    ) {
+      return undefined;
+    }
+    const structural = this.getStructuralObligation(
+      context.speeches,
+      context.speaker
+    );
+    if (structural) return structural;
+    if (context.speeches.length === 0) {
+      return ConversationalObligation.ExecuteBrief;
+    }
+    return judgeResponseObligation({
+      recentSpeeches: context.speeches.slice(-2),
+      nextSpeakerName: context.speaker.name,
+      current: async () =>
+        this.getObligation(context.speeches, context.speaker),
+    });
+  }
+
+  private getStructuralObligation(
     speeches: Speech[],
     speaker: Speaker
-  ): ConversationalObligation {
+  ): ConversationalObligation | undefined {
     const previousSpeech = speeches.at(-1);
     if (
       previousSpeech?.tool === SpeakerAgentToolName.TEASE &&
@@ -198,6 +238,16 @@ export class ResponseModePolicy {
     ) {
       return ConversationalObligation.AnswerChallenge;
     }
+    return undefined;
+  }
+
+  private getObligation(
+    speeches: Speech[],
+    speaker: Speaker
+  ): ConversationalObligation {
+    const structural = this.getStructuralObligation(speeches, speaker);
+    if (structural) return structural;
+    const previousSpeech = speeches.at(-1);
     if (
       previousSpeech?.tool === SpeakerAgentToolName.SHORT_QUESTION ||
       previousSpeech?.message.trim().endsWith(QUESTION_MARK)

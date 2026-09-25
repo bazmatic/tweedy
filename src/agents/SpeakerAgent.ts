@@ -393,7 +393,7 @@ Give a brief, natural reaction to the following spoken message — a quick inter
         }`
       : "";
 
-    const toolSet = this.responseModePolicy.selectTools({
+    const responseModeContext = {
       speaker: this.speaker,
       speeches,
       isSolo,
@@ -402,6 +402,11 @@ Give a brief, natural reaction to the following spoken message — a quick inter
       requestSummary,
       forceColdOpen,
       turnBrief,
+    };
+    const toolSet = this.responseModePolicy.selectTools({
+      ...responseModeContext,
+      obligation:
+        await this.responseModePolicy.resolveObligation(responseModeContext),
     });
 
     // Closing statements and catch-up summaries are deliberately exempt from
