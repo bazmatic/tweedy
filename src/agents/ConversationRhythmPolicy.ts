@@ -50,7 +50,9 @@ export class ConversationRhythmPolicy {
     }
 
     const substantiveRun = recent.filter(
-      (speech) => speech.tool === SpeakerAgentToolName.SPEAK
+      (speech) =>
+        speech.tool === SpeakerAgentToolName.SPEAK ||
+        speech.tool === SpeakerAgentToolName.EXPLAIN
     ).length;
     if (substantiveRun >= 2) {
       return RECENT_TURNS_INFORMATION_HEAVY;

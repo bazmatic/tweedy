@@ -168,7 +168,7 @@ describe("ResponseModePolicy", () => {
     expect(tools).toEqual([SpeakerAgentToolName.COLD_OPEN]);
   });
 
-  it("offers EXPLAIN to an expert executing an explain move", () => {
+  it("defaults an expert executing an explain move to short substantive tools", () => {
     const tools = policy.selectTools({
       speaker: expert,
       speeches: [],
@@ -178,7 +178,8 @@ describe("ResponseModePolicy", () => {
       requestSummary: false,
       turnBrief: buildTurnBrief({ move: EditorialMove.Explain }),
     });
-    expect(tools).toContain(SpeakerAgentToolName.EXPLAIN);
+    expect(tools).toContain(SpeakerAgentToolName.SPEAK);
+    expect(tools).not.toContain(SpeakerAgentToolName.EXPLAIN);
   });
 
   it("does not offer EXPLAIN to a non-expert", () => {
@@ -205,7 +206,6 @@ describe("ResponseModePolicy", () => {
       turnBrief: buildTurnBrief({ move: EditorialMove.Explain }),
     });
     expect(tools).toContain(SpeakerAgentToolName.SUMMARIZE);
-    expect(tools).toContain(SpeakerAgentToolName.EXPLAIN);
     expect(tools).toContain(SpeakerAgentToolName.SPEAK);
   });
 
@@ -261,7 +261,7 @@ describe("ResponseModePolicy", () => {
     expect(tools).toEqual([SpeakerAgentToolName.INVITE]);
   });
 
-  it("restricts to EXPLAIN when the previous speaker invited", () => {
+  it("restricts to a short substantive step when the previous speaker invited", () => {
     const tools = policy.selectTools(
       buildContext({
         speaker: expert,
@@ -269,7 +269,7 @@ describe("ResponseModePolicy", () => {
       })
     );
 
-    expect(tools).toEqual([SpeakerAgentToolName.EXPLAIN]);
+    expect(tools).toEqual([SpeakerAgentToolName.SPEAK]);
   });
 
   it("does not force INVITE when the same speaker teased and is talking again", () => {

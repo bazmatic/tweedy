@@ -114,8 +114,21 @@ export class TurnReviewerAgent extends BaseAgent implements ITurnReviewer {
     // turn, so it is left out of the prompt entirely rather than included
     // and then countermanded; a rule the model never sees can't be
     // misapplied.
+    // A persona built around arbitrary, ungrounded non-sequitur tangents
+    // (e.g. a Walken-style speaker) is structurally incompatible with the
+    // ordinary comprehension audit's require-every-reference-be-grounded
+    // rule: the whole point of that persona trait is to introduce an image
+    // or aside with no antecedent. Detected from the persona text itself so
+    // it travels with the speaker definition rather than needing a special
+    // flag; the tangent must still be internally coherent as a sentence,
+    // just not required to connect to prior material.
+    const personaText =
+      `${speech.speaker.personality} ${speech.speaker.voiceStyle} ${speech.speaker.mannerisms ?? ""}`.toLowerCase();
+    const isTangentPersona = /non-sequitur|tangent/.test(personaText);
     const comprehensionAuditNote = isColdOpen
       ? `First perform a listener-comprehension audit. Imagine you are a listener hearing this as the very first thing in the episode, with no context yet given. This is the cold open: a deliberately mysterious tease, like a magazine article's teaser. Withholding who "you" or "he" refers to, or naming a person or place without yet explaining who or what they are, is the intended hook technique here — do not require the subject, a pronoun, or a named person or place to already be identified. Decide only whether the sentence is coherent and could be followed word to word on its own terms. If it is simply incoherent or nonsensical regardless of who it's about, set clear and accepted to false. Do not credit information merely because it appears in the goal or prepared material; it must be grounded in that material, not invented.`
+      : isTangentPersona
+      ? `First perform a listener-comprehension audit. Imagine you are a listener who has heard only the spoken Recent conversation and earlier episode knowledge explicitly recorded above. You cannot see the director's goal, prepared cards, source notes, or future turns. This speaker's persona is built around bizarre, arbitrary non-sequitur tangents delivered with total conviction — introducing an image, analogy, or aside with no antecedent in the conversation so far is the intended device, not a defect, and must not be rejected merely for being ungrounded, invented, or unconnected to prior material. Reject only if the turn is internally incoherent on its own terms (the sentence itself doesn't parse or contradicts itself) or if it makes a substantive factual claim about the episode's actual subject matter that is unsupported and stated as established fact.`
       : `First perform a listener-comprehension audit. Imagine you are a listener who has heard only the spoken Recent conversation and earlier episode knowledge explicitly recorded above. You cannot see the director's goal, prepared cards, source notes, or future turns. Decide whether you can identify what this turn is talking about, resolve every necessary reference, follow how each sentence connects to the preceding exchange, and paraphrase the turn's complete point without supplying missing context yourself. If not, set clear, audienceAccessible, and accepted to false. Do not credit information merely because it appears in the goal or prepared material; it must have been spoken already or be introduced clearly in this turn.`;
     // A turn whose job is to ask about a term — whatever move the director
     // assigned it — cannot also contain that term's answer; the answer is
@@ -172,7 +185,11 @@ Judge the turn by its goal and format.
 - Enforce the speaker's role and available knowledge. Experts must not feign ignorance or claim authorship without support; audience guides must not introduce unseen specialist facts.
 - Reject invented cast members, unsupported stance reversals, or claims that an unanswered challenge received a reply. A speaker may share a name with a real public figure (living, historical, or fictional) — that is an intentional persona choice, not grounds for rejection on its own. Judge castConsistent only against "This episode's actual speakers" above: if the name speaking matches a name on that list, the cast is consistent, regardless of who that name refers to in the real world.
 - Treat natural fillers, pauses, and self-corrections as valid speech.
-- Do not reject a turn merely because it only partially covers a goal with several parts (e.g. a list of items, or multiple facts to establish) — a natural turn may address a subset now and leave the rest for a follow-up turn. Judge accessibility and clarity only against what the turn actually says: an item it doesn't mention isn't an accessibility violation, but an item it does mention must still be named and used correctly, not left as a dangling unexplained reference the turn itself relies on. An exception: a turn may name several items up front without explaining each one immediately, if it explicitly signals it will come back to them (e.g. "there are four of these, and we'll get to each" or "I'll unpack that in a second") — accept this as a valid pacing device rather than requiring every named item be explained in the same turn.
+- Do not reject a turn merely because it only partially covers a goal with several parts (e.g. a list of items, or multiple facts to establish) — a natural turn may address a subset now and leave the rest for a follow-up turn. Judge accessibility and clarity only against what the turn actually says: an item it doesn't mention isn't an accessibility violation, but an item it does mention must still be named and used correctly, not left as a dangling unexplained reference the turn itself relies on. An exception: a turn may name several items up front without explaining each one immediately, if it explicitly signals it will come back to them (e.g. "there are four of these, and we'll get to each" or "I'll unpack that in a second") — accept this as a valid pacing device rather than requiring every named item be explained in the same turn.${
+      isTangentPersona
+        ? ` Another exception, specific to this speaker's tangent-driven persona: a dangling, unexplained image or aside that is clearly part of the speaker's own arbitrary non-sequitur (not a claim about the episode's actual subject matter) is a deliberate persona trait, not a violation — do not require it to be named and used correctly against prior material.`
+        : ""
+    }
 
 ${this.audienceAccessibilityPolicy.buildReviewerGuidance(audienceProfile, { omitReferentRule: isColdOpen })} ${termExplanationRequirement} Report only newly explained necessary terms in introducedTerms, and only assigned cards actually spoken in introducedCardIds.${closingStatementNote}${nearlyOutOfTimeNote}
 

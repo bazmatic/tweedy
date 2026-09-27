@@ -82,7 +82,7 @@ const INVITE_CONTINUATION_TOOLS = Object.freeze([
 ]);
 
 const ELABORATE_AFTER_INVITE_TOOLS = Object.freeze([
-  SpeakerAgentToolName.EXPLAIN,
+  SpeakerAgentToolName.SPEAK,
 ]);
 
 const MOVE_TO_TOOLS: Readonly<
@@ -158,12 +158,6 @@ export class ResponseModePolicy {
       MOVE_TO_TOOLS[context.turnBrief.move] !== undefined
     ) {
       selected = [...MOVE_TO_TOOLS[context.turnBrief.move]!];
-      if (
-        profile.epistemicRole === EpistemicRole.Expert &&
-        selected.includes(SpeakerAgentToolName.SPEAK)
-      ) {
-        selected.unshift(SpeakerAgentToolName.EXPLAIN);
-      }
     } else {
       selected =
         profile.epistemicRole === EpistemicRole.Expert

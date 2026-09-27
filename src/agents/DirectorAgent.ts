@@ -72,6 +72,7 @@ const DOMINANT_SPEAKER_SHARE_THRESHOLD = 0.55;
 const MIN_SPEECHES_FOR_BALANCE_CHECK = 3;
 const CLOSING_STAGE_PROGRESS_THRESHOLD = 85;
 const MAX_LATE_STAGE_TURNS = 2;
+const EXPECTED_TURNS_PER_MINUTE = 4.5;
 
 // A beat that raises evidence, a complication, or a surprise but never
 // states what it means gets marked "covered" the moment that claim is
@@ -216,6 +217,13 @@ export class DirectorAgent extends BaseAgent implements IDirectorAgent {
         3,
         Math.round(durationMinutes / MINUTES_PER_DISCUSSION_POINT)
       );
+      // A ceiling as well as a floor: leaving the model an open-ended "at
+      // least" invites over-planning well past what the episode can fit,
+      // pushing more work onto mid-generation budget triage than necessary.
+      // A little slack above the floor is still useful (triage has some
+      // lower-priority material to trim gracefully), but it shouldn't be
+      // unbounded.
+      const maxDiscussionPoints = minDiscussionPoints + 2;
 
       const guidanceSection = this.guidance
         ? `\n\nGuidance from the producer for this episode: ${this.guidance}`
@@ -247,7 +255,14 @@ when the prepared material supports them. Do not force scientific analysis or
 formal tests onto topics that do not call for them. Use Australian/British
 spelling.
 
-Also provide a separate list of at least ${minDiscussionPoints} ranked discussion points — editorial opportunities rather than a rigid checklist. For each point provide a short text, priority (essential, supporting, or optional), storyValue from 1-10, and estimatedTurns from 1-6. Essential means the episode would fail its central promise without it; supporting deepens that promise; optional is worthwhile only if time permits. The production team will use this ranking to adapt gracefully to the duration.
+Plan meaning across short, purposeful exchanges instead of assigning complete
+mini-essays to one speaker. Prefer sequences such as tease → invite → establish,
+claim → reaction → extension, mechanism → paraphrase → confirmation, or
+challenge → answer. Unless closing or summarising, a turn should normally do
+one conversational job; setup, mechanism, example, consequence and payoff
+should not all land in the same speech.
+
+Also provide a separate list of between ${minDiscussionPoints} and ${maxDiscussionPoints} ranked discussion points — editorial opportunities rather than a rigid checklist. For each point provide a short text, priority (essential, supporting, or optional), storyValue from 1-10, and estimatedTurns from 1-6. Essential means the episode would fail its central promise without it; supporting deepens that promise; optional is worthwhile only if time permits. The production team will use this ranking to adapt gracefully to the duration.
 
 Also provide a subject-neutral orientation contract: name what is being discussed, define this episode's scope and central question, and list 2-6 atomic facts a completely new listener must understand before deeper material will make sense. These are not necessarily story facts: adapt them to a scientific concept, technology, historical event, person, argument, cultural object, or other subject. Keep them factual and testable against a transcript. The claims receive ids o1, o2, and so on in their listed order; use those ids in prerequisiteClaimIds.
 
@@ -411,7 +426,6 @@ Default to "informed_host" for any speaker whose personality doesn't say otherwi
     try {
       this.logAgentAction('Choosing next speaker');
 
-      this.turnsUsed++;
       const progress = this.calculateProgress(script);
       if (progress >= CLOSING_STAGE_PROGRESS_THRESHOLD) {
         this.lateStageTurns++;
@@ -425,9 +439,12 @@ Default to "informed_host" for any speaker whose personality doesn't say otherwi
       // close instead of nudging again — otherwise speakers repeatedly
       // thank listeners and say goodbye without the episode ever ending.
       const orientationClaims = this.getOpenOrientationClaims();
+      // turnsUsed counts turns already accepted, not counting the one being
+      // proposed here — so "+1" asks whether accepting this proposal would
+      // reach the ceiling, not whether we've already sailed past it.
       const isFinalTurn =
         (orientationClaims.length === 0 &&
-          (this.turnsUsed >= this.maxTurns ||
+          (this.turnsUsed + 1 >= this.maxTurns ||
             progress >= 100 ||
             this.lateStageTurns >= MAX_LATE_STAGE_TURNS));
       const hasAnnouncedTimePressure = script.speeches.some(
@@ -679,7 +696,7 @@ Conversation so far (each line tagged with the tool used to deliver it — "spea
         this.markRemainingPointsOmitted(
           progress >= 100
             ? 'duration_budget'
-            : this.turnsUsed >= this.maxTurns
+            : this.turnsUsed + 1 >= this.maxTurns
               ? 'turn_budget'
               : 'closing_reserve'
         );
@@ -1142,11 +1159,11 @@ Return only the ids of points that were genuinely, substantively covered.`,
       (sum, point) => sum + (point.estimatedTurns ?? 2),
       0
     );
-    // A natural two-person discussion averages roughly 2.5 substantive turns
-    // per minute once reactions and transitions are accounted for.
+    // Short, interleaved two-person dialogue averages roughly 4.5 total turns
+    // per minute once reactions, questions and transitions are included.
     const availableTurns = Math.max(
       0,
-      Math.floor(velocity.remainingMinutes * 2.5)
+      Math.floor(velocity.remainingMinutes * EXPECTED_TURNS_PER_MINUTE)
     );
     return requiredTurns > availableTurns;
   }
@@ -1155,22 +1172,40 @@ Return only the ids of points that were genuinely, substantively covered.`,
    * Once meaningful production time has elapsed, reserve two turns for the
    * multi-turn closing and retain only the highest-ranked work that can still
    * fit. This is explicit graceful degradation, not inferred coverage.
+   *
+   * Pace is an instantaneous, noisy signal early on (few covered points over
+   * few elapsed minutes), so a "behind" reading that triggers a cut can be
+   * stale a turn or two later. Rather than only ever tightening, this also
+   * restores previously budget-omitted points (never ones omitted for a
+   * content reason, like an unresolved discourse prerequisite) one at a time
+   * once pace has clearly recovered to "ahead" and capacity genuinely allows
+   * it — so an early over-correction doesn't permanently strand material the
+   * episode actually had room for.
    */
   private pruneOpenPointsToBudget(
     script: PodcastScript,
     velocity: ReturnType<DirectorAgent["calculateVelocity"]>
   ): void {
     const progress = this.calculateProgress(script);
-    if (progress < 35 || velocity.paceStatus !== "behind") return;
+    if (progress < 35) return;
     const remainingTurnCapacity = Math.max(
       0,
       this.maxTurns - this.turnsUsed - 2
     );
     const durationTurnCapacity = Math.max(
       0,
-      Math.floor(velocity.remainingMinutes * 2.5) - 2
+      Math.floor(velocity.remainingMinutes * EXPECTED_TURNS_PER_MINUTE) - 2
     );
     const capacity = Math.min(remainingTurnCapacity, durationTurnCapacity);
+
+    if (velocity.paceStatus === "behind") {
+      this.cutOpenPointsToCapacity(capacity);
+    } else if (velocity.paceStatus === "ahead") {
+      this.restoreOmittedPointIfCapacityAllows(capacity);
+    }
+  }
+
+  private cutOpenPointsToCapacity(capacity: number): void {
     const ranked = this.rankedOpenPoints();
     const required = ranked.reduce(
       (sum, point) => sum + Math.max(1, point.estimatedTurns ?? 2),
@@ -1197,6 +1232,35 @@ Return only the ids of points that were genuinely, substantively covered.`,
     }
   }
 
+  private restoreOmittedPointIfCapacityAllows(capacity: number): void {
+    const restorable = this.points
+      .filter(
+        (point) => point.omitted && point.omissionReason === "budget_priority"
+      )
+      .sort((a, b) => {
+        const aScore =
+          this.priorityWeight(a) + (a.storyValue ?? 5) * 10 - (a.estimatedTurns ?? 2);
+        const bScore =
+          this.priorityWeight(b) + (b.storyValue ?? 5) * 10 - (b.estimatedTurns ?? 2);
+        return bScore - aScore;
+      });
+    if (restorable.length === 0) return;
+
+    const required = this.rankedOpenPoints().reduce(
+      (sum, point) => sum + Math.max(1, point.estimatedTurns ?? 2),
+      0
+    );
+    const candidate = restorable[0];
+    const candidateCost = Math.max(1, candidate.estimatedTurns ?? 2);
+    if (required + candidateCost > capacity) return;
+
+    candidate.omitted = false;
+    candidate.omissionReason = undefined;
+    logger.info(
+      `Budget triage restored a previously-omitted point now that pace has recovered: ${candidate.id}`
+    );
+  }
+
   private applyCoveredBeats(coveredBeatIds?: string[]): void {
     if (!coveredBeatIds || coveredBeatIds.length === 0) return;
     for (const beat of this.script.conversationBeats ?? []) {
@@ -1212,6 +1276,13 @@ Return only the ids of points that were genuinely, substantively covered.`,
    * from the direction model's prediction about what a future turn may cover.
    */
   recordAcceptedBeat(speech: Speech): void {
+    // turnsUsed must track genuinely accepted turns, not proposal attempts —
+    // chooseNextSpeaker() is called once per candidate, including ones the
+    // turn reviewer later rejects and regenerates. recordAcceptedBeat is the
+    // first of the two calls (this one, then recordAcceptedCoverage) that
+    // both engines make exactly once per turn that actually makes it into
+    // the transcript, so the counter advances here.
+    this.turnsUsed++;
     // A reviewer saying that one turn advances a beat is not evidence that an
     // ordered multi-claim discourse contract is complete. Claim-targeted turns
     // can complete their beat only through verified claim coverage.
@@ -1828,12 +1899,16 @@ Return only the ids of claims whose complete meaning was explicitly established.
       return '';
     }
 
-    const averageLength =
-      recentSpeeches.reduce((sum, speech) => sum + speech.message.length, 0) /
+    const averageWords =
+      recentSpeeches.reduce(
+        (sum, speech) =>
+          sum + speech.message.trim().split(/\s+/).filter(Boolean).length,
+        0
+      ) /
       recentSpeeches.length;
 
-    if (averageLength > 150) {
-      return ' The last few turns have been long explanations — direct this speaker to give a short, punchy reaction or a quick pointed question instead of another lengthy point.';
+    if (averageWords > 35) {
+      return ' The last few turns have averaged over 35 words. Give this turn one short conversational job: react, question, paraphrase, challenge, tease, or add only the next step of the explanation. Do not complete the setup, example, consequence and takeaway in one speech.';
     }
 
     return '';
@@ -2161,8 +2236,11 @@ ${claimsList}`,
    */
   private getSignpostNote(script: PodcastScript): string {
     const beats = script.conversationBeats ?? [];
+    // turnsUsed now counts only accepted turns (see recordAcceptedBeat), so
+    // at this point — before the turn currently being proposed has been
+    // accepted — it already equals the most recently accepted turn's index.
     const justCovered = beats.some(
-      (beat) => beat.covered && beat.coveredAtTurn === this.turnsUsed - 1
+      (beat) => beat.covered && beat.coveredAtTurn === this.turnsUsed
     );
     const remaining = beats.some((beat) => !beat.covered);
     if (!justCovered || !remaining) return "";

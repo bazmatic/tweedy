@@ -256,6 +256,20 @@ describe("DirectorAgent.createPodcastPlan", () => {
     ]);
   });
 
+  it("bounds the discussion-point count with both a floor and a ceiling", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 20, maxDuration: 600 }); // 10 minutes
+    const call = vi.spyOn(agent as any, "callModelForStructuredOutput");
+    call.mockResolvedValueOnce({ assignments: [] }); // assignSpeakerRoles
+    call.mockResolvedValueOnce({ narrative: "plan", points: [] }); // main plan
+
+    await agent.createPodcastPlan();
+
+    const promptContent = (call.mock.calls[1][1] as any)[0].content as string;
+    // 10 minutes / 1.75 min-per-point => round(5.71) = 6 floor; ceiling = floor + 2.
+    expect(promptContent).toContain("between 6 and 8 ranked discussion points");
+  });
+
   it("appends a payoff claim when a planned beat raises evidence but never states what it means", async () => {
     const script = makeScript();
     const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
@@ -554,7 +568,10 @@ describe("DirectorAgent editorial turn briefs", () => {
     await agent.chooseNextSpeaker(script);
 
     expect(script.conversationBeats?.[0].covered).toBe(false);
-    agent.recordAcceptedBeat({
+    // recordAcceptedBeat and recordAcceptedCoverage are always called
+    // together for a genuinely accepted turn (see ScriptService and
+    // MastraScriptWorkflowRunner) — turnsUsed is advanced by the latter.
+    const acceptedSpeech = {
       id: "speech-1",
       speaker: script.speakers[0],
       message: "A vivid opening detail.",
@@ -579,7 +596,9 @@ describe("DirectorAgent editorial turn briefs", () => {
         advancesBeat: true,
         addsVariety: true,
       },
-    });
+    } as Speech;
+    agent.recordAcceptedBeat(acceptedSpeech);
+    await agent.recordAcceptedCoverage(script, acceptedSpeech);
 
     expect(script.conversationBeats?.[0]).toEqual(
       expect.objectContaining({ covered: true, coveredAtTurn: 1 })
@@ -1440,9 +1459,25 @@ describe("DirectorAgent progress / wrap-up pacing", () => {
     await agent.createPodcastPlan();
     script.orientation!.status = "complete";
 
+    // turnsUsed only advances once a turn is genuinely accepted (see
+    // recordAcceptedBeat/recordAcceptedCoverage), so simulate the real
+    // propose -> accept cycle rather than calling chooseNextSpeaker in a
+    // bare loop.
     let result;
     for (let i = 0; i < 3; i++) {
       result = await agent.chooseNextSpeaker(script);
+      const speech = {
+        id: `speech-${i}`,
+        speaker: script.speakers[0],
+        message: "Some accepted line.",
+        instructions: "",
+        voice: script.speakers[0].voice,
+        voiceStyle: script.speakers[0].voiceStyle,
+        timestamp: new Date(),
+      } as Speech;
+      script.speeches.push(speech);
+      agent.recordAcceptedBeat(speech);
+      await agent.recordAcceptedCoverage(script, speech);
     }
 
     expect(result!.timeStatus).toContain("final turn");
@@ -1990,6 +2025,192 @@ describe("DirectorAgent velocity / pacing", () => {
         omissionReason: "budget_priority",
       })
     );
+  });
+
+  it("restores a previously budget-omitted point once pace recovers and capacity allows it", () => {
+    const script = makeScript();
+    script.speeches = [
+      {
+        id: "elapsed",
+        speaker: script.speakers[0],
+        message: Array(600).fill("word").join(" "),
+        instructions: "",
+        voice: script.speakers[0].voice,
+        voiceStyle: script.speakers[0].voiceStyle,
+        timestamp: new Date(),
+      },
+    ];
+    script.discussionPoints = [
+      {
+        id: "open",
+        text: "Still open",
+        covered: false,
+        priority: DiscussionPointPriority.Essential,
+        storyValue: 8,
+        estimatedTurns: 2,
+      },
+      {
+        id: "cut-earlier",
+        text: "Cut on an earlier, noisier pace reading",
+        covered: false,
+        priority: DiscussionPointPriority.Supporting,
+        storyValue: 7,
+        estimatedTurns: 2,
+        omitted: true,
+        omissionReason: "budget_priority",
+      },
+    ];
+    const agent = new DirectorAgent(script, { maxTurns: 20, maxDuration: 600 });
+    (agent as any).points = script.discussionPoints;
+    (agent as any).turnsUsed = 5; // remainingTurnCapacity = 20 - 5 - 2 = 13
+
+    (agent as any).pruneOpenPointsToBudget(script, {
+      coveredCount: 0,
+      openCount: 1,
+      elapsedMinutes: 4,
+      remainingMinutes: 6, // durationTurnCapacity = floor(6*2.5) - 2 = 13
+      paceStatus: "ahead",
+    });
+
+    expect(script.discussionPoints[1]).toEqual(
+      expect.objectContaining({ id: "cut-earlier", omitted: false })
+    );
+  });
+
+  it("does not restore a point that was omitted for a non-pacing reason", () => {
+    const script = makeScript();
+    script.speeches = [
+      {
+        id: "elapsed",
+        speaker: script.speakers[0],
+        message: Array(600).fill("word").join(" "),
+        instructions: "",
+        voice: script.speakers[0].voice,
+        voiceStyle: script.speakers[0].voiceStyle,
+        timestamp: new Date(),
+      },
+    ];
+    script.discussionPoints = [
+      {
+        id: "open",
+        text: "Still open",
+        covered: false,
+        priority: DiscussionPointPriority.Essential,
+        storyValue: 8,
+        estimatedTurns: 2,
+      },
+      {
+        id: "unresolved",
+        text: "Blocked on an unresolved discourse prerequisite",
+        covered: false,
+        priority: DiscussionPointPriority.Supporting,
+        storyValue: 7,
+        estimatedTurns: 2,
+        omitted: true,
+        omissionReason: "unresolved_discourse_prerequisite",
+      },
+    ];
+    const agent = new DirectorAgent(script, { maxTurns: 20, maxDuration: 600 });
+    (agent as any).points = script.discussionPoints;
+    (agent as any).turnsUsed = 5;
+
+    (agent as any).pruneOpenPointsToBudget(script, {
+      coveredCount: 0,
+      openCount: 1,
+      elapsedMinutes: 4,
+      remainingMinutes: 6,
+      paceStatus: "ahead",
+    });
+
+    expect(script.discussionPoints[1].omitted).toBe(true);
+  });
+
+  it("does not restore an omitted point when capacity still doesn't allow it despite ahead pace", () => {
+    const script = makeScript();
+    script.speeches = [
+      {
+        id: "elapsed",
+        speaker: script.speakers[0],
+        message: Array(600).fill("word").join(" "),
+        instructions: "",
+        voice: script.speakers[0].voice,
+        voiceStyle: script.speakers[0].voiceStyle,
+        timestamp: new Date(),
+      },
+    ];
+    script.discussionPoints = [
+      {
+        id: "open",
+        text: "Still open",
+        covered: false,
+        priority: DiscussionPointPriority.Essential,
+        storyValue: 8,
+        estimatedTurns: 2,
+      },
+      {
+        id: "cut-earlier",
+        text: "Cut on an earlier, noisier pace reading",
+        covered: false,
+        priority: DiscussionPointPriority.Supporting,
+        storyValue: 7,
+        estimatedTurns: 2,
+        omitted: true,
+        omissionReason: "budget_priority",
+      },
+    ];
+    const agent = new DirectorAgent(script, { maxTurns: 20, maxDuration: 600 });
+    (agent as any).points = script.discussionPoints;
+    (agent as any).turnsUsed = 5;
+
+    (agent as any).pruneOpenPointsToBudget(script, {
+      coveredCount: 0,
+      openCount: 1,
+      elapsedMinutes: 4,
+      remainingMinutes: 1, // durationTurnCapacity = floor(1*2.5) - 2 = 0
+      paceStatus: "ahead",
+    });
+
+    expect(script.discussionPoints[1].omitted).toBe(true);
+  });
+
+  it("only advances turnsUsed when a turn is actually accepted, not on every proposal attempt", async () => {
+    const script = makeScript();
+    const agent = new DirectorAgent(script, { maxTurns: 10, maxDuration: 600 });
+    const call = vi.spyOn(agent as any, "callModelForStructuredOutput");
+    call.mockResolvedValueOnce({ assignments: [] }); // assignSpeakerRoles
+    call.mockResolvedValueOnce({ narrative: "plan", points: [] }); // main plan
+    await agent.createPodcastPlan();
+    script.orientation!.status = "complete";
+    call.mockResolvedValue({
+      speakerId: "s1",
+      direction: "Continue.",
+      coveredPointIds: [],
+    });
+
+    // Simulate two proposal attempts for the same logical turn (e.g. the
+    // turn reviewer rejected the first candidate and a fresh one was
+    // proposed) — neither should move turnsUsed on its own.
+    await agent.chooseNextSpeaker(script);
+    await agent.chooseNextSpeaker(script);
+    expect((agent as any).turnsUsed).toBe(0);
+
+    const speech = {
+      id: "accepted-1",
+      speaker: script.speakers[0],
+      message: "An accepted line.",
+      instructions: "",
+      voice: script.speakers[0].voice,
+      voiceStyle: script.speakers[0].voiceStyle,
+      timestamp: new Date(),
+    } as Speech;
+    script.speeches.push(speech);
+
+    // Both engines call recordAcceptedBeat then recordAcceptedCoverage,
+    // exactly once, for every genuinely accepted turn.
+    agent.recordAcceptedBeat(speech);
+    await agent.recordAcceptedCoverage(script, speech);
+
+    expect((agent as any).turnsUsed).toBe(1);
   });
 
   it("makes the highest-ranked open point the next turn's explicit target", async () => {

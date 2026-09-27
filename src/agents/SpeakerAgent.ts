@@ -474,12 +474,12 @@ Give a brief, natural reaction to the following spoken message — a quick inter
         : "";
 
     const lengthGuidance = isFinalTurn
-      ? "This closing is exempt from the normal 50-word turn limit. Let it breathe for a few natural sentences so the reflection, thanks, and sign-off all land without rushing."
+      ? "This closing is exempt from the normal short-turn limit. Let it breathe for a few natural sentences so the reflection, thanks, and sign-off all land without rushing."
       : toolSet.includes(SpeakerAgentToolName.EXPLAIN)
-        ? `If this moment calls for substantive explanation, use the explain tool and give the idea 3-6 sentences to breathe — one concept, developed properly. Otherwise keep it to 1-2 sentences with a short-form tool. Aim for a mix across the episode: long expository passages from the expert, punctuated by short reactions.${summaryCatchUpNote}`
+        ? `Default to a short-form tool: give only the next conversational step in 1-2 sentences, usually 15-35 words. Use explain only when a genuinely complex question cannot be made clear in a short turn; even then, cover one step in 2-3 concise sentences and leave the example, consequence, or interpretation for the next exchange. Do not bundle the whole arc into one speech.${summaryCatchUpNote}`
         : requestSummary && !forceNearlyOutOfTime
-          ? "This recap is exempt from the normal 50-word turn limit since it covers several points. Still speak it in full, natural conversational sentences — not clipped notes or a list read aloud — just give it the extra room it needs to land each point properly."
-          : `**CRITICAL: Keep this to 1-2 sentences max (under 50 words).** Get ONE idea or conversational beat out and then stop.${summaryCatchUpNote}`;
+          ? "This recap is exempt from the normal short-turn limit since it covers several points. Still speak it in full, natural conversational sentences — not clipped notes or a list read aloud — just give it the extra room it needs to land each point properly."
+          : `**CRITICAL: Keep this to 1-2 short sentences, usually 15-35 words.** Give only the next idea or conversational function, then stop. Do not add its example, consequence, and takeaway too.${summaryCatchUpNote}`;
     const lengthGuidanceWithProviderCap = `${lengthGuidance}${providerCapNote}`;
 
     const coHostsLine = coHostNames

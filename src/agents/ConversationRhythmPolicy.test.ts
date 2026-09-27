@@ -53,4 +53,14 @@ describe("ConversationRhythmPolicy", () => {
     expect(recommendation?.avoidedMoves).toContain(EditorialMove.Explain);
     expect(recommendation?.avoidedMoves).toContain(EditorialMove.Reframe);
   });
+
+  it("counts long-form explanations as substantive when varying rhythm", () => {
+    const recommendation = new ConversationRhythmPolicy().recommend([
+      speech(SpeakerAgentToolName.EXPLAIN),
+      speech(SpeakerAgentToolName.SPEAK),
+    ]);
+
+    expect(recommendation?.preferredMoves).toContain(EditorialMove.React);
+    expect(recommendation?.preferredMoves).toContain(EditorialMove.Question);
+  });
 });

@@ -30,7 +30,7 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.SPEAK,
     toolDescription:
-      "Deliver a SHORT, concise, natural-sounding response in the podcast. Get ONE idea, fact, or beat out and then stop — 1-2 sentences max, never a multi-part explanation. Brevity is critical: shorter is always better than longer, and you should stop the moment the single idea has landed rather than padding it out. Keep it very brief to maintain conversational flow. The message should be natural spoken language, while stage directions in instructions guide delivery. Use pauses and ums, like, ah, ..., etc. For a spoken pause or a mid-sentence interruption of thought, use an em dash (—), never a bare hyphen (-) — a hyphen should only ever join a genuine compound word (e.g. \"well-known\"), never stand in for a pause.",
+      "Deliver one SHORT, natural-sounding step in the conversation — usually 15-35 words and 1-2 sentences. Land only the next idea, fact, or conversational beat, then stop where a co-host could naturally react, question, paraphrase, or ask you to continue. Do not bundle setup, mechanism, example, consequence, and takeaway into one response; leave the next function for the next exchange. Brevity is critical. The message should be natural spoken language, while stage directions in instructions guide delivery. Use pauses and ums, like, ah, ..., etc. For a spoken pause or a mid-sentence interruption of thought, use an em dash (—), never a bare hyphen (-) — a hyphen should only ever join a genuine compound word (e.g. \"well-known\"), never stand in for a pause.",
     styleDescription:
       "How to deliver the speech. Include timing, tone, and emphasis. Example: 'Pause slightly before speaking, use a thoughtful tone, emphasize \"perspective\"'",
     maxTokens: 300,
@@ -38,10 +38,10 @@ export const SPEAKER_TOOL_DEFINITIONS: SpeakerToolDefinition[] = [
   {
     name: SpeakerAgentToolName.EXPLAIN,
     toolDescription:
-      "Deliver a substantive expository passage — 3-6 sentences developing ONE concept properly, with a concrete example or the episode's running analogy. This is the long-form register for carrying real content: build the idea step by step in natural spoken language, then stop before starting a second concept. Expect a co-host to briefly react partway through and after — leave natural clause boundaries where a 'Right' or 'Yeah' could land. Use ums, likes, em dashes (—) for pauses; never a bare hyphen for a pause.",
+      "Use this only when a genuinely complex question cannot be answered clearly in a normal short turn. Explain ONE step in 2-3 concise sentences, usually 40-70 words. Give only the context needed to understand that step; leave its example, consequence, or interpretation for a follow-up exchange when possible. End at a natural handoff point. Use ums, likes, and em dashes (—) for pauses; never a bare hyphen for a pause.",
     styleDescription:
       "How to deliver the explanation. Include pacing across the passage and where to slow down for the key idea. Example: 'Measured, building energy toward the analogy, pause before the payoff'",
-    maxTokens: 500,
+    maxTokens: 300,
   },
   {
     name: SpeakerAgentToolName.INTERJECT,

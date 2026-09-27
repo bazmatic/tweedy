@@ -72,13 +72,13 @@ describe("COLD_OPEN tool", () => {
 });
 
 describe("EXPLAIN tool", () => {
-  it("defines explain with a 500 token budget", () => {
-    expect(getToolMaxTokens(SpeakerAgentToolName.EXPLAIN)).toBe(500);
+  it("defines explain with a bounded 300 token budget", () => {
+    expect(getToolMaxTokens(SpeakerAgentToolName.EXPLAIN)).toBe(300);
   });
 
   it("describes explain as multi-sentence expository", () => {
     const def = getToolDefinition(SpeakerAgentToolName.EXPLAIN);
-    expect(def?.toolDescription).toMatch(/3-6 sentences/);
+    expect(def?.toolDescription).toMatch(/2-3 concise sentences/);
   });
 });
 
