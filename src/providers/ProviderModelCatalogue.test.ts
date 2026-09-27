@@ -75,8 +75,9 @@ describe("ProviderModelCatalogue", () => {
     expect(catalogue.resolve(AiProviderName.Kimi, ModelTier.Balanced)).toBe(
       "kimi-k2.6"
     );
+    // Premium routes to k2.6 until k3 honours forced tool calls reliably.
     expect(catalogue.resolve(AiProviderName.Kimi, ModelTier.Premium)).toBe(
-      "kimi-k3"
+      "kimi-k2.6"
     );
   });
 });

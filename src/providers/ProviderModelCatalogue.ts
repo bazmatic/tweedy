@@ -53,7 +53,12 @@ const GROK_MODELS: Record<ModelTier, string> = {
 const KIMI_MODELS: Record<ModelTier, string> = {
   [ModelTier.Economy]: KimiModelId.Economy,
   [ModelTier.Balanced]: KimiModelId.Economy,
-  [ModelTier.Premium]: KimiModelId.Premium,
+  // kimi-k3 is unreliable at honouring a forced tool_choice even with
+  // thinking disabled (see AiModelFactory) — it drops the tool call
+  // outright on a large share of calls. Route Premium to kimi-k2.6 too
+  // until k3's tool-calling is more reliable; this app relies on forced
+  // tool calls for every agent turn.
+  [ModelTier.Premium]: KimiModelId.Economy,
 };
 
 const MODELS_BY_PROVIDER: Record<
