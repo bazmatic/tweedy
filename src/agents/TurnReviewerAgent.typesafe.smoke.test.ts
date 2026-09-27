@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   AudienceValue,
   EditorialMove,
@@ -7,24 +7,16 @@ import {
   Speech,
   VocalProviderName,
 } from "../types";
-import { JudgmentRunner } from "../services/JudgmentRunner";
-import { JudgmentRecord } from "../services/JudgmentLog";
-import { parseJudgmentModes } from "../services/judgment-modes";
+import { setJudgmentProvider } from "../services/judgment-runtime";
 import { TypeSafeJudgmentProvider } from "../providers/TypeSafeJudgmentProvider";
 import { TurnReviewerAgent } from "./TurnReviewerAgent";
 
-// Live check: the reviewer's real prompt, judged by the real TypeSafe API in
-// "on" mode. Only term extraction / rewrite LLM calls are stubbed. Skipped
-// unless TYPESAFE_API_KEY is set.
-const { records } = vi.hoisted(() => ({ records: [] as JudgmentRecord[] }));
-vi.mock("../services/judgment-runtime", () => ({
-  getJudgmentRunner: () =>
-    new JudgmentRunner(parseJudgmentModes("turn-review=on"), {
-      append: async (r: JudgmentRecord) => void records.push(r),
-      readAll: async () => records,
-    }),
-  getJudgmentProvider: () => new TypeSafeJudgmentProvider({ timeoutMs: 20000 }),
-}));
+// Live check: the reviewer's real prompt, judged by the real TypeSafe API.
+// Only term extraction / rewrite LLM calls are stubbed. Skipped unless
+// TYPESAFE_API_KEY is set.
+beforeEach(() => {
+  setJudgmentProvider(new TypeSafeJudgmentProvider({ timeoutMs: 20000 }));
+});
 
 const voice = {
   id: "v1",
@@ -79,8 +71,7 @@ describe.skipIf(!process.env.TYPESAFE_API_KEY)(
         introducedTerms: [],
         message: "(rewrite)",
       });
-      const before = records.length;
-      const result = await agent.review(
+      return agent.review(
         said(ben, message),
         brief,
         cards,
@@ -90,7 +81,6 @@ describe.skipIf(!process.env.TYPESAFE_API_KEY)(
         undefined,
         [ada, ben]
       );
-      return { result, detail: records[before]?.typesafeDetail };
     }
 
     it("accepts a good turn and rejects clear defects", async () => {
@@ -107,19 +97,14 @@ describe.skipIf(!process.env.TYPESAFE_API_KEY)(
         "The LiOH canisters' geometry mismatch meant they had to rig an adaptor for the LM ECS, and it held."
       );
 
-      console.log("turn review details:", JSON.stringify({
-        good: good.detail,
-        invented: invented.detail,
-        repeated: repeated.detail,
-        jargon: jargon.detail,
-      }));
-      expect(good.result.accepted).toBe(true);
-      expect(good.result.introducedCardIds).toEqual(["c1"]);
-      expect(invented.result.accepted).toBe(false);
-      expect(repeated.result.accepted).toBe(false);
-      expect(repeated.result.addsVariety).toBe(false);
-      expect(jargon.result.accepted).toBe(false);
-      expect(jargon.result.audienceAccessible).toBe(false);
+      console.log("turn review results:", JSON.stringify({ good, invented, repeated, jargon }));
+      expect(good.accepted).toBe(true);
+      expect(good.introducedCardIds).toEqual(["c1"]);
+      expect(invented.accepted).toBe(false);
+      expect(repeated.accepted).toBe(false);
+      expect(repeated.addsVariety).toBe(false);
+      expect(jargon.accepted).toBe(false);
+      expect(jargon.audienceAccessible).toBe(false);
     }, 60000);
   }
 );

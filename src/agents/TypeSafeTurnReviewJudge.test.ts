@@ -6,15 +6,13 @@ import {
   reviewTurn,
   TURN_REJECTION_REASONS,
   TurnReviewRequest,
-  TurnReviewVerdict,
 } from "./TypeSafeTurnReviewJudge";
 import {
   IJudgmentProvider,
   JudgmentQuestions,
 } from "../providers/judgment-questions";
-import { JudgmentRunner } from "../services/JudgmentRunner";
-import { IJudgmentLog, JudgmentRecord } from "../services/JudgmentLog";
-import { parseJudgmentModes } from "../services/judgment-modes";
+import { setJudgmentProvider } from "../services/judgment-runtime";
+import { scriptedProvider, unavailableProvider } from "../test-support/judgments";
 import { SpeakerAgentToolName } from "./speaker-tools";
 
 type Answers = Record<string, unknown>;
@@ -59,22 +57,6 @@ const verdict = (
     )
   );
 
-const currentVerdict: TurnReviewVerdict = {
-  accepted: true,
-  clear: true,
-  engaging: true,
-  grounded: true,
-  advancesBeat: true,
-  addsVariety: true,
-  roleConsistent: true,
-  knowledgeConsistent: true,
-  audienceAccessible: true,
-  castConsistent: true,
-  introducedCardIds: [],
-  introducedTerms: [],
-  feedback: "",
-};
-
 const request = (overrides: Partial<TurnReviewRequest> = {}): TurnReviewRequest => ({
   reviewBrief: "Review this podcast turn against its assigned editorial purpose. Goal: explain the fix.",
   candidateTurn: "They taped a square filter into a round socket.",
@@ -83,18 +65,8 @@ const request = (overrides: Partial<TurnReviewRequest> = {}): TurnReviewRequest 
     { id: "c2", content: "Mission control improvised the procedure overnight." },
   ],
   saidSoFar: ["HOST: The oxygen tank exploded two days out."],
-  current: async () => currentVerdict,
   ...overrides,
 });
-
-function memoryRunner(modes: string) {
-  const records: JudgmentRecord[] = [];
-  const log: IJudgmentLog = {
-    append: async (r) => void records.push(r),
-    readAll: async () => records,
-  };
-  return { records, runner: new JudgmentRunner(parseJudgmentModes(modes), log) };
-}
 
 describe("applicableReasons", () => {
   it("offers tool-specific reasons only for that tool", () => {
@@ -238,31 +210,17 @@ describe("judgeTurnReviewWithTypeSafe", () => {
 });
 
 describe("reviewTurn", () => {
-  it("shadow: acts on the current review and compares acceptance only", async () => {
-    const { runner, records } = memoryRunner("turn-review=shadow");
-
-    const result = await reviewTurn(request(), {
-      runner,
-      provider: verdict("no_problem", 0.1, { c1: 0.9, c2: 0.9 }),
-    });
-
-    expect(result).toBe(currentVerdict);
-    // Different beat/card judgments, same accept decision → agreement.
-    expect(records[0]).toMatchObject({
-      judgment: "turn-review",
-      agreed: true,
-      typesafeDetail: { reason: "no_problem" },
-    });
+  it("uses the provider's verdict", async () => {
+    setJudgmentProvider(verdict("repeats_earlier_content"));
+    const result = await reviewTurn(request());
+    expect(isTurnAccepted(result)).toBe(false);
+    expect(result.feedback).toBe(TURN_REJECTION_REASONS.repeats_earlier_content.feedback);
   });
 
-  it("shadow: a TypeSafe rejection of an accepted turn is a disagreement", async () => {
-    const { runner, records } = memoryRunner("turn-review=shadow");
-
-    await reviewTurn(request(), {
-      runner,
-      provider: verdict("repeats_earlier_content"),
-    });
-
-    expect(records[0].agreed).toBe(false);
+  it("accepts the turn when the provider is unavailable", async () => {
+    setJudgmentProvider(unavailableProvider());
+    const result = await reviewTurn(request());
+    expect(isTurnAccepted(result)).toBe(true);
+    expect(result.introducedTerms).toBeUndefined();
   });
 });

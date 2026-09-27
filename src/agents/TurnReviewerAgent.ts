@@ -15,8 +15,6 @@ import { BaseAgent } from "./BaseAgent";
 import {
   ExtractIntroducedTermsInput,
   extractIntroducedTermsSchema,
-  ReviewTurnInput,
-  reviewTurnSchema,
   RewriteRejectedTurnInput,
   rewriteRejectedTurnSchema,
 } from "./editorial-schemas";
@@ -29,7 +27,6 @@ import { SpeakerAgentToolName } from "./speaker-tools";
 
 const EMPTY_KNOWLEDGE_LEDGER: KnowledgeLedger = { introducedCards: [] };
 const EMPTY_TERMINOLOGY_LEDGER: TerminologyLedger = { explainedTerms: [] };
-const MAX_REVIEW_TOKENS = 850;
 const MAX_REWRITE_TOKENS = 180;
 const MAX_TERM_EXTRACTION_TOKENS = 200;
 // Wider than the 6-turn recentText window used for conversational flow —
@@ -207,16 +204,6 @@ Keep your logic terse. When rejected, return one feedback item written as one pl
       assignedCards: cards
         .filter((card) => brief.cardIds.includes(card.id))
         .map((card) => ({ id: card.id, content: card.content })),
-      current: async () => {
-        const { feedback: feedbackItems, ...result } =
-          await this.callModelForStructuredOutput<ReviewTurnInput>(
-            ModelTask.TurnReview,
-            messages,
-            reviewTurnSchema,
-            MAX_REVIEW_TOKENS
-          );
-        return { ...result, feedback: feedbackItems?.[0] ?? "" };
-      },
     });
     const accepted = isTurnAccepted(judgement);
     // A TypeSafe verdict judges but cannot write term meanings, so an

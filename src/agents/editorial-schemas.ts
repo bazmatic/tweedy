@@ -62,51 +62,6 @@ const introducedTermSchema = z.object({
     .describe("The plain-language meaning given to the listener."),
 });
 
-const singleItemArraySchema = (description: string) =>
-  z.preprocess(
-    (value) =>
-      typeof value === "string"
-        ? value.trim().length > 0
-          ? [value]
-          : []
-        : value,
-    z.array(z.string()).max(1).describe(description)
-  );
-
-export const reviewTurnSchema = z
-  .object({
-    accepted: z.boolean(),
-    clear: z.boolean(),
-    engaging: z.boolean(),
-    grounded: z.boolean(),
-    advancesBeat: z.boolean(),
-    addsVariety: z.boolean(),
-    roleConsistent: z.boolean(),
-    knowledgeConsistent: z.boolean(),
-    audienceAccessible: z.boolean(),
-    castConsistent: z
-      .boolean()
-      .describe(
-        "False if the speech addresses, thanks, or refers to a named person by name who is not one of the episode's actual speakers."
-      ),
-    introducedCardIds: z
-      .array(z.string())
-      .describe(
-        "Assigned card ids whose substance was explicitly introduced aloud."
-      ),
-    introducedTerms: z
-      .array(introducedTermSchema)
-      .describe(
-        "Necessary technical terms first explained in this speech. Exclude incidental names and terms explained earlier."
-      ),
-    feedback: singleItemArraySchema(
-      "One short, plain-language reason fragment when rejected; empty when accepted. Use at most 12 words, with no quotations or detailed rewrite."
-    ),
-  })
-  .describe("An editorial and role-consistency review of one podcast turn.");
-
-export type ReviewTurnInput = z.infer<typeof reviewTurnSchema>;
-
 export const extractIntroducedTermsSchema = z
   .object({
     introducedTerms: z

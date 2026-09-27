@@ -7,23 +7,17 @@ import {
   VocalProviderName,
 } from "../types";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
-import { JudgmentRunner } from "../services/JudgmentRunner";
-import { parseJudgmentModes } from "../services/judgment-modes";
+import { setJudgmentProvider } from "../services/judgment-runtime";
 import { TURN_REJECTION_REASONS } from "./TypeSafeTurnReviewJudge";
 import { TurnReviewerAgent } from "./TurnReviewerAgent";
 
-// Route the reviewer's judgment through an in-memory runner in "on" mode
-// with a scripted TypeSafe provider, so no network or live model is used.
-// vi.mock is hoisted above the imports.
-const { judgeMock } = vi.hoisted(() => ({ judgeMock: vi.fn() }));
-vi.mock("../services/judgment-runtime", () => ({
-  getJudgmentRunner: () =>
-    new JudgmentRunner(parseJudgmentModes("turn-review=on"), {
-      append: async () => {},
-      readAll: async () => [],
-    }),
-  getJudgmentProvider: () => ({ judge: judgeMock }),
-}));
+// Scripts the judgment provider directly, so no network or live model is used.
+const judgeMock = vi.fn();
+
+beforeEach(() => {
+  judgeMock.mockReset();
+  setJudgmentProvider({ judge: judgeMock });
+});
 
 const speaker = {
   id: "s1",
@@ -80,10 +74,6 @@ function scriptVerdict(problem = "no_problem") {
 }
 
 describe("TurnReviewerAgent with turn-review=on", () => {
-  beforeEach(() => {
-    judgeMock.mockReset();
-  });
-
   it("accepts via TypeSafe, skips the Premium review, and extracts terms on Economy", async () => {
     scriptVerdict();
     const agent = new TurnReviewerAgent();
@@ -127,31 +117,13 @@ describe("TurnReviewerAgent with turn-review=on", () => {
     expect(rewritePrompt).toContain(TURN_REJECTION_REASONS.repeats_earlier_content.feedback);
   });
 
-  it("falls back to the Premium review when TypeSafe is unavailable", async () => {
+  it("accepts and extracts terms when the provider is unavailable", async () => {
     judgeMock.mockResolvedValueOnce({ status: "unavailable", reason: "HTTP 529" });
     const agent = new TurnReviewerAgent();
-    const call = vi
-      .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValue({
-        accepted: true,
-        clear: true,
-        engaging: true,
-        grounded: true,
-        advancesBeat: true,
-        addsVariety: true,
-        roleConsistent: true,
-        knowledgeConsistent: true,
-        audienceAccessible: true,
-        castConsistent: true,
-        introducedCardIds: ["c1"],
-        introducedTerms: [],
-        feedback: [],
-      });
-
+    const call = vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({ introducedTerms: [] });
     const result = await agent.review(speech, brief, cards, []);
-
     expect(result.accepted).toBe(true);
     expect(call).toHaveBeenCalledTimes(1);
-    expect(call.mock.calls[0][0]).toBe(ModelTask.TurnReview);
+    expect(call.mock.calls[0][0]).toBe(ModelTask.TermExtraction);
   });
 });

@@ -9,7 +9,28 @@ import {
 } from "../types";
 import { TurnReviewerAgent } from "./TurnReviewerAgent";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
+import { setJudgmentProvider } from "../services/judgment-runtime";
+import { scriptedProvider } from "../test-support/judgments";
 import { SpeakerAgentToolName } from "./speaker-tools";
+import { TURN_REJECTION_REASONS, TurnRejectionReason } from "./TypeSafeTurnReviewJudge";
+
+/** Scripts a `no_problem` (accepted) TypeSafe verdict for every review call. */
+function acceptingProvider() {
+  return scriptedProvider((_id, question) =>
+    question.type === "choice"
+      ? { type: "choice", choice: "no_problem", probabilities: {}, confidence: 0.9 }
+      : { type: "noul", probability: 0.9 }
+  );
+}
+
+/** Scripts a TypeSafe verdict that rejects for the given reason. */
+function rejectingProvider(reason: TurnRejectionReason) {
+  return scriptedProvider((_id, question) =>
+    question.type === "choice"
+      ? { type: "choice", choice: reason, probabilities: {}, confidence: 0.9 }
+      : { type: "noul", probability: 0.9 }
+  );
+}
 
 const speaker = {
   id: "s1",
@@ -39,25 +60,12 @@ const speech: Speech = {
 
 describe("TurnReviewerAgent", () => {
   it("reviews according to the assigned editorial purpose", async () => {
+    const provider = acceptingProvider();
+    setJudgmentProvider(provider);
     const agent = new TurnReviewerAgent();
     const call = vi
       .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValue({
-        accepted: true,
-        clear: true,
-        engaging: true,
-        grounded: true,
-        advancesBeat: true,
-        addsVariety: true,
-        roleConsistent: true,
-        knowledgeConsistent: true,
-        audienceAccessible: true,
-        castConsistent: true,
-        introducedCardIds: [],
-        introducedTerms: [],
-        feedback: [],
-        revisedMessages: [],
-      });
+      .mockResolvedValue({ introducedTerms: [] });
 
     const result = await agent.review(
       speech,
@@ -73,8 +81,8 @@ describe("TurnReviewerAgent", () => {
       []
     );
 
-    expect(call.mock.calls[0][0]).toBe(ModelTask.TurnReview);
-    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    expect(call.mock.calls[0][0]).toBe(ModelTask.TermExtraction);
+    const prompt = (provider.calls[0].state as { review_brief: string }).review_brief;
     expect(prompt).toContain("Humanise the subject");
     expect(prompt).toContain("Judge the turn by its goal and format");
     expect(prompt).toContain("First perform a listener-comprehension audit");
@@ -102,25 +110,10 @@ describe("TurnReviewerAgent", () => {
   });
 
   it("adds the closing-statement guardrail note only for CLOSING_STATEMENT turns", async () => {
+    const provider = acceptingProvider();
+    setJudgmentProvider(provider);
     const agent = new TurnReviewerAgent();
-    const call = vi
-      .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValue({
-        accepted: true,
-        clear: true,
-        engaging: true,
-        grounded: true,
-        advancesBeat: true,
-        addsVariety: true,
-        roleConsistent: true,
-        knowledgeConsistent: true,
-        audienceAccessible: true,
-        castConsistent: true,
-        introducedCardIds: [],
-        introducedTerms: [],
-        feedback: [],
-        revisedMessages: [],
-      });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({ introducedTerms: [] });
 
     await agent.review(
       { ...speech, tool: SpeakerAgentToolName.CLOSING_STATEMENT },
@@ -136,32 +129,17 @@ describe("TurnReviewerAgent", () => {
       []
     );
 
-    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    const prompt = (provider.calls[0].state as { review_brief: string }).review_brief;
     expect(prompt).toContain("must not introduce any new topic");
     expect(prompt).toContain("must not end on a question mark");
     expect(prompt).not.toContain("nearly out of time");
   });
 
   it("omits the subject-identification and reference rules from a cold open's prompt entirely, rather than overriding them", async () => {
+    const provider = acceptingProvider();
+    setJudgmentProvider(provider);
     const agent = new TurnReviewerAgent();
-    const call = vi
-      .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValue({
-        accepted: true,
-        clear: true,
-        engaging: true,
-        grounded: true,
-        advancesBeat: true,
-        addsVariety: true,
-        roleConsistent: true,
-        knowledgeConsistent: true,
-        audienceAccessible: true,
-        castConsistent: true,
-        introducedCardIds: [],
-        introducedTerms: [],
-        feedback: [],
-        revisedMessages: [],
-      });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({ introducedTerms: [] });
 
     await agent.review(
       { ...speech, tool: SpeakerAgentToolName.COLD_OPEN },
@@ -177,7 +155,7 @@ describe("TurnReviewerAgent", () => {
       []
     );
 
-    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    const prompt = (provider.calls[0].state as { review_brief: string }).review_brief;
     // The rules themselves must not appear at all — not appear-then-be-
     // overridden by a countermanding note.
     expect(prompt).not.toContain("resolve every necessary reference");
@@ -192,25 +170,10 @@ describe("TurnReviewerAgent", () => {
   });
 
   it("does not exempt an ordinary turn from the comprehension audit", async () => {
+    const provider = acceptingProvider();
+    setJudgmentProvider(provider);
     const agent = new TurnReviewerAgent();
-    const call = vi
-      .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValue({
-        accepted: true,
-        clear: true,
-        engaging: true,
-        grounded: true,
-        advancesBeat: true,
-        addsVariety: true,
-        roleConsistent: true,
-        knowledgeConsistent: true,
-        audienceAccessible: true,
-        castConsistent: true,
-        introducedCardIds: [],
-        introducedTerms: [],
-        feedback: [],
-        revisedMessages: [],
-      });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({ introducedTerms: [] });
 
     await agent.review(
       speech,
@@ -226,7 +189,7 @@ describe("TurnReviewerAgent", () => {
       []
     );
 
-    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    const prompt = (provider.calls[0].state as { review_brief: string }).review_brief;
     expect(prompt).toContain("resolve every necessary reference");
     expect(prompt).toContain(
       "requires knowledge of an unheard person, group, object, or event"
@@ -235,25 +198,10 @@ describe("TurnReviewerAgent", () => {
   });
 
   it("does not require a question-move turn to also explain the term it's asking about", async () => {
+    const provider = acceptingProvider();
+    setJudgmentProvider(provider);
     const agent = new TurnReviewerAgent();
-    const call = vi
-      .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValue({
-        accepted: true,
-        clear: true,
-        engaging: true,
-        grounded: true,
-        advancesBeat: true,
-        addsVariety: true,
-        roleConsistent: true,
-        knowledgeConsistent: true,
-        audienceAccessible: true,
-        castConsistent: true,
-        introducedCardIds: [],
-        introducedTerms: [],
-        feedback: [],
-        revisedMessages: [],
-      });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({ introducedTerms: [] });
 
     await agent.review(
       { ...speech, message: 'Claire, what does "metis" actually mean?' },
@@ -269,7 +217,7 @@ describe("TurnReviewerAgent", () => {
       []
     );
 
-    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    const prompt = (provider.calls[0].state as { review_brief: string }).review_brief;
     expect(prompt).not.toContain(
       "When a specialist concept carries the argument, reject unless its meaning is explained plainly"
     );
@@ -279,25 +227,10 @@ describe("TurnReviewerAgent", () => {
   });
 
   it("also exempts a question posed under a different editorial move, detected from the wording itself", async () => {
+    const provider = acceptingProvider();
+    setJudgmentProvider(provider);
     const agent = new TurnReviewerAgent();
-    const call = vi
-      .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValue({
-        accepted: true,
-        clear: true,
-        engaging: true,
-        grounded: true,
-        advancesBeat: true,
-        addsVariety: true,
-        roleConsistent: true,
-        knowledgeConsistent: true,
-        audienceAccessible: true,
-        castConsistent: true,
-        introducedCardIds: [],
-        introducedTerms: [],
-        feedback: [],
-        revisedMessages: [],
-      });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({ introducedTerms: [] });
 
     await agent.review(
       {
@@ -318,32 +251,17 @@ describe("TurnReviewerAgent", () => {
       []
     );
 
-    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    const prompt = (provider.calls[0].state as { review_brief: string }).review_brief;
     expect(prompt).toContain(
       "a turn whose job is to ask about the concept (this one) is not expected to explain it"
     );
   });
 
   it("adds the nearly-out-of-time guardrail note only for NEARLY_OUT_OF_TIME turns", async () => {
+    const provider = acceptingProvider();
+    setJudgmentProvider(provider);
     const agent = new TurnReviewerAgent();
-    const call = vi
-      .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValue({
-        accepted: true,
-        clear: true,
-        engaging: true,
-        grounded: true,
-        advancesBeat: true,
-        addsVariety: true,
-        roleConsistent: true,
-        knowledgeConsistent: true,
-        audienceAccessible: true,
-        castConsistent: true,
-        introducedCardIds: [],
-        introducedTerms: [],
-        feedback: [],
-        revisedMessages: [],
-      });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({ introducedTerms: [] });
 
     await agent.review(
       { ...speech, tool: SpeakerAgentToolName.NEARLY_OUT_OF_TIME },
@@ -359,26 +277,15 @@ describe("TurnReviewerAgent", () => {
       []
     );
 
-    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    const prompt = (provider.calls[0].state as { review_brief: string }).review_brief;
     expect(prompt).toContain("must actually answer it in substance");
     expect(prompt).not.toContain("episode's closing statement");
   });
 
   it("cannot accept a turn that violates role consistency", async () => {
+    setJudgmentProvider(rejectingProvider("breaks_speaker_role"));
     const agent = new TurnReviewerAgent();
-    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
-      accepted: true,
-      clear: true,
-      engaging: true,
-      grounded: true,
-      advancesBeat: true,
-      addsVariety: true,
-      roleConsistent: false,
-      knowledgeConsistent: true,
-      audienceAccessible: true,
-      introducedCardIds: [],
-      introducedTerms: [],
-    });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({ message: "revised" });
 
     const result = await agent.review(
       speech,
@@ -398,20 +305,9 @@ describe("TurnReviewerAgent", () => {
   });
 
   it("cannot accept necessary jargon that is inaccessible to the audience", async () => {
+    setJudgmentProvider(rejectingProvider("specialist_term_left_unexplained"));
     const agent = new TurnReviewerAgent();
-    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
-      accepted: true,
-      clear: true,
-      engaging: true,
-      grounded: true,
-      advancesBeat: true,
-      addsVariety: true,
-      roleConsistent: true,
-      knowledgeConsistent: true,
-      audienceAccessible: false,
-      introducedCardIds: [],
-      introducedTerms: [],
-    });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({ message: "revised" });
 
     const result = await agent.review(
       { ...speech, message: "The Shannon entropy is similar." },
@@ -433,24 +329,10 @@ describe("TurnReviewerAgent", () => {
   });
 
   it("separates a rejected verdict from its small rewrite call", async () => {
+    setJudgmentProvider(rejectingProvider("specialist_term_left_unexplained"));
     const agent = new TurnReviewerAgent();
     const call = vi
       .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValueOnce({
-        accepted: false,
-        clear: false,
-        engaging: true,
-        grounded: true,
-        advancesBeat: true,
-        addsVariety: true,
-        roleConsistent: true,
-        knowledgeConsistent: true,
-        audienceAccessible: false,
-        castConsistent: true,
-        introducedCardIds: [],
-        introducedTerms: [],
-        feedback: ["Missing listener context"],
-      })
       .mockResolvedValueOnce({ message: "A clearer version." });
 
     const result = await agent.review(
@@ -468,37 +350,25 @@ describe("TurnReviewerAgent", () => {
     );
 
     expect(result.accepted).toBe(false);
-    expect(result.feedback).toBe("Missing listener context");
+    expect(result.feedback).toBe(
+      TURN_REJECTION_REASONS.specialist_term_left_unexplained.feedback
+    );
     expect(result.revisedMessage).toBe("A clearer version.");
-    expect(call).toHaveBeenCalledTimes(2);
-    expect(call.mock.calls[1][2]).toHaveProperty("shape");
-    expect((call.mock.calls[1][1] as any)[0].content).toContain(
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(call.mock.calls[0][2]).toHaveProperty("shape");
+    expect((call.mock.calls[0][1] as any)[0].content).toContain(
       "Return only one complete corrected spoken turn"
     );
-    expect((call.mock.calls[1][1] as any)[0].content).toContain(
+    expect((call.mock.calls[0][1] as any)[0].content).toContain(
       "Relevant prepared material"
     );
   });
 
   it("tells the reviewer what problem a revision is meant to fix, when reviewing a revision", async () => {
+    const provider = acceptingProvider();
+    setJudgmentProvider(provider);
     const agent = new TurnReviewerAgent();
-    const call = vi
-      .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValue({
-        accepted: true,
-        clear: true,
-        engaging: true,
-        grounded: true,
-        advancesBeat: true,
-        addsVariety: true,
-        roleConsistent: true,
-        knowledgeConsistent: true,
-        audienceAccessible: true,
-        castConsistent: true,
-        introducedCardIds: [],
-        introducedTerms: [],
-        feedback: [],
-      });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({ introducedTerms: [] });
 
     await agent.review(
       speech,
@@ -519,7 +389,7 @@ describe("TurnReviewerAgent", () => {
       "Missing listener context"
     );
 
-    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    const prompt = (provider.calls[0].state as { review_brief: string }).review_brief;
     expect(prompt).toContain(
       'This is a corrected rewrite of an earlier candidate that you rejected for: "Missing listener context"'
     );
@@ -527,24 +397,10 @@ describe("TurnReviewerAgent", () => {
   });
 
   it("omits the revision-context note on a first-pass review", async () => {
+    const provider = acceptingProvider();
+    setJudgmentProvider(provider);
     const agent = new TurnReviewerAgent();
-    const call = vi
-      .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValue({
-        accepted: true,
-        clear: true,
-        engaging: true,
-        grounded: true,
-        advancesBeat: true,
-        addsVariety: true,
-        roleConsistent: true,
-        knowledgeConsistent: true,
-        audienceAccessible: true,
-        castConsistent: true,
-        introducedCardIds: [],
-        introducedTerms: [],
-        feedback: [],
-      });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({ introducedTerms: [] });
 
     await agent.review(
       speech,
@@ -560,29 +416,16 @@ describe("TurnReviewerAgent", () => {
       []
     );
 
-    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    const prompt = (provider.calls[0].state as { review_brief: string }).review_brief;
     expect(prompt).not.toContain("corrected rewrite of an earlier candidate");
   });
 
   it("preserves a valid rejection when the rewrite call fails", async () => {
+    setJudgmentProvider(rejectingProvider("specialist_term_left_unexplained"));
     const agent = new TurnReviewerAgent();
-    vi.spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValueOnce({
-        accepted: false,
-        clear: false,
-        engaging: true,
-        grounded: true,
-        advancesBeat: true,
-        addsVariety: true,
-        roleConsistent: true,
-        knowledgeConsistent: true,
-        audienceAccessible: false,
-        castConsistent: true,
-        introducedCardIds: [],
-        introducedTerms: [],
-        feedback: ["Missing listener context"],
-      })
-      .mockRejectedValueOnce(new Error("malformed rewrite"));
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockRejectedValueOnce(
+      new Error("malformed rewrite")
+    );
 
     const result = await agent.review(
       speech,
@@ -599,28 +442,17 @@ describe("TurnReviewerAgent", () => {
     );
 
     expect(result.accepted).toBe(false);
-    expect(result.feedback).toBe("Missing listener context");
+    expect(result.feedback).toBe(
+      TURN_REJECTION_REASONS.specialist_term_left_unexplained.feedback
+    );
     expect(result.revisedMessage).toBe("");
   });
 
   it("passes the real speaker roster to the reviewer and rejects a cast-inconsistent turn", async () => {
+    const provider = rejectingProvider("addresses_someone_not_in_cast");
+    setJudgmentProvider(provider);
     const agent = new TurnReviewerAgent();
-    const call = vi
-      .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValue({
-        accepted: true,
-        clear: true,
-        engaging: true,
-        grounded: true,
-        advancesBeat: true,
-        addsVariety: true,
-        roleConsistent: true,
-        knowledgeConsistent: true,
-        audienceAccessible: true,
-        castConsistent: false,
-        introducedCardIds: [],
-        introducedTerms: [],
-      });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({ message: "revised" });
 
     const result = await agent.review(
       { ...speech, message: "Karina, set that up for our listeners." },
@@ -640,29 +472,16 @@ describe("TurnReviewerAgent", () => {
       [speaker, { ...speaker, id: "s2", name: "Miles" }]
     );
 
-    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    const prompt = (provider.calls[0].state as { review_brief: string }).review_brief;
     expect(prompt).toContain("This episode's actual speakers: Ada, Miles");
     expect(result.accepted).toBe(false);
   });
 
   it("checks repetition against everything said so far by any speaker, not just this speaker's own recent lines", async () => {
+    const provider = acceptingProvider();
+    setJudgmentProvider(provider);
     const agent = new TurnReviewerAgent();
-    const call = vi
-      .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValue({
-        accepted: true,
-        clear: true,
-        engaging: true,
-        grounded: true,
-        advancesBeat: true,
-        addsVariety: true,
-        roleConsistent: true,
-        knowledgeConsistent: true,
-        audienceAccessible: true,
-        castConsistent: true,
-        introducedCardIds: [],
-        introducedTerms: [],
-      });
+    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({ introducedTerms: [] });
 
     const coHost = { ...speaker, id: "s2", name: "Miles" };
     const recentSpeeches: Speech[] = Array.from({ length: 8 }, (_, i) => ({
@@ -692,7 +511,7 @@ describe("TurnReviewerAgent", () => {
       recentSpeeches
     );
 
-    const prompt = (call.mock.calls[0][1] as any)[0].content as string;
+    const prompt = (provider.calls[0].state as { review_brief: string }).review_brief;
     expect(prompt).toContain(
       "What has already been said in the episode so far, by any speaker"
     );

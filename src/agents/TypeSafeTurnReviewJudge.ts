@@ -5,11 +5,8 @@ import {
   JudgmentQuestion,
   noul,
 } from "../providers/judgment-questions";
-import { JudgmentRunner, TypeSafeDecision } from "../services/JudgmentRunner";
-import {
-  getJudgmentProvider,
-  getJudgmentRunner,
-} from "../services/judgment-runtime";
+import { decide, JudgmentDecision } from "../services/decide";
+import { getJudgmentProvider } from "../services/judgment-runtime";
 import { SpeakerAgentToolName } from "./speaker-tools";
 
 export const TURN_REVIEW_JUDGMENT = "turn-review";
@@ -156,15 +153,28 @@ export interface TurnReviewRequest {
   candidateTurn: string;
   tool?: SpeakerAgentToolName;
   assignedCards: { id: string; content: string }[];
-  /** Today's LLM review, returning a verdict with terms and feedback. */
-  current: () => Promise<TurnReviewVerdict>;
 }
 
 export interface TurnReviewJudgeDeps {
-  runner?: JudgmentRunner;
   provider?: IJudgmentProvider;
   threshold?: number;
 }
+
+/** Used when the provider cannot review: accept, as the reviewer always has on failure. */
+export const ACCEPTED_FALLBACK_VERDICT: TurnReviewVerdict = {
+  accepted: true,
+  clear: true,
+  engaging: true,
+  grounded: true,
+  advancesBeat: true,
+  addsVariety: true,
+  roleConsistent: true,
+  knowledgeConsistent: true,
+  audienceAccessible: true,
+  castConsistent: true,
+  introducedCardIds: [],
+  feedback: "",
+};
 
 /** The reviewer's acceptance rule: accepted and no failing consistency flag. */
 export function isTurnAccepted(review: TurnReview): boolean {
@@ -178,24 +188,21 @@ export function isTurnAccepted(review: TurnReview): boolean {
   );
 }
 
-/** Reviews a candidate turn through the `turn-review` judgment's rollout mode. */
+/** Reviews a candidate turn through the `turn-review` judgment. */
 export function reviewTurn(
   request: TurnReviewRequest,
   deps: TurnReviewJudgeDeps = {}
 ): Promise<TurnReviewVerdict> {
-  const runner = deps.runner ?? getJudgmentRunner();
-  return runner.run({
+  return decide({
     judgment: TURN_REVIEW_JUDGMENT,
-    current: request.current,
-    typesafe: () =>
+    ask: () =>
       judgeTurnReviewWithTypeSafe(
         request,
         deps.provider ?? getJudgmentProvider(),
         deps.threshold ?? DEFAULT_TURN_REVIEW_THRESHOLD
       ),
+    fallback: { ...ACCEPTED_FALLBACK_VERDICT },
     state: { candidateTurn: request.candidateTurn, tool: request.tool },
-    agrees: (current, typesafe) =>
-      isTurnAccepted(current) === isTurnAccepted(typesafe),
   });
 }
 
@@ -214,7 +221,7 @@ export async function judgeTurnReviewWithTypeSafe(
   request: TurnReviewRequest,
   provider: IJudgmentProvider,
   threshold: number
-): Promise<TypeSafeDecision<TurnReviewVerdict>> {
+): Promise<JudgmentDecision<TurnReviewVerdict>> {
   const reasons = applicableReasons(request.tool);
   const questions: Record<string, JudgmentQuestion> = {
     most_serious_problem: choice(
