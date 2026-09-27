@@ -49,7 +49,11 @@ export function getJudgmentRunner(): JudgmentRunner {
   return sharedRunner;
 }
 
-/** Process-wide TypeSafe provider configured from TYPESAFE_API_KEY. */
+/**
+ * The active judgment provider: a test override installed via
+ * `setJudgmentProvider`, or the process-wide TypeSafe provider (configured
+ * from TYPESAFE_API_KEY) otherwise.
+ */
 export function getJudgmentProvider(): IJudgmentProvider {
   return getJudgmentProviderOverride() ?? JudgmentProviderFactory.getProvider(JudgmentProviderName.TypeSafe);
 }
