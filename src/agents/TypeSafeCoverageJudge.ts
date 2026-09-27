@@ -3,16 +3,12 @@ import {
   NoulQuestion,
   noul,
 } from "../providers/judgment-questions";
-import { JudgmentRunner, TypeSafeDecision } from "../services/JudgmentRunner";
-import {
-  getJudgmentProvider,
-  getJudgmentRunner,
-} from "../services/judgment-runtime";
+import { decide, JudgmentDecision } from "../services/decide";
+import { getJudgmentProvider } from "../services/judgment-runtime";
 
 /**
- * Which coverage check is being made. Each mirrors one of the director's
- * verification prompts and is a separate judgment (`coverage.<kind>`) so its
- * agreement is reported separately; `coverage=<mode>` configures all three.
+ * Which coverage check is being made. Each is a separate judgment
+ * (`coverage.<kind>`) with its own rubric below.
  */
 export type CoverageKind = "point" | "orientation" | "discourse";
 
@@ -28,12 +24,9 @@ export interface CoverageRequest {
   transcript: string;
   /** A turn being considered for acceptance (discourse checks only). */
   candidateTurn?: string;
-  /** Today's verification path, returning the confirmed item ids. */
-  current: () => Promise<string[]>;
 }
 
 export interface CoverageJudgeDeps {
-  runner?: JudgmentRunner;
   provider?: IJudgmentProvider;
   /** Minimum probability for an item to count as covered. */
   threshold?: number;
@@ -61,30 +54,21 @@ const CRITERIA = {
   false: "Absent, only hinted at, or only topically adjacent",
 };
 
-/**
- * Confirms which items the conversation has genuinely covered, routed through
- * the `coverage.<kind>` judgment's rollout mode. The current LLM verifier stays
- * the fallback; in shadow mode it is still the decision acted on.
- */
+/** Confirms which items the conversation has genuinely covered. */
 export function verifyCoverage(
   request: CoverageRequest,
   deps: CoverageJudgeDeps = {}
 ): Promise<string[]> {
-  const runner = deps.runner ?? getJudgmentRunner();
-  return runner.run({
+  return decide({
     judgment: `coverage.${request.kind}`,
-    current: request.current,
-    typesafe: () =>
+    ask: () =>
       judgeCoverageWithTypeSafe(
         request,
         deps.provider ?? getJudgmentProvider(),
         deps.threshold ?? DEFAULT_COVERAGE_THRESHOLD
       ),
-    state: {
-      items: request.items,
-      ...(request.candidateTurn ? { candidateTurn: request.candidateTurn } : {}),
-    },
-    agrees: sameIds,
+    fallback: [],
+    state: { items: request.items, ...(request.candidateTurn ? { candidateTurn: request.candidateTurn } : {}) },
   });
 }
 
@@ -92,7 +76,7 @@ export async function judgeCoverageWithTypeSafe(
   request: CoverageRequest,
   provider: IJudgmentProvider,
   threshold: number
-): Promise<TypeSafeDecision<string[]>> {
+): Promise<JudgmentDecision<string[]>> {
   if (request.items.length === 0) {
     return { status: "ok", value: [] };
   }
@@ -122,10 +106,4 @@ export async function judgeCoverageWithTypeSafe(
   });
 
   return { status: "ok", value: confirmed, detail: { probabilities } };
-}
-
-function sameIds(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const set = new Set(a);
-  return b.every((id) => set.has(id));
 }

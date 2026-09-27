@@ -19,7 +19,6 @@ describe.skipIf(!process.env.TYPESAFE_API_KEY)(
           transcript:
             "HOST: Two days out, an oxygen tank exploded and crippled the service module.\n" +
             "GUEST: Right, and suddenly the crew had lost most of their power and oxygen.",
-          current: async () => [],
         },
         new TypeSafeJudgmentProvider({ timeoutMs: 15000 }),
         0.5

@@ -9,9 +9,8 @@ import {
   JudgmentQuestions,
   JudgmentResult,
 } from "../providers/judgment-questions";
-import { JudgmentRunner } from "../services/JudgmentRunner";
-import { IJudgmentLog, JudgmentRecord } from "../services/JudgmentLog";
-import { parseJudgmentModes } from "../services/judgment-modes";
+import { setJudgmentProvider } from "../services/judgment-runtime";
+import { scriptedProvider, unavailableProvider } from "../test-support/judgments";
 
 function fakeProvider(probabilities: number[]) {
   const judge = vi.fn(
@@ -29,15 +28,6 @@ function fakeProvider(probabilities: number[]) {
   return { judge } as IJudgmentProvider & { judge: typeof judge };
 }
 
-function memoryRunner(modes: string) {
-  const records: JudgmentRecord[] = [];
-  const log: IJudgmentLog = {
-    append: async (r) => void records.push(r),
-    readAll: async () => records,
-  };
-  return { records, runner: new JudgmentRunner(parseJudgmentModes(modes), log) };
-}
-
 const items = [
   { id: "p1", text: "CO2 scrubber duct-tape hack" },
   { id: "p2", text: "Oxygen tank explosion" },
@@ -47,7 +37,6 @@ const request = (overrides: Partial<CoverageRequest> = {}): CoverageRequest => (
   kind: "point",
   items,
   transcript: "HOST: The oxygen tank exploded two days into the flight.",
-  current: async () => ["p1", "p2"],
   ...overrides,
 });
 
@@ -117,75 +106,20 @@ describe("judgeCoverageWithTypeSafe", () => {
 });
 
 describe("verifyCoverage", () => {
-  it("is off by default and only runs the current verifier", async () => {
-    const { runner, records } = memoryRunner("");
-    const provider = fakeProvider([0.9, 0.9]);
-
-    const confirmed = await verifyCoverage(request(), { runner, provider });
-
-    expect(confirmed).toEqual(["p1", "p2"]);
-    expect(provider.judge).not.toHaveBeenCalled();
-    expect(records).toEqual([]);
+  it("confirms items the provider judges covered", async () => {
+    setJudgmentProvider(scriptedProvider((id) => ({ type: "noul", probability: id === "item_1" ? 0.8 : 0.1 })));
+    expect(await verifyCoverage(request())).toEqual(["p2"]);
   });
 
-  it("shadow: acts on the current verifier and logs the TypeSafe verdict per kind", async () => {
-    const { runner, records } = memoryRunner("coverage=shadow");
-    const provider = fakeProvider([0.1, 0.8]);
-
-    const confirmed = await verifyCoverage(request(), { runner, provider });
-
-    expect(confirmed).toEqual(["p1", "p2"]);
-    expect(records[0]).toMatchObject({
-      judgment: "coverage.point",
-      current: ["p1", "p2"],
-      typesafe: ["p2"],
-      typesafeDetail: { probabilities: { p1: 0.1, p2: 0.8 } },
-      agreed: false,
-      state: { items },
-    });
+  it("confirms nothing when the provider is unavailable", async () => {
+    setJudgmentProvider(unavailableProvider());
+    expect(await verifyCoverage(request())).toEqual([]);
   });
 
-  it("treats the same ids in a different order as agreement", async () => {
-    const { runner, records } = memoryRunner("coverage.point=shadow");
-
-    await verifyCoverage(
-      request({ current: async () => ["p2", "p1"] }),
-      { runner, provider: fakeProvider([0.9, 0.9]) }
-    );
-
-    expect(records[0].agreed).toBe(true);
-  });
-
-  it("on: acts on TypeSafe and falls back to the current verifier when unavailable", async () => {
-    const { runner } = memoryRunner("coverage=on");
-    const current = vi.fn(async () => ["p1"]);
-
-    const live = await verifyCoverage(request({ current }), {
-      runner,
-      provider: fakeProvider([0.1, 0.9]),
-    });
-    const fallback = await verifyCoverage(request({ current }), {
-      runner,
-      provider: { judge: async () => ({ status: "unavailable", reason: "x" }) },
-    });
-
-    expect(live).toEqual(["p2"]);
-    expect(fallback).toEqual(["p1"]);
-    expect(current).toHaveBeenCalledTimes(1);
-  });
-
-  it("propagates current-verifier errors so the caller's fallback still applies", async () => {
-    const { runner } = memoryRunner("coverage=shadow");
-
-    await expect(
-      verifyCoverage(
-        request({
-          current: async () => {
-            throw new Error("model failed");
-          },
-        }),
-        { runner, provider: fakeProvider([0.9, 0.9]) }
-      )
-    ).rejects.toThrow("model failed");
+  it("does not call the provider for no items", async () => {
+    const provider = scriptedProvider(() => ({ type: "noul", probability: 0.9 }));
+    setJudgmentProvider(provider);
+    expect(await verifyCoverage(request({ items: [] }))).toEqual([]);
+    expect(provider.calls).toEqual([]);
   });
 });

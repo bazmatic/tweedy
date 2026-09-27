@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { inspectEpisode } from "./EpisodeInspector";
 import { proposeTurnDirection } from "../agents/TurnDirectionProposer";
-import { verifyCoveredPointClaims } from "../agents/CoverageVerifier";
+import { verifyCoverage } from "../agents/TypeSafeCoverageJudge";
 import { repairTurnAssignment } from "../agents/TurnAssignmentRepairPipeline";
 import { SpeakerRolePolicy } from "../agents/SpeakerRolePolicy";
 import { DialogueCadencePolicy } from "../agents/DialogueCadencePolicy";
+import { setJudgmentProvider } from "../services/judgment-runtime";
+import { scriptedProvider } from "../test-support/judgments";
 import {
   AudienceValue,
   EditorialMove,
@@ -99,12 +101,12 @@ describe("inspection -> proposal -> verification -> repair pipeline", () => {
     );
     expect(proposal.claimedCoveredPointIds).toEqual(["p1"]);
 
-    const callVerificationModel = vi.fn().mockResolvedValue({ confirmedPointIds: ["p1"] });
-    const confirmedPointIds = await verifyCoveredPointClaims(
-      callVerificationModel,
-      "Welcome to the show, today we're talking about oceans.",
-      points
-    );
+    setJudgmentProvider(scriptedProvider(() => ({ type: "noul", probability: 0.9 })));
+    const confirmedPointIds = await verifyCoverage({
+      kind: "point",
+      items: points,
+      transcript: "Welcome to the show, today we're talking about oceans.",
+    });
     expect(confirmedPointIds).toEqual(["p1"]);
 
     const turnBrief = {

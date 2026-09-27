@@ -288,20 +288,6 @@ export type AssignSpeakerRolesInput = z.infer<
   ReturnType<typeof createAssignSpeakerRolesSchema>
 >;
 
-export const verifyCoveredPointsSchema = z
-  .object({
-    confirmedPointIds: z
-      .array(z.string())
-      .describe(
-        "Ids of candidate points explicitly and substantively discussed with specific matching detail. Exclude topically adjacent or passing mentions."
-      ),
-  })
-  .describe("Strict verification of discussion-point coverage.");
-
-export type VerifyCoveredPointsInput = z.infer<
-  typeof verifyCoveredPointsSchema
->;
-
 export const checkConversationCompleteSchema = z
   .object({
     isComplete: z

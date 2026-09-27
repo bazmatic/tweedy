@@ -34,13 +34,11 @@ import {
   CheckConversationCompleteInput,
   CreatePodcastPlanInput,
   SelectNextSpeakerInput,
-  VerifyCoveredPointsInput,
   beatClosureClaimSchema,
   checkConversationCompleteSchema,
   createAssignSpeakerRolesSchema,
   createPodcastPlanSchema,
   createSelectNextSpeakerSchema,
-  verifyCoveredPointsSchema,
   ConversationBeatInput,
 } from './director-schemas';
 import { SpeakerRolePolicy } from './SpeakerRolePolicy';
@@ -54,7 +52,6 @@ import { DiscourseRoleMatcher } from './DiscourseRoleMatcher';
 import { verifyCoverage } from './TypeSafeCoverageJudge';
 import { verifyConversationComplete } from './TypeSafeConclusionJudge';
 import { chooseEditorialMove } from './TypeSafeEditorialMoveJudge';
-import { judgmentMode } from '../services/judgment-runtime';
 import { CardGraphService } from '../services/CardGraphService';
 import { SHORT_REACTION_TOOLS, SpeakerAgentToolName } from './speaker-tools';
 import { ModelTask } from '../providers/ModelRoutingPolicy';
@@ -928,48 +925,11 @@ Return isComplete: true only if the conversation has genuinely wrapped up natura
       return coveredPointIds;
     }
 
-    const recentHistory = this.getConversationHistory(script);
-    const pointsList = candidatePoints
-      .map((point) => `- ${point.id}: ${point.text}`)
-      .join('\n');
-
-    const messages = [
-      {
-        role: 'user' as const,
-        content: `The director claimed the following discussion points were covered somewhere in the conversation below. Verify each one strictly against the actual text — a point only counts as covered if it was explicitly and substantively discussed with specific detail from the point's text, not merely a topically-adjacent mention. For example, if a point is "CO2 scrubber duct-tape hack" and the speech only mentions an oxygen tank explosion, that point is NOT covered.
-
-Full conversation so far:
-${recentHistory || '(nothing said yet)'}
-
-Candidate points claimed as covered:
-${pointsList}
-
-Return only the ids of points that were genuinely, substantively covered.`,
-      },
-    ];
-
-    try {
-      return await verifyCoverage({
-        kind: 'point',
-        items: candidatePoints,
-        transcript: recentHistory,
-        current: async () =>
-          (
-            await this.callModelForStructuredOutput<VerifyCoveredPointsInput>(
-              ModelTask.CoverageVerification,
-              messages,
-              verifyCoveredPointsSchema,
-              150
-            )
-          ).confirmedPointIds,
-      });
-    } catch (error) {
-      logger.error(
-        'Failed to verify covered points; treating claims as unconfirmed:',
-        error
-      );
-      return [];
-    }
+    return verifyCoverage({
+      kind: 'point',
+      items: candidatePoints,
+      transcript: this.getConversationHistory(script),
+    });
   }
 
   private applyCoveredPoints(coveredPointIds?: string[]): void {
@@ -1323,10 +1283,9 @@ Return only the ids of points that were genuinely, substantively covered.`,
     // checking the turn's explicitly targeted claims leaves those claims
     // permanently "unestablished" even though a listener already heard them,
     // so the director re-assigns the same already-spoken content as a fresh
-    // target on a later turn, guaranteeing a repetition rejection. With the
-    // LLM verifier this is bounded to a handful of untargeted-but-eligible
-    // claims to avoid an unbounded call per turn; when TypeSafe verifies
-    // discourse coverage it sweeps every unheard claim (see below).
+    // target on a later turn, guaranteeing a repetition rejection. Every
+    // unheard claim is swept (see below), bounded to avoid an unbounded call
+    // per turn.
     await this.recordOpportunisticDiscourseCoverage(
       script,
       speech,
@@ -1342,7 +1301,6 @@ Return only the ids of points that were genuinely, substantively covered.`,
     this.applyCoveredPoints(confirmed);
   }
 
-  private static readonly MAX_OPPORTUNISTIC_DISCOURSE_CLAIMS = 3;
   private static readonly MAX_SWEPT_DISCOURSE_CLAIMS = 60;
 
   private async recordOpportunisticDiscourseCoverage(
@@ -1350,32 +1308,20 @@ Return only the ids of points that were genuinely, substantively covered.`,
     speech: Speech,
     alreadyTargetedClaimIds: string[]
   ): Promise<void> {
-    // When TypeSafe decides discourse coverage, checking every unheard claim
-    // costs one parallel yes/no per claim, so sweep them all — including
-    // claims whose prerequisites aren't recorded yet. Otherwise claims only
-    // become established when a turn was aimed at them, the record lags far
-    // behind what listeners heard, and the claim gate blocks later claims
-    // as premature. The LLM path keeps its small, prerequisite-ready bound.
-    const sweepAll = judgmentMode("coverage.discourse") === "on";
+    // Check every claim still unheard, including those whose prerequisites
+    // aren't recorded yet: claims otherwise only become established when a
+    // turn was aimed at them, the record lags what listeners heard, and the
+    // claim gate blocks later claims as premature.
     const untargetedEligibleIds = this.allDiscourseClaims()
       .filter(
         (claim) =>
           !alreadyTargetedClaimIds.includes(claim.id) &&
           claim.state !== "established" &&
           claim.state !== "developed" &&
-          claim.state !== "unresolved" &&
-          (sweepAll ||
-            claim.prerequisiteClaimIds.every((id) =>
-              this.isDiscourseClaimEstablished(id)
-            ))
+          claim.state !== "unresolved"
       )
       .map((claim) => claim.id)
-      .slice(
-        0,
-        sweepAll
-          ? DirectorAgent.MAX_SWEPT_DISCOURSE_CLAIMS
-          : DirectorAgent.MAX_OPPORTUNISTIC_DISCOURSE_CLAIMS
-      );
+      .slice(0, DirectorAgent.MAX_SWEPT_DISCOURSE_CLAIMS);
     if (untargetedEligibleIds.length === 0) return;
     const verifiedIds = await this.verifyDiscourseClaims(
       script,
@@ -1418,45 +1364,13 @@ Return only the ids of points that were genuinely, substantively covered.`,
       targetClaimIds.includes(claim.id)
     );
     if (candidates.length === 0) return [];
-    const transcript = this.getConversationHistory(script);
-    const messages = [
-      {
-        role: "user" as const,
-        content: `Verify whether each atomic discourse claim is clearly established by the accepted podcast transcript. The complete causal or explanatory meaning must be recoverable by a new listener. A teaser, keyword, unexplained proper noun, consequence without its cause, or question that assumes the answer does NOT establish a claim.
 
-Accepted transcript:
-${transcript || "(nothing said yet)"}
-${candidateMessage ? `\nCandidate accepted turn:\n${candidateMessage}` : ""}
-
-Target claims:
-${candidates.map((claim) => `- ${claim.id}: ${claim.text}`).join("\n")}
-
-Return only the ids whose complete meaning is established.`,
-      },
-    ];
-    try {
-      return await verifyCoverage({
-        kind: "discourse",
-        items: candidates,
-        transcript,
-        candidateTurn: candidateMessage,
-        current: async () =>
-          (
-            await this.callModelForStructuredOutput<VerifyCoveredPointsInput>(
-              ModelTask.CoverageVerification,
-              messages,
-              verifyCoveredPointsSchema,
-              150
-            )
-          ).confirmedPointIds,
-      });
-    } catch (error) {
-      logger.error(
-        "Failed to verify discourse claims; treating claims as unconfirmed:",
-        error
-      );
-      return [];
-    }
+    return verifyCoverage({
+      kind: "discourse",
+      items: candidates,
+      transcript: this.getConversationHistory(script),
+      candidateTurn: candidateMessage,
+    });
   }
 
   applyVerifiedDiscourseClaims(
@@ -1568,50 +1482,16 @@ Return only the ids whose complete meaning is established.`,
     const candidates = orientation.requiredClaims.filter((claim) =>
       targetClaimIds.includes(claim.id)
     );
-    const claimsList = candidates
-      .map((claim) => `- ${claim.id}: ${claim.text}`)
-      .join("\n");
-    const transcript = this.getConversationHistory(script);
-    const messages = [
-      {
-        role: "user" as const,
-        content: `Verify whether each foundational orientation claim is clearly established by the accepted podcast transcript. A new listener must be able to recover the claim's complete meaning. Mere keyword mentions, implications, scattered fragments, or assumed prior knowledge do NOT count.
-
-Accepted transcript:
-${transcript || "(nothing said yet)"}
-
-Orientation claims:
-${claimsList}
-
-Return only the ids of claims whose complete meaning was explicitly established.`,
-      },
-    ];
-    try {
-      const confirmedPointIds = await verifyCoverage({
-        kind: "orientation",
-        items: candidates,
-        transcript,
-        current: async () =>
-          (
-            await this.callModelForStructuredOutput<VerifyCoveredPointsInput>(
-              ModelTask.CoverageVerification,
-              messages,
-              verifyCoveredPointsSchema,
-              150
-            )
-          ).confirmedPointIds,
-      });
-      for (const claim of candidates) {
-        if (confirmedPointIds.includes(claim.id) && !claim.covered) {
-          claim.covered = true;
-          claim.coveredAtTurn = this.turnsUsed;
-        }
+    const confirmedPointIds = await verifyCoverage({
+      kind: "orientation",
+      items: candidates,
+      transcript: this.getConversationHistory(script),
+    });
+    for (const claim of candidates) {
+      if (confirmedPointIds.includes(claim.id) && !claim.covered) {
+        claim.covered = true;
+        claim.coveredAtTurn = this.turnsUsed;
       }
-    } catch (error) {
-      logger.error(
-        "Failed to verify orientation claims; treating claims as unconfirmed:",
-        error
-      );
     }
 
     const unresolved = orientation.requiredClaims.filter(

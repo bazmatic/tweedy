@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   BeatPurpose,
   DiscourseClaim,
@@ -8,44 +8,10 @@ import {
   Speech,
   VocalProviderName,
 } from "../types";
-import { JudgmentRunner } from "../services/JudgmentRunner";
-import { parseJudgmentModes, resolveJudgmentMode } from "../services/judgment-modes";
-import { JudgmentQuestions } from "../providers/judgment-questions";
+import { setJudgmentProvider } from "../services/judgment-runtime";
+import { scriptedProvider, unavailableProvider } from "../test-support/judgments";
+import { JudgmentQuestion } from "../providers/judgment-questions";
 import { DirectorAgent } from "./DirectorAgent";
-
-// The judgment runtime is swapped per test: `modes` sets the rollout, and
-// the scripted provider says which claims the transcript establishes.
-const { runtime } = vi.hoisted(() => ({
-  runtime: { modes: "", established: new Set<string>(), asked: [] as string[][] },
-}));
-vi.mock("../services/judgment-runtime", () => ({
-  judgmentMode: (name: string) => resolveJudgmentMode(parseJudgmentModes(runtime.modes), name),
-  getJudgmentRunner: () =>
-    new JudgmentRunner(parseJudgmentModes(runtime.modes), {
-      append: async () => {},
-      readAll: async () => [],
-    }),
-  getJudgmentProvider: () => ({
-    judge: async (_state: unknown, questions: JudgmentQuestions) => {
-      const texts = Object.values(questions).map((q) => q.instructions);
-      runtime.asked.push(texts);
-      return {
-        status: "ok",
-        answers: Object.fromEntries(
-          Object.entries(questions).map(([id, q]) => [
-            id,
-            {
-              type: "noul",
-              probability: [...runtime.established].some((text) => q.instructions.includes(text))
-                ? 0.9
-                : 0.1,
-            },
-          ])
-        ),
-      };
-    },
-  }),
-}));
 
 const speaker: Speaker = {
   id: "s1",
@@ -118,25 +84,40 @@ function setup() {
   return { agent, script, speech, claims };
 }
 
+/** Answers "established" for any question whose text mentions one of `established`. */
+function establishedProvider(established: string[]) {
+  const asked: string[][] = [];
+  const provider = scriptedProvider((_id, question: JudgmentQuestion) => {
+    asked.push([question.instructions]);
+    return {
+      type: "noul",
+      probability: established.some((text) => question.instructions.includes(text)) ? 0.9 : 0.1,
+    };
+  });
+  return { provider, asked };
+}
+
 describe("DirectorAgent opportunistic discourse coverage", () => {
   beforeEach(() => {
-    runtime.asked = [];
-    runtime.established = new Set();
+    setJudgmentProvider(unavailableProvider());
   });
 
-  it("with TypeSafe on, sweeps every unheard claim, even with unrecorded prerequisites", async () => {
-    runtime.modes = "coverage.discourse=on";
-    runtime.established = new Set(["Most AI models write text", "Jev returns typed decisions instead of text"]);
+  it("sweeps every unheard claim, even with unrecorded prerequisites", async () => {
+    const { provider, asked } = establishedProvider([
+      "Most AI models write text",
+      "Jev returns typed decisions instead of text",
+    ]);
+    setJudgmentProvider(provider);
     const { agent, script, speech, claims } = setup();
 
     await agent.recordAcceptedCoverage(script, speech);
 
-    const asked = runtime.asked.flat().join("\n");
-    expect(asked).toContain("Most AI models write text");
-    expect(asked).toContain("Jev returns typed decisions instead of text");
-    expect(asked).toContain("The benchmarks are company-run");
-    expect(asked).not.toContain("Jev is fast");
-    expect(asked).not.toContain("Jev replaced every chatbot");
+    const askedText = asked.flat().join("\n");
+    expect(askedText).toContain("Most AI models write text");
+    expect(askedText).toContain("Jev returns typed decisions instead of text");
+    expect(askedText).toContain("The benchmarks are company-run");
+    expect(askedText).not.toContain("Jev is fast");
+    expect(askedText).not.toContain("Jev replaced every chatbot");
     expect(claims.find((c) => c.id === "c1")?.state).toBe("established");
     expect(claims.find((c) => c.id === "c2")?.state).toBe("established");
     expect(claims.find((c) => c.id === "c2")?.evidenceSpeechIds).toEqual(["turn-1"]);
@@ -144,33 +125,10 @@ describe("DirectorAgent opportunistic discourse coverage", () => {
     expect(claims.find((c) => c.id === "c5")?.state).toBe("unheard");
   });
 
-  it("off: keeps the LLM path's small, prerequisite-ready bound", async () => {
-    runtime.modes = "";
-    const { agent, script, speech } = setup();
-    const call = vi
-      .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValue({ confirmedPointIds: [] });
-
+  it("leaves every claim unheard when the provider is unavailable", async () => {
+    setJudgmentProvider(unavailableProvider());
+    const { agent, script, speech, claims } = setup();
     await agent.recordAcceptedCoverage(script, speech);
-
-    const prompt = (call.mock.calls[0][1] as { content: string }[])[0].content;
-    expect(prompt).toContain("c1: Most AI models write text");
-    // c2 and c5 wait on unestablished prerequisites, so the LLM path skips them.
-    expect(prompt).not.toContain("c2:");
-    expect(prompt).not.toContain("c5:");
-    expect(runtime.asked).toEqual([]);
-  });
-
-  it("shadow: behaves like off, since shadow must not change what is decided", async () => {
-    runtime.modes = "coverage.discourse=shadow";
-    const { agent, script, speech } = setup();
-    const call = vi
-      .spyOn(agent as any, "callModelForStructuredOutput")
-      .mockResolvedValue({ confirmedPointIds: [] });
-
-    await agent.recordAcceptedCoverage(script, speech);
-
-    const prompt = (call.mock.calls[0][1] as { content: string }[])[0].content;
-    expect(prompt).not.toContain("c2:");
+    expect(claims.filter((c) => c.state === "established").map((c) => c.id)).toEqual(["c3"]);
   });
 });

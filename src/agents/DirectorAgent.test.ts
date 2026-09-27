@@ -20,6 +20,8 @@ import {
 } from "../types";
 import { appConfig } from "../utils/config";
 import { DIRECTOR_DIRECTION_PROMPT_TEMPLATES } from "./prompt-templates/director-direction-prompt";
+import { setJudgmentProvider } from "../services/judgment-runtime";
+import { scriptedProvider } from "../test-support/judgments";
 
 function makeSpeaker(id: string): Speaker {
   return {
@@ -928,9 +930,8 @@ describe("DirectorAgent listener orientation", () => {
       maxTurns: 10,
       maxDuration: 600,
     });
-    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
-      confirmedPointIds: [],
-    });
+    // No judgment provider is scripted, so the fail-safe default (confirm
+    // nothing) leaves the orientation claim unresolved.
     const speech = {
       id: "orientation-attempt",
       speaker: script.speakers[0],
@@ -1111,12 +1112,14 @@ describe("DirectorAgent local discourse contracts", () => {
         speakerId: "s1",
         direction: "Move on.",
         coveredPointIds: ["p1"],
-      })
-      .mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
+      });
+    setJudgmentProvider(
+      scriptedProvider((id) => (id.startsWith("item_") ? { type: "noul", probability: 0.9 } : undefined))
+    );
 
     await agent.chooseNextSpeaker(script);
 
-    expect(call).toHaveBeenCalledTimes(2);
+    expect(call).toHaveBeenCalledTimes(1);
     expect(script.discussionPoints[0].covered).toBe(true);
     expect(script.conversationBeats![0].covered).toBe(false);
   });
@@ -1128,9 +1131,13 @@ describe("DirectorAgent local discourse contracts", () => {
       maxDuration: 600,
     });
     (agent as any).points = script.discussionPoints;
-    vi.spyOn(agent as any, "callModelForStructuredOutput").mockResolvedValue({
-      confirmedPointIds: ["b1-c1"],
-    });
+    setJudgmentProvider(
+      scriptedProvider((_id, question) =>
+        question.instructions.includes("trapped by the Cyclops Polyphemus")
+          ? { type: "noul", probability: 0.9 }
+          : { type: "noul", probability: 0.1 }
+      )
+    );
     const speech = {
       id: "setup-speech",
       speaker: script.speakers[0],
@@ -1275,8 +1282,10 @@ describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
       direction: "Talk about A",
       coveredPointIds: ["p1"],
     });
-    // Verification call confirms the claim.
-    chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
+    // The judgment provider confirms the claim.
+    setJudgmentProvider(
+      scriptedProvider((id) => (id.startsWith("item_") ? { type: "noul", probability: 0.9 } : undefined))
+    );
 
     await agent.chooseNextSpeaker(script);
 
@@ -1291,7 +1300,7 @@ describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
 
     await agent.chooseNextSpeaker(script);
 
-    const prompt = (chooseSpy.mock.calls[4][1] as any)[0].content as string;
+    const prompt = (chooseSpy.mock.calls[3][1] as any)[0].content as string;
     expect(prompt).toContain("p2 [supporting");
     expect(prompt).not.toContain("p1 [supporting");
   });
@@ -1332,8 +1341,8 @@ describe("DirectorAgent.chooseNextSpeaker coverage tracking", () => {
       direction: "Keep going",
       coveredPointIds: ["p1"],
     });
-    // Verification call rejects the hallucinated claim.
-    chooseSpy.mockResolvedValueOnce({ confirmedPointIds: [] });
+    // No judgment provider is scripted, so the fail-safe default (confirm
+    // nothing) rejects the hallucinated claim.
 
     await agent.chooseNextSpeaker(script);
 
@@ -1540,7 +1549,9 @@ describe("DirectorAgent.isConversationComplete", () => {
       direction: "Talk about A",
       coveredPointIds: ["p1"],
     });
-    chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
+    setJudgmentProvider(
+      scriptedProvider((id) => (id.startsWith("item_") ? { type: "noul", probability: 0.9 } : undefined))
+    );
     await agent.chooseNextSpeaker(script);
     appendClosingSpeech(script);
 
@@ -1570,7 +1581,9 @@ describe("DirectorAgent.isConversationComplete", () => {
       direction: "Talk about A",
       coveredPointIds: ["p1"],
     });
-    chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
+    setJudgmentProvider(
+      scriptedProvider((id) => (id.startsWith("item_") ? { type: "noul", probability: 0.9 } : undefined))
+    );
     await agent.chooseNextSpeaker(script);
     appendClosingSpeech(script);
 
@@ -1600,7 +1613,9 @@ describe("DirectorAgent.isConversationComplete", () => {
       direction: "Talk about A",
       coveredPointIds: ["p1"],
     });
-    chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
+    setJudgmentProvider(
+      scriptedProvider((id) => (id.startsWith("item_") ? { type: "noul", probability: 0.9 } : undefined))
+    );
     await agent.chooseNextSpeaker(script);
     appendClosingSpeech(script);
 
@@ -1630,7 +1645,9 @@ describe("DirectorAgent.isConversationComplete", () => {
       direction: "Talk about A",
       coveredPointIds: ["p1"],
     });
-    chooseSpy.mockResolvedValueOnce({ confirmedPointIds: ["p1"] });
+    setJudgmentProvider(
+      scriptedProvider((id) => (id.startsWith("item_") ? { type: "noul", probability: 0.9 } : undefined))
+    );
     await agent.chooseNextSpeaker(script);
 
     const speaker = script.speakers[0];

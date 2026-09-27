@@ -18,7 +18,6 @@ describe("ModelRoutingPolicy", () => {
   });
 
   it("uses economy models for constrained checks and short transformations", () => {
-    expect(policy.resolve(ModelTask.CoverageVerification)).toBe(ModelTier.Economy);
     expect(policy.resolve(ModelTask.ConclusionCheck)).toBe(ModelTier.Economy);
     expect(policy.resolve(ModelTask.Interjection)).toBe(ModelTier.Economy);
     expect(policy.resolve(ModelTask.SpeechEffectTagging)).toBe(ModelTier.Economy);

@@ -13,7 +13,7 @@ import {
   createSelectNextSpeakerSchema,
 } from "./director-schemas";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
-import { StructuredModelCaller } from "./CoverageVerifier";
+import { StructuredModelCaller } from "./structured-model-caller";
 import { logger } from "../utils/logger";
 
 const MAX_TURN_DIRECTION_TOKENS = 600;

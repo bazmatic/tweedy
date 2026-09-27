@@ -4,7 +4,6 @@ import {
   createAssignSpeakerRolesSchema,
   createPodcastPlanSchema,
   createSelectNextSpeakerSchema,
-  verifyCoveredPointsSchema,
 } from "./director-schemas";
 import { EpistemicRole, Speaker, VocalProviderName } from "../types";
 
@@ -198,10 +197,7 @@ describe("director structured-output schemas", () => {
     ]);
   });
 
-  it("validates coverage verification and conclusion decisions", () => {
-    expect(
-      verifyCoveredPointsSchema.parse({ confirmedPointIds: ["p1"] })
-    ).toEqual({ confirmedPointIds: ["p1"] });
+  it("validates a conclusion decision", () => {
     expect(checkConversationCompleteSchema.parse({ isComplete: true })).toEqual(
       { isComplete: true }
     );
