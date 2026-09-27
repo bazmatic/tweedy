@@ -56,7 +56,7 @@ export function validateConfig(config: AppConfig): {
   valid: boolean;
   missingVars: string[];
 } {
-  const requiredEnvVars = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"];
+  const requiredEnvVars = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TYPESAFE_API_KEY"];
 
   const missingVars = requiredEnvVars.filter(
     (varName) => !process.env[varName]

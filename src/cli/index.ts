@@ -97,7 +97,7 @@ export function createCLI(): Command {
       console.log("");
 
       // Check environment variables
-      const requiredVars = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"];
+      const requiredVars = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TYPESAFE_API_KEY"];
       const missingVars = requiredVars.filter(
         (varName) => !process.env[varName]
       );

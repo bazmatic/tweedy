@@ -1,5 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig, parseConversationWorkflowEngine } from "./config";
+import { loadConfig, parseConversationWorkflowEngine, validateConfig } from "./config";
+
+describe("validateConfig", () => {
+  const saved = process.env.TYPESAFE_API_KEY;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.TYPESAFE_API_KEY;
+    else process.env.TYPESAFE_API_KEY = saved;
+  });
+
+  it("requires TYPESAFE_API_KEY", () => {
+    delete process.env.TYPESAFE_API_KEY;
+    expect(validateConfig(loadConfig()).missingVars).toContain("TYPESAFE_API_KEY");
+  });
+});
 
 describe("loadConfig multispeakerChunkSize", () => {
   const original = process.env.MULTISPEAKER_CHUNK_SIZE;

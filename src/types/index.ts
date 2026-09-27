@@ -28,6 +28,10 @@ export enum VocalProviderName {
   VoiceGen = "voicegen",
 }
 
+export enum JudgmentProviderName {
+  TypeSafe = "typesafe",
+}
+
 export enum AiProviderName {
   Anthropic = "anthropic",
   DeepSeek = "deepseek",

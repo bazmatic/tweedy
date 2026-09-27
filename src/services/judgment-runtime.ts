@@ -1,6 +1,5 @@
 import * as path from "path";
 import { appConfig } from "../utils/config";
-import { TypeSafeJudgmentProvider } from "../providers/TypeSafeJudgmentProvider";
 import { IJudgmentProvider } from "../providers/judgment-questions";
 import { JsonlJudgmentLog } from "./JudgmentLog";
 import { JudgmentRunner } from "./JudgmentRunner";
@@ -10,6 +9,12 @@ import {
   parseJudgmentModes,
   resolveJudgmentMode,
 } from "./judgment-modes";
+import { JudgmentProviderName } from "../types";
+import { JudgmentProviderFactory } from "../providers/JudgmentProviderFactory";
+import { JsonlDecisionLog } from "./DecisionLog";
+import { getJudgmentProviderOverride } from "./judgment-provider-state";
+
+export { setJudgmentProvider } from "./judgment-provider-state";
 
 export function judgmentLogPath(): string {
   return (
@@ -20,7 +25,6 @@ export function judgmentLogPath(): string {
 
 let sharedModes: JudgmentModes | undefined;
 let sharedRunner: JudgmentRunner | undefined;
-let sharedProvider: IJudgmentProvider | undefined;
 
 function judgmentModes(): JudgmentModes {
   sharedModes ??= parseJudgmentModes(process.env.TYPESAFE_JUDGMENTS);
@@ -47,6 +51,15 @@ export function getJudgmentRunner(): JudgmentRunner {
 
 /** Process-wide TypeSafe provider configured from TYPESAFE_API_KEY. */
 export function getJudgmentProvider(): IJudgmentProvider {
-  sharedProvider ??= new TypeSafeJudgmentProvider();
-  return sharedProvider;
+  return getJudgmentProviderOverride() ?? JudgmentProviderFactory.getProvider(JudgmentProviderName.TypeSafe);
+}
+
+let decisionLog: JsonlDecisionLog | undefined;
+
+/** The opt-in decision log, or undefined when JUDGMENT_LOG_PATH is unset. */
+export function getDecisionLog(): JsonlDecisionLog | undefined {
+  const logPath = process.env.JUDGMENT_LOG_PATH;
+  if (!logPath) return undefined;
+  if (decisionLog?.filePath !== logPath) decisionLog = new JsonlDecisionLog(logPath);
+  return decisionLog;
 }
