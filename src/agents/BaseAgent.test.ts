@@ -148,7 +148,7 @@ describe("callModelForStructuredOutput", () => {
     } as any);
 
     const result = await new TestAgent().callModelForStructuredOutput(
-      ModelTask.ConclusionCheck,
+      ModelTask.TermExtraction,
       [{ role: "user", content: "Has the episode finished?" }],
       schema,
       50

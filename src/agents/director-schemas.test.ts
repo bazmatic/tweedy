@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  checkConversationCompleteSchema,
   createAssignSpeakerRolesSchema,
   createPodcastPlanSchema,
   createSelectNextSpeakerSchema,
@@ -197,11 +196,6 @@ describe("director structured-output schemas", () => {
     ]);
   });
 
-  it("validates a conclusion decision", () => {
-    expect(checkConversationCompleteSchema.parse({ isComplete: true })).toEqual(
-      { isComplete: true }
-    );
-  });
 });
 
 describe("createAssignSpeakerRolesSchema", () => {

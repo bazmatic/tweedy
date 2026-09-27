@@ -1,9 +1,6 @@
 import { IJudgmentProvider, noul } from "../providers/judgment-questions";
-import { JudgmentRunner, TypeSafeDecision } from "../services/JudgmentRunner";
-import {
-  getJudgmentProvider,
-  getJudgmentRunner,
-} from "../services/judgment-runtime";
+import { decide, JudgmentDecision } from "../services/decide";
+import { getJudgmentProvider } from "../services/judgment-runtime";
 
 export const CONVERSATION_COMPLETE_JUDGMENT = "conversation-complete";
 
@@ -17,12 +14,9 @@ export const DEFAULT_CONCLUSION_THRESHOLD = 0.5;
 export interface ConclusionRequest {
   /** Accepted conversation transcript so far. */
   transcript: string;
-  /** Today's LLM completeness check. */
-  current: () => Promise<boolean>;
 }
 
 export interface ConclusionJudgeDeps {
-  runner?: JudgmentRunner;
   provider?: IJudgmentProvider;
   threshold?: number;
 }
@@ -39,23 +33,23 @@ const QUESTION = noul(
 );
 
 /**
- * Decides whether the episode has naturally concluded, routed through the
- * `conversation-complete` judgment's rollout mode.
+ * Decides whether the episode has naturally concluded through the
+ * `conversation-complete` judgment. Fails safe to false: an unavailable
+ * provider means production continues rather than ending prematurely.
  */
 export function verifyConversationComplete(
   request: ConclusionRequest,
   deps: ConclusionJudgeDeps = {}
 ): Promise<boolean> {
-  const runner = deps.runner ?? getJudgmentRunner();
-  return runner.run({
+  return decide({
     judgment: CONVERSATION_COMPLETE_JUDGMENT,
-    current: request.current,
-    typesafe: () =>
+    ask: () =>
       judgeConversationCompleteWithTypeSafe(
         request.transcript,
         deps.provider ?? getJudgmentProvider(),
         deps.threshold ?? DEFAULT_CONCLUSION_THRESHOLD
       ),
+    fallback: false,
     state: { transcriptTail: tail(request.transcript, 600) },
   });
 }
@@ -64,7 +58,7 @@ export async function judgeConversationCompleteWithTypeSafe(
   transcript: string,
   provider: IJudgmentProvider,
   threshold: number
-): Promise<TypeSafeDecision<boolean>> {
+): Promise<JudgmentDecision<boolean>> {
   const result = await provider.judge(
     { transcript: transcript || "(nothing said yet)" },
     { complete: QUESTION }

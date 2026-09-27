@@ -287,17 +287,3 @@ export function createAssignSpeakerRolesSchema(speakers: Speaker[]) {
 export type AssignSpeakerRolesInput = z.infer<
   ReturnType<typeof createAssignSpeakerRolesSchema>
 >;
-
-export const checkConversationCompleteSchema = z
-  .object({
-    isComplete: z
-      .boolean()
-      .describe(
-        "True only when the recent conversation has genuinely wrapped up naturally, not merely covered every required point."
-      ),
-  })
-  .describe("A judgement of whether the episode has naturally concluded.");
-
-export type CheckConversationCompleteInput = z.infer<
-  typeof checkConversationCompleteSchema
->;

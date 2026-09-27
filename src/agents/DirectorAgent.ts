@@ -31,11 +31,9 @@ import { logger } from '../utils/logger';
 import {
   AssignSpeakerRolesInput,
   BeatClosureClaimInput,
-  CheckConversationCompleteInput,
   CreatePodcastPlanInput,
   SelectNextSpeakerInput,
   beatClosureClaimSchema,
-  checkConversationCompleteSchema,
   createAssignSpeakerRolesSchema,
   createPodcastPlanSchema,
   createSelectNextSpeakerSchema,
@@ -730,39 +728,7 @@ Conversation so far (each line tagged with the tool used to deliver it — "spea
       return false;
     }
 
-    const history = this.getConversationHistory(script);
-    const messages = [
-      {
-        role: 'user' as const,
-        content: `All discussion points for this podcast episode have been covered. Judge whether the conversation below has reached a natural, satisfying conclusion — farewells exchanged, an explicit sense of wrap-up or closure — versus the discussion merely having covered its required points while still feeling mid-thought or open-ended.
-
-Full conversation so far:
-${history || '(nothing said yet)'}
-
-Return isComplete: true only if the conversation has genuinely wrapped up naturally.`,
-      },
-    ];
-
-    try {
-      return await verifyConversationComplete({
-        transcript: history,
-        current: async () =>
-          (
-            await this.callModelForStructuredOutput<CheckConversationCompleteInput>(
-              ModelTask.ConclusionCheck,
-              messages,
-              checkConversationCompleteSchema,
-              50
-            )
-          ).isComplete,
-      });
-    } catch (error) {
-      logger.error(
-        'Failed to judge conversation completeness; continuing production:',
-        error
-      );
-      return false;
-    }
+    return verifyConversationComplete({ transcript: this.getConversationHistory(script) });
   }
 
   /**

@@ -21,7 +21,7 @@ import {
 import { appConfig } from "../utils/config";
 import { DIRECTOR_DIRECTION_PROMPT_TEMPLATES } from "./prompt-templates/director-direction-prompt";
 import { setJudgmentProvider } from "../services/judgment-runtime";
-import { scriptedProvider } from "../test-support/judgments";
+import { scriptedProvider, unavailableProvider } from "../test-support/judgments";
 
 function makeSpeaker(id: string): Speaker {
   return {
@@ -1555,7 +1555,7 @@ describe("DirectorAgent.isConversationComplete", () => {
     await agent.chooseNextSpeaker(script);
     appendClosingSpeech(script);
 
-    chooseSpy.mockResolvedValueOnce({ isComplete: true });
+    setJudgmentProvider(scriptedProvider(() => ({ type: "noul", probability: 0.9 })));
 
     const result = await agent.isConversationComplete(script);
 
@@ -1587,7 +1587,7 @@ describe("DirectorAgent.isConversationComplete", () => {
     await agent.chooseNextSpeaker(script);
     appendClosingSpeech(script);
 
-    chooseSpy.mockResolvedValueOnce({ isComplete: false });
+    setJudgmentProvider(scriptedProvider(() => ({ type: "noul", probability: 0.1 })));
 
     const result = await agent.isConversationComplete(script);
 
@@ -1619,7 +1619,7 @@ describe("DirectorAgent.isConversationComplete", () => {
     await agent.chooseNextSpeaker(script);
     appendClosingSpeech(script);
 
-    chooseSpy.mockRejectedValueOnce(new Error("model error"));
+    setJudgmentProvider(unavailableProvider());
 
     const result = await agent.isConversationComplete(script);
 
