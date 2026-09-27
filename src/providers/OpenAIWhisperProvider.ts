@@ -14,7 +14,10 @@ export class OpenAIWhisperProvider implements IWhisperTranscriptionProvider {
     this.client = new OpenAI({ apiKey });
   }
 
-  async transcribe(audioFilePath: string): Promise<{ words: WordTimestamp[] }> {
+  async transcribe(
+    audioFilePath: string,
+    options?: { language?: string }
+  ): Promise<{ words: WordTimestamp[] }> {
     logger.debug(`Transcribing ${audioFilePath} with Whisper`);
 
     const response = await this.client.audio.transcriptions.create({
@@ -22,6 +25,7 @@ export class OpenAIWhisperProvider implements IWhisperTranscriptionProvider {
       model: "whisper-1",
       response_format: "verbose_json",
       timestamp_granularities: ["word"],
+      ...(options?.language ? { language: options.language } : {}),
     });
 
     const words = (response.words ?? []).map((w) => ({

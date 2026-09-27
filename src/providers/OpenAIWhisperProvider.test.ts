@@ -66,4 +66,24 @@ describe("OpenAIWhisperProvider", () => {
 
     expect(result.words).toEqual([]);
   });
+
+  it("forces the language when passed a language option", async () => {
+    mockCreate.mockResolvedValue({ duration: 1, language: "en", text: "hi", words: [] });
+
+    const provider = new OpenAIWhisperProvider();
+    await provider.transcribe("/tmp/fake.mp3", { language: "en" });
+
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ language: "en" }));
+  });
+
+  it("omits the language param when no language option is passed", async () => {
+    mockCreate.mockResolvedValue({ duration: 1, language: "en", text: "hi", words: [] });
+
+    const provider = new OpenAIWhisperProvider();
+    await provider.transcribe("/tmp/fake.mp3");
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.not.objectContaining({ language: expect.anything() })
+    );
+  });
 });

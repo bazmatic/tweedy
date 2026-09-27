@@ -818,7 +818,10 @@ export enum TranscriptionProviderName {
 }
 
 export interface IWhisperTranscriptionProvider {
-  transcribe(audioFilePath: string): Promise<{ words: WordTimestamp[] }>;
+  transcribe(
+    audioFilePath: string,
+    options?: { language?: string }
+  ): Promise<{ words: WordTimestamp[] }>;
 }
 
 export interface SpeakerTurnOptions {
