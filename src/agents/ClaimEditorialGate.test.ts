@@ -1,13 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   DiscourseClaim,
-  EmbeddingService,
   EnergyLevel,
   PodcastScript,
   Speech,
   VocalProviderName,
 } from "../types";
 import { ClaimEditorialGate } from "./ClaimEditorialGate";
+import { SpeakerAgentToolName } from "./speaker-tools";
+import { setJudgmentProvider } from "../services/judgment-runtime";
+import { nouls, unavailableProvider } from "../test-support/judgments";
 
 const speaker = {
   id: "s1",
@@ -69,22 +71,72 @@ function script(
   };
 }
 
-function embeddings(
-  vectorFor: (text: string) => number[]
-): EmbeddingService {
-  return {
-    embedText: vi.fn(async (text) => vectorFor(text)),
-    embedDocuments: vi.fn(async (texts) => texts.map(vectorFor)),
-  };
-}
-
 describe("ClaimEditorialGate", () => {
-  it("rejects semantic repetition across different speakers", async () => {
+  it("accepts a closing statement without a call", async () => {
+    setJudgmentProvider(unavailableProvider());
+    const gate = new ClaimEditorialGate();
+
+    const candidate = {
+      ...speech("So that's Apollo 13 — a near-disaster turned triumph."),
+      tool: SpeakerAgentToolName.CLOSING_STATEMENT,
+    };
+
+    await expect(gate.evaluate(candidate, script())).resolves.toEqual({
+      accepted: true,
+    });
+  });
+
+  it("accepts a turn under 5 words without a call", async () => {
+    setJudgmentProvider(unavailableProvider());
+    const gate = new ClaimEditorialGate();
+
+    await expect(gate.evaluate(speech("Oh, wow."), script())).resolves.toEqual({
+      accepted: true,
+    });
+  });
+
+  it("rejects a claim stated before its prerequisites", async () => {
+    const claims: DiscourseClaim[] = [
+      {
+        id: "c1",
+        beatId: "b1",
+        text: "Odysseus escapes beneath the sheep.",
+        role: "action",
+        prerequisiteClaimIds: [],
+        state: "unheard",
+        evidenceSpeechIds: [],
+        attemptedTurns: 0,
+      },
+      {
+        id: "c2",
+        beatId: "b1",
+        text: "Once safe, Odysseus boasts and reveals his name.",
+        role: "complication",
+        prerequisiteClaimIds: ["c1"],
+        state: "unheard",
+        evidenceSpeechIds: [],
+        attemptedTurns: 0,
+      },
+    ];
+    setJudgmentProvider(nouls({ states_claim_before_prerequisites_c2: 0.9 }));
+    const gate = new ClaimEditorialGate();
+
+    const result = await gate.evaluate(
+      speech("Once safely away, Odysseus boasts loudly and reveals his true name."),
+      script([], claims)
+    );
+
+    expect(result.accepted).toBe(false);
+    expect(result.reason).toContain("c2");
+  });
+
+  it("rejects repetition", async () => {
     const previous = {
       ...speech("Argos recognises Odysseus and then dies after waiting twenty years."),
       speaker: { ...speaker, id: "s2", name: "Expert" },
     };
-    const gate = new ClaimEditorialGate(embeddings(() => [1, 0]));
+    setJudgmentProvider(nouls({ repeats_what_listeners_already_heard: 0.9 }));
+    const gate = new ClaimEditorialGate();
 
     const result = await gate.evaluate(
       speech("The old dog recognises his returning master and dies immediately."),
@@ -97,7 +149,7 @@ describe("ClaimEditorialGate", () => {
     });
   });
 
-  it("allows a repeated callback when it establishes a new implication", async () => {
+  it("accepts repetition that establishes a target", async () => {
     const claims: DiscourseClaim[] = [
       {
         id: "c1",
@@ -134,7 +186,13 @@ describe("ClaimEditorialGate", () => {
         targetDiscourseClaimIds: ["c2"],
       },
     };
-    const gate = new ClaimEditorialGate(embeddings(() => [1, 0]));
+    setJudgmentProvider(
+      nouls({
+        repeats_what_listeners_already_heard: 0.9,
+        establishes_planned_claim_c2: 0.8,
+      })
+    );
+    const gate = new ClaimEditorialGate();
 
     await expect(
       gate.evaluate(
@@ -143,58 +201,6 @@ describe("ClaimEditorialGate", () => {
           [speech("Argos recognises Odysseus after waiting for twenty years.")],
           claims
         )
-      )
-    ).resolves.toEqual({ accepted: true });
-  });
-
-  it("rejects a planned claim spoken before its prerequisites", async () => {
-    const claims: DiscourseClaim[] = [
-      {
-        id: "c1",
-        beatId: "b1",
-        text: "Odysseus escapes beneath the sheep.",
-        role: "action",
-        prerequisiteClaimIds: [],
-        state: "unheard",
-        evidenceSpeechIds: [],
-        attemptedTurns: 0,
-      },
-      {
-        id: "c2",
-        beatId: "b1",
-        text: "Once safe, Odysseus boasts and reveals his name.",
-        role: "complication",
-        prerequisiteClaimIds: ["c1"],
-        state: "unheard",
-        evidenceSpeechIds: [],
-        attemptedTurns: 0,
-      },
-    ];
-    const gate = new ClaimEditorialGate(
-      embeddings((text) =>
-        text.includes("boast") || text.includes("reveals") ? [0, 1] : [1, 0]
-      )
-    );
-
-    const result = await gate.evaluate(
-      speech("Once safely away, Odysseus boasts loudly and reveals his true name."),
-      script([], claims)
-    );
-
-    expect(result.accepted).toBe(false);
-    expect(result.reason).toContain("c2");
-  });
-
-  it("fails open when local embeddings are unavailable", async () => {
-    const gate = new ClaimEditorialGate({
-      embedText: vi.fn().mockRejectedValue(new Error("offline")),
-      embedDocuments: vi.fn().mockRejectedValue(new Error("offline")),
-    });
-
-    await expect(
-      gate.evaluate(
-        speech("This is a sufficiently substantive candidate proposition for listeners."),
-        script([speech("This earlier proposition may be semantically similar.")])
       )
     ).resolves.toEqual({ accepted: true });
   });

@@ -11,6 +11,17 @@ export function unavailableProvider(): IJudgmentProvider {
 }
 
 /**
+ * A provider that answers every noul question with the probability named for
+ * its id in `probabilities`, or `otherwise` (default 0.05) for any other id.
+ */
+export function nouls(probabilities: Record<string, number>, otherwise = 0.05) {
+  return scriptedProvider((id) => ({
+    type: "noul" as const,
+    probability: probabilities[id] ?? otherwise,
+  }));
+}
+
+/**
  * A provider whose answers come from `answer(id, question)`. If it returns
  * undefined for any question in a request, the whole request is unavailable.
  */

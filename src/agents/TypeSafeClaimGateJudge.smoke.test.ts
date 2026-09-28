@@ -15,7 +15,6 @@ const base = {
   saidSoFar,
   blockedClaims: [],
   contributionTargets: [],
-  current: async () => ({ accepted: true }),
 };
 
 const cases: [string, ClaimGateRequest, boolean][] = [

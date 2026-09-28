@@ -1,44 +1,27 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   ClaimGateRequest,
   gateClaims,
   gateClaimsWithTypeSafe,
 } from "./TypeSafeClaimGateJudge";
-import { IJudgmentProvider, JudgmentQuestions } from "../providers/judgment-questions";
-import { JudgmentRunner } from "../services/JudgmentRunner";
-import { IJudgmentLog, JudgmentRecord } from "../services/JudgmentLog";
-import { parseJudgmentModes } from "../services/judgment-modes";
-
-/** Answers each named question with its probability, and everything else 0.05. */
-function answering(probabilities: Record<string, number>) {
-  const judge = vi.fn(async (_state: unknown, questions: JudgmentQuestions) => ({
-    status: "ok" as const,
-    answers: Object.fromEntries(
-      Object.keys(questions).map((id) => [
-        id,
-        { type: "noul", probability: probabilities[id] ?? 0.05 },
-      ])
-    ),
-  }));
-  return { judge } as unknown as IJudgmentProvider & { judge: typeof judge };
-}
+import { setJudgmentProvider } from "../services/judgment-runtime";
+import { nouls, unavailableProvider } from "../test-support/judgments";
 
 const request = (overrides: Partial<ClaimGateRequest> = {}): ClaimGateRequest => ({
   candidateTurn: "Dr. Kranz said CO2 hit 3.5 percent before the adaptor went in.",
   saidSoFar: ["Ada: The oxygen tank exploded two days out."],
   blockedClaims: [{ id: "payoff", text: "The adaptor brought CO2 levels back down." }],
   contributionTargets: [{ id: "mechanism", text: "Square filters were taped into round sockets." }],
-  current: async () => ({ accepted: true }),
   ...overrides,
 });
 
 describe("gateClaimsWithTypeSafe", () => {
   it("asks descriptively named yes/no questions over the whole turn", async () => {
-    const provider = answering({});
+    const provider = nouls({});
 
     await gateClaimsWithTypeSafe(request(), provider);
 
-    const [state, questions] = provider.judge.mock.calls[0];
+    const [{ state, questions }] = provider.calls;
     expect(state).toEqual({
       said_so_far: ["Ada: The oxygen tank exploded two days out."],
       candidate_turn: "Dr. Kranz said CO2 hit 3.5 percent before the adaptor went in.",
@@ -51,7 +34,7 @@ describe("gateClaimsWithTypeSafe", () => {
   });
 
   it("accepts a new, in-order turn", async () => {
-    expect(await gateClaimsWithTypeSafe(request(), answering({}))).toMatchObject({
+    expect(await gateClaimsWithTypeSafe(request(), nouls({}))).toMatchObject({
       status: "ok",
       value: { accepted: true },
     });
@@ -60,7 +43,7 @@ describe("gateClaimsWithTypeSafe", () => {
   it("rejects a claim stated before its prerequisites, first", async () => {
     const decision = await gateClaimsWithTypeSafe(
       request(),
-      answering({
+      nouls({
         states_claim_before_prerequisites_payoff: 0.9,
         establishes_planned_claim_mechanism: 0.9,
       })
@@ -78,7 +61,7 @@ describe("gateClaimsWithTypeSafe", () => {
   it("rejects repetition that establishes no planned claim", async () => {
     const decision = await gateClaimsWithTypeSafe(
       request(),
-      answering({ repeats_what_listeners_already_heard: 0.9 })
+      nouls({ repeats_what_listeners_already_heard: 0.9 })
     );
 
     expect(decision).toMatchObject({
@@ -92,7 +75,7 @@ describe("gateClaimsWithTypeSafe", () => {
   it("accepts repetition that still establishes a planned target claim", async () => {
     const decision = await gateClaimsWithTypeSafe(
       request(),
-      answering({
+      nouls({
         repeats_what_listeners_already_heard: 0.9,
         establishes_planned_claim_mechanism: 0.8,
       })
@@ -104,7 +87,7 @@ describe("gateClaimsWithTypeSafe", () => {
   it("needs clear evidence to reject: 0.75 before-setup and 0.6 repetition still pass", async () => {
     const decision = await gateClaimsWithTypeSafe(
       request(),
-      answering({
+      nouls({
         states_claim_before_prerequisites_payoff: 0.75,
         repeats_what_listeners_already_heard: 0.6,
       })
@@ -116,7 +99,7 @@ describe("gateClaimsWithTypeSafe", () => {
   it("accepts per-check threshold overrides", async () => {
     const decision = await gateClaimsWithTypeSafe(
       request(),
-      answering({ states_claim_before_prerequisites_payoff: 0.6 }),
+      nouls({ states_claim_before_prerequisites_payoff: 0.6 }),
       { prerequisite: 0.5, repetition: 0.7, establishesTarget: 0.5 }
     );
 
@@ -124,7 +107,7 @@ describe("gateClaimsWithTypeSafe", () => {
   });
 
   it("does not ask about repetition on the first turn, or call at all with nothing to ask", async () => {
-    const provider = answering({});
+    const provider = nouls({});
 
     const decision = await gateClaimsWithTypeSafe(
       request({ saidSoFar: [], blockedClaims: [], contributionTargets: [] }),
@@ -132,29 +115,18 @@ describe("gateClaimsWithTypeSafe", () => {
     );
 
     expect(decision).toEqual({ status: "ok", value: { accepted: true } });
-    expect(provider.judge).not.toHaveBeenCalled();
+    expect(provider.calls).toEqual([]);
   });
 });
 
 describe("gateClaims", () => {
-  it("shadow: acts on the embedding gate and compares acceptance", async () => {
-    const records: JudgmentRecord[] = [];
-    const log: IJudgmentLog = {
-      append: async (r) => void records.push(r),
-      readAll: async () => records,
-    };
-    const runner = new JudgmentRunner(parseJudgmentModes("claim-gate=shadow"), log);
+  it("returns the provider's verdict", async () => {
+    setJudgmentProvider(nouls({ repeats_what_listeners_already_heard: 0.9 }));
+    expect(await gateClaims(request())).toMatchObject({ accepted: false });
+  });
 
-    const verdict = await gateClaims(request(), {
-      runner,
-      provider: answering({ repeats_what_listeners_already_heard: 0.9 }),
-    });
-
-    expect(verdict).toEqual({ accepted: true });
-    expect(records[0]).toMatchObject({
-      judgment: "claim-gate",
-      agreed: false,
-      typesafe: { accepted: false },
-    });
+  it("accepts when the provider is unavailable", async () => {
+    setJudgmentProvider(unavailableProvider());
+    expect(await gateClaims(request())).toEqual({ accepted: true });
   });
 });

@@ -1,9 +1,6 @@
 import { IJudgmentProvider, noul, NoulQuestion } from "../providers/judgment-questions";
-import { JudgmentRunner, TypeSafeDecision } from "../services/JudgmentRunner";
-import {
-  getJudgmentProvider,
-  getJudgmentRunner,
-} from "../services/judgment-runtime";
+import { decide, JudgmentDecision } from "../services/decide";
+import { getJudgmentProvider } from "../services/judgment-runtime";
 
 export const CLAIM_GATE_JUDGMENT = "claim-gate";
 
@@ -48,43 +45,36 @@ export interface ClaimGateRequest {
   blockedClaims: ClaimRef[];
   /** Ready, contributive claims this turn was briefed to establish. */
   contributionTargets: ClaimRef[];
-  /** Today's embedding-similarity gate. */
-  current: () => Promise<ClaimGateVerdict>;
 }
 
 export interface ClaimGateJudgeDeps {
-  runner?: JudgmentRunner;
   provider?: IJudgmentProvider;
   thresholds?: Partial<ClaimGateThresholds>;
 }
 
 /**
- * Gates a candidate turn through the `claim-gate` judgment. Same policy as
- * the embedding gate — reject a claim stated before its prerequisites, then
- * reject substantial repetition unless the turn establishes a planned target
- * claim — but each condition is a yes/no over the whole turn, so there is no
- * regex sentence splitting and no hand-tuned similarity threshold.
+ * Gates a candidate turn through the `claim-gate` judgment: reject a claim
+ * stated before its prerequisites, then reject substantial repetition unless
+ * the turn establishes a planned target claim.
  */
 export function gateClaims(
   request: ClaimGateRequest,
   deps: ClaimGateJudgeDeps = {}
 ): Promise<ClaimGateVerdict> {
-  const runner = deps.runner ?? getJudgmentRunner();
-  return runner.run({
+  return decide({
     judgment: CLAIM_GATE_JUDGMENT,
-    current: request.current,
-    typesafe: () =>
+    ask: () =>
       gateClaimsWithTypeSafe(
         request,
         deps.provider ?? getJudgmentProvider(),
         { ...DEFAULT_CLAIM_GATE_THRESHOLDS, ...deps.thresholds }
       ),
+    fallback: { accepted: true },
     state: {
       candidateTurn: request.candidateTurn,
       blockedClaimIds: request.blockedClaims.map((claim) => claim.id),
       contributionTargetIds: request.contributionTargets.map((claim) => claim.id),
     },
-    agrees: (current, typesafe) => current.accepted === typesafe.accepted,
   });
 }
 
@@ -92,7 +82,7 @@ export async function gateClaimsWithTypeSafe(
   request: ClaimGateRequest,
   provider: IJudgmentProvider,
   thresholds: ClaimGateThresholds = DEFAULT_CLAIM_GATE_THRESHOLDS
-): Promise<TypeSafeDecision<ClaimGateVerdict>> {
+): Promise<JudgmentDecision<ClaimGateVerdict>> {
   const questions: Record<string, NoulQuestion> = {};
   if (request.saidSoFar.length > 0) {
     questions.repeats_what_listeners_already_heard = noul(
@@ -127,7 +117,7 @@ export async function gateClaimsWithTypeSafe(
   const probabilities = Object.fromEntries(
     Object.entries(result.answers).map(([id, answer]) => [id, answer.probability])
   );
-  const decide = (verdict: ClaimGateVerdict): TypeSafeDecision<ClaimGateVerdict> => ({
+  const decide = (verdict: ClaimGateVerdict): JudgmentDecision<ClaimGateVerdict> => ({
     status: "ok",
     value: verdict,
     detail: { probabilities },
