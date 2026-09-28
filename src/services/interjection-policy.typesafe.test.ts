@@ -1,88 +1,41 @@
-import { describe, expect, it, vi } from "vitest";
-import { decideInterjection } from "./interjection-policy";
-import { IJudgmentProvider } from "../providers/judgment-questions";
-import { JudgmentRunner } from "./JudgmentRunner";
-import { IJudgmentLog, JudgmentRecord } from "./JudgmentLog";
-import { parseJudgmentModes } from "./judgment-modes";
+import { describe, expect, it } from "vitest";
+import { calibrate, decideInterjection } from "./interjection-policy";
+import { setJudgmentProvider } from "./judgment-runtime";
+import { scriptedProvider, unavailableProvider } from "../test-support/judgments";
 import { SpeakerAgentToolName } from "../agents/speaker-tools";
-
-function naturalness(probability: number) {
-  const judge = vi.fn(async () => ({
-    status: "ok" as const,
-    answers: { cohost_would_jump_in: { type: "noul" as const, probability } },
-  }));
-  return { judge } as unknown as IJudgmentProvider & { judge: typeof judge };
-}
-
-function memoryRunner(modes: string) {
-  const records: JudgmentRecord[] = [];
-  const log: IJudgmentLog = {
-    append: async (r) => void records.push(r),
-    readAll: async () => records,
-  };
-  return { records, runner: new JudgmentRunner(parseJudgmentModes(modes), log) };
-}
 
 const turn = (message: string, overrides = {}) => ({
   speaker: { name: "Ben" } as any,
   message,
-  tool: SpeakerAgentToolName.ONE_LINER,
+  tool: SpeakerAgentToolName.SPEAK,
   ...overrides,
 });
+const naturalness = (probability: number) =>
+  scriptedProvider(() => ({ type: "noul", probability }));
 
 describe("decideInterjection", () => {
-  it("keeps the structural rules without asking TypeSafe", async () => {
-    const { runner } = memoryRunner("interjection=on");
-    const provider = naturalness(0);
-
-    expect(await decideInterjection(turn("Something."), 1, 0, { runner, provider })).toBe(false);
-    expect(
-      await decideInterjection(turn("Cut off mid—", { stopReason: "max_tokens" }), 2, 0.99, {
-        runner,
-        provider,
-      })
-    ).toBe(true);
-    expect(provider.judge).not.toHaveBeenCalled();
+  it("never interjects on a solo show, always after truncation, without asking", async () => {
+    const provider = naturalness(0.9);
+    setJudgmentProvider(provider);
+    expect(await decideInterjection(turn("x"), 1, 0)).toBe(false);
+    expect(await decideInterjection(turn("cut off—", { stopReason: "max_tokens" }), 2, 0.99)).toBe(true);
+    expect(provider.calls).toEqual([]);
   });
 
-  it("off: uses the length-and-chance rule", async () => {
-    const { runner } = memoryRunner("");
-
-    // A one-liner is not a long-form tool, so the rule never interjects.
-    expect(
-      await decideInterjection(turn("They built it from a flight manual cover!"), 2, 0, {
-        runner,
-        provider: naturalness(1),
-      })
-    ).toBe(false);
+  it("samples the calibrated probability with the roll", async () => {
+    setJudgmentProvider(naturalness(0.9)); // calibrate(0.9) = 0.8
+    expect(await decideInterjection(turn("wild detail"), 2, 0.79)).toBe(true);
+    expect(await decideInterjection(turn("wild detail"), 2, 0.81)).toBe(false);
   });
 
-  it("on: samples the judged probability with the roll", async () => {
-    const { runner } = memoryRunner("interjection=on");
-    const provider = naturalness(0.7);
-    const speech = turn("They built it from a flight manual cover!");
-
-    expect(await decideInterjection(speech, 2, 0.69, { runner, provider })).toBe(true);
-    expect(await decideInterjection(speech, 2, 0.71, { runner, provider })).toBe(false);
+  it("does not interject when the provider is unavailable", async () => {
+    setJudgmentProvider(unavailableProvider());
+    expect(await decideInterjection(turn("wild detail"), 2, 0)).toBe(false);
   });
 
-  it("shadow: acts on the rule and logs the probability and roll", async () => {
-    const { runner, records } = memoryRunner("interjection=shadow");
-
-    const decided = await decideInterjection(
-      turn("They built it from a flight manual cover!"),
-      2,
-      0.2,
-      { runner, provider: naturalness(0.9) }
-    );
-
-    expect(decided).toBe(false);
-    expect(records[0]).toMatchObject({
-      judgment: "interjection",
-      current: false,
-      typesafe: true,
-      agreed: false,
-      typesafeDetail: { probability: 0.9, roll: 0.2 },
-    });
+  it("calibrates 0.5 and below to never", () => {
+    expect(calibrate(0.5)).toBe(0);
+    expect(calibrate(0.3)).toBe(0);
+    expect(calibrate(1)).toBe(1);
   });
 });

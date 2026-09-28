@@ -24,6 +24,8 @@ import {
   LegacyConversationWorkflowEngine,
   MastraConversationWorkflowEngine,
 } from "./conversation-engine";
+import { setJudgmentProvider } from "./judgment-runtime";
+import { scriptedProvider } from "../test-support/judgments";
 
 const chooseNextSpeakerMock = vi.fn();
 const createPodcastPlanMock = vi.fn().mockResolvedValue(undefined);
@@ -1071,6 +1073,7 @@ describe("ScriptService forced interjection eligibility", () => {
     };
     const service = makeService({ speechRepository });
 
+    setJudgmentProvider(scriptedProvider(() => ({ type: "noul", probability: 0.9 })));
     const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
 
     await (service as any).generateScriptContent(script, {

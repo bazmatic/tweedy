@@ -1,9 +1,7 @@
 import { Speech } from "../types";
-import { SpeakerAgentToolName } from "../agents/speaker-tools";
 import { IJudgmentProvider, noul } from "../providers/judgment-questions";
-import { JudgmentRunner } from "./JudgmentRunner";
-import { getJudgmentProvider, getJudgmentRunner } from "./judgment-runtime";
-import { JudgmentDecision } from "./decide";
+import { decide, JudgmentDecision } from "./decide";
+import { getJudgmentProvider } from "./judgment-runtime";
 
 /** Maps judged naturalness to an interjection chance: 0.5 or below never interjects. */
 export function calibrate(probability: number): number {
@@ -35,54 +33,21 @@ export async function judgeInterjectionNaturalness(
   return { status: "ok", value: result.answers.cohost_would_jump_in.probability };
 }
 
-export const INTERJECTION_LENGTH_THRESHOLD = 80;
-export const INTERJECTION_CHANCE = 0.8;
-
-export const LONG_FORM_TOOLS = [
-  SpeakerAgentToolName.SPEAK,
-  SpeakerAgentToolName.EXPLAIN,
-];
-
-type InterjectionCandidate = Pick<Speech, "tool" | "message" | "stopReason">;
-
-/**
- * A speech cut off by the token limit is exactly the moment a co-host
- * jumping in sounds most natural, so it always forces an interjection
- * rather than going through the length-and-chance roll.
- */
-export function shouldInterject(
-  speech: InterjectionCandidate,
-  speakerCount: number,
-  roll: number
-): boolean {
-  if (speakerCount <= 1) return false;
-
-  if (speech.stopReason === "max_tokens") return true;
-
-  const ranLong =
-    speech.tool !== undefined &&
-    LONG_FORM_TOOLS.includes(speech.tool) &&
-    speech.message.length > INTERJECTION_LENGTH_THRESHOLD;
-
-  return ranLong && roll < INTERJECTION_CHANCE;
-}
-
 export const INTERJECTION_JUDGMENT = "interjection";
 
 export interface InterjectionDeps {
-  runner?: JudgmentRunner;
   provider?: IJudgmentProvider;
 }
 
-type InterjectionTurn = InterjectionCandidate & Pick<Speech, "speaker">;
+type InterjectionTurn = Pick<Speech, "tool" | "message" | "stopReason" | "speaker">;
 
 /**
- * shouldInterject routed through the `interjection` judgment. The structural
- * rules stay deterministic (solo shows never interject; a truncated turn
- * always does). Otherwise TypeSafe judges how natural a co-host reaction
- * would be right now, and `roll` samples that probability — keeping the
- * variety the fixed 80% chance was there for, while replacing its
- * character-count threshold with a judgment of what was actually said.
+ * Whether a co-host should interject after this turn. The structural rules
+ * stay deterministic and never call the provider: a solo show never
+ * interjects, and a turn truncated by the token limit always does — that is
+ * exactly the moment a co-host jumping in sounds most natural. Otherwise
+ * TypeSafe judges how natural a co-host reaction would be right now, and
+ * `roll` samples the calibrated chance.
  */
 export async function decideInterjection(
   speech: InterjectionTurn,
@@ -93,27 +58,19 @@ export async function decideInterjection(
   if (speakerCount <= 1) return false;
   if (speech.stopReason === "max_tokens") return true;
 
-  const runner = deps.runner ?? getJudgmentRunner();
-  return runner.run({
+  return decide({
     judgment: INTERJECTION_JUDGMENT,
-    current: async () => shouldInterject(speech, speakerCount, roll),
-    typesafe: async () => {
-      const result = await (deps.provider ?? getJudgmentProvider()).judge(
-        { turn: `${speech.speaker.name}: ${speech.message}` },
-        {
-          cohost_would_jump_in: noul(
-            "In a lively podcast conversation, would a co-host naturally jump in with a quick reaction right after `turn`?",
-            {
-              true: "A natural moment for a brief reaction: a surprising claim, a vivid detail, a long run, or a point that invites a response",
-              false: "A reaction would feel forced: nothing notable to react to, or it is a question the co-host should properly answer instead",
-            }
-          ),
-        }
+    ask: async () => {
+      const d = await judgeInterjectionNaturalness(
+        speech.message,
+        speech.speaker.name,
+        deps.provider ?? getJudgmentProvider()
       );
-      if (result.status !== "ok") return result;
-      const probability = result.answers.cohost_would_jump_in.probability;
-      return { status: "ok", value: roll < probability, detail: { probability, roll } };
+      return d.status === "ok"
+        ? { status: "ok", value: roll < calibrate(d.value), detail: { probability: d.value, roll } }
+        : d;
     },
+    fallback: false,
     state: { turn: speech.message, tool: speech.tool },
   });
 }
