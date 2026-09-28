@@ -22,7 +22,7 @@ const speeches = lines.map(
 describe.skipIf(!process.env.TYPESAFE_API_KEY)("TypeSafe episode audit (live)", () => {
   it("flags the planted defects and leaves clean turns alone", async () => {
     const decision = await auditEpisodeTurnsWithTypeSafe(
-      { speeches, maxIssues: 3, current: async () => [] },
+      { speeches, maxIssues: 3 },
       new TypeSafeJudgmentProvider({ timeoutMs: 20000 }),
       0.5
     );
@@ -35,5 +35,30 @@ describe.skipIf(!process.env.TYPESAFE_API_KEY)("TypeSafe episode audit (live)", 
     expect(flagged).toContain("t5");
     expect(flagged).not.toContain("t3");
     expect(flagged).not.toContain("t4");
+    expect(decision.value.find((i) => i.speechId === "t1")?.category).toBe("dependency_order");
+    expect(decision.value.find((i) => i.speechId === "t5")?.category).toBe("substantial_repetition");
+  }, 60000);
+
+  it("flags missing context and broken continuity", async () => {
+    const lines: [string, string, string][] = [
+      ["u0", "Ada", "Welcome back. Today: how mission control handled the Apollo 13 crisis."],
+      ["u1", "Ben", "It all came down to the Kranz rule, really — once that kicked in, nobody panicked."],
+      ["u2", "Ada", "Hang on — what was the first thing flight control actually did after the explosion?"],
+      ["u3", "Ben", "The food on board was freeze-dried, and the crew rehydrated it with water from the fuel cells."],
+      ["u4", "Ada", "That's our time. Thanks for listening, and see you next time."],
+    ];
+    const speeches = lines.map(([id, name, message]) => ({ id, speaker: { name }, message }) as unknown as Speech);
+    const decision = await auditEpisodeTurnsWithTypeSafe(
+      { speeches, maxIssues: 3 },
+      new TypeSafeJudgmentProvider({ timeoutMs: 20000 }),
+      0.5
+    );
+    console.log("episode audit 2:", JSON.stringify(decision));
+    if (decision.status !== "ok") throw new Error(decision.reason);
+    const byTurn = Object.fromEntries(decision.value.map((i) => [i.speechId, i.category]));
+    expect(byTurn.u1).toBe("listener_context");
+    expect(byTurn.u3).toBe("continuity");
+    expect(byTurn.u0).toBeUndefined();
+    expect(byTurn.u2).toBeUndefined();
   }, 60000);
 });

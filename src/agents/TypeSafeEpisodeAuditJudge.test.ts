@@ -14,16 +14,23 @@ const said = (id: string, message: string) =>
 
 const speeches = [said("a1", "Welcome."), said("b1", "Hi."), said("a2", "And that saved them."), said("b2", "Goodbye.")];
 
-/** Answers turn i's Choice with choices[i] (default no_local_defect) at probability p[i] (default 0.9). */
-function defects(choices: Record<number, string>, p: Record<number, number> = {}) {
+/**
+ * Answers turn i's Choice with choices[i] (default no_local_defect), and a
+ * `no_local_defect` probability of noDefectProbability[i] (default 0.9 for a
+ * clean turn, 0.2 for a chosen defect — i.e. flagged unless overridden).
+ */
+function defects(choices: Record<number, string>, noDefectProbability: Record<number, number> = {}) {
   const judge = vi.fn(async (_state: unknown, questions: JudgmentQuestions) => ({
     status: "ok" as const,
     answers: Object.fromEntries(
       Object.keys(questions).map((id) => {
         const index = Number(id.split("_").at(-1));
         const option = choices[index] ?? "no_local_defect";
-        const probability = p[index] ?? 0.9;
-        return [id, { type: "choice", choice: option, probabilities: { [option]: probability }, confidence: probability }];
+        const p = noDefectProbability[index] ?? (option === "no_local_defect" ? 0.9 : 0.2);
+        return [
+          id,
+          { type: "choice", choice: option, probabilities: { no_local_defect: p }, confidence: 1 - p },
+        ];
       })
     ),
   }));
@@ -57,7 +64,7 @@ describe("auditEpisodeTurnsWithTypeSafe", () => {
       { ...request, maxIssues: 2 },
       defects(
         { 1: "repeats_earlier_content", 2: "consequence_before_its_setup", 3: "closing_misstates_the_episode" },
-        { 1: 0.6, 2: 0.95, 3: 0.8 }
+        { 1: 0.4, 2: 0.05, 3: 0.2 }
       ),
       0.5
     );
@@ -71,10 +78,10 @@ describe("auditEpisodeTurnsWithTypeSafe", () => {
     });
   });
 
-  it("ignores defects below the threshold", async () => {
+  it("ignores a defect whose no_local_defect probability is at or above the threshold", async () => {
     const decision = await auditEpisodeTurnsWithTypeSafe(
       request,
-      defects({ 2: "repeats_earlier_content" }, { 2: 0.4 }),
+      defects({ 2: "repeats_earlier_content" }, { 2: 0.6 }),
       0.5
     );
 

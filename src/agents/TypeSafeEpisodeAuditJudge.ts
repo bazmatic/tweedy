@@ -116,7 +116,7 @@ export function auditEpisodeTurns(
 }
 
 export async function auditEpisodeTurnsWithTypeSafe(
-  request: EpisodeAuditRequest,
+  request: Pick<EpisodeAuditRequest, "speeches" | "maxIssues">,
   provider: IJudgmentProvider,
   threshold: number
 ): Promise<TypeSafeDecision<AuditIssue[]>> {
@@ -124,14 +124,16 @@ export async function auditEpisodeTurnsWithTypeSafe(
   if (speeches.length === 0) return { status: "ok", value: [] };
 
   const questions: Record<string, ChoiceQuestion> = {};
-  speeches.forEach((_speech, index) => {
+  speeches.forEach((speech, index) => {
     const isFinal = index === speeches.length - 1;
     const options = Object.entries(DEFECTS).filter(
       ([, spec]) => !spec.finalTurnOnly || isFinal
     );
     questions[`most_serious_defect_in_turn_${index}`] = choice(
-      `Listening only to \`transcript\` in order, what is the most serious local defect in \`transcript[${index}]\` — ` +
-        "one that rewriting that single turn would repair? Do not count a planned topic that was simply never raised.",
+      `Listening to \`transcript\` in order, consider this turn by ${speech.speaker.name}: "${speech.message}". ` +
+        (index > 0 ? `It follows: "${speeches[index - 1].message}". ` : "It opens the episode. ") +
+        "What is the most serious local defect in this turn that rewriting just this turn would repair? " +
+        "Do not count a planned topic that was simply never raised.",
       Object.fromEntries(options.map(([option, spec]) => [option, spec.criterion]))
     );
   });
@@ -152,15 +154,15 @@ export async function auditEpisodeTurnsWithTypeSafe(
   speeches.forEach((speech, index) => {
     const answer = result.answers[`most_serious_defect_in_turn_${index}`];
     if (answer.type !== "choice") return;
-    const probability = answer.probabilities[answer.choice] ?? answer.confidence;
-    perTurn[speech.id] = `${answer.choice} (${probability.toFixed(2)})`;
-    if (answer.choice === NO_DEFECT || probability < threshold) return;
+    const noDefectProbability = answer.probabilities[NO_DEFECT] ?? answer.confidence;
+    perTurn[speech.id] = `${answer.choice} (no_local_defect ${noDefectProbability.toFixed(2)})`;
+    if (answer.choice === NO_DEFECT || noDefectProbability >= threshold) return;
     const spec = DEFECTS[answer.choice];
     flagged.push({
       speechId: speech.id,
       category: spec.category,
       reason: spec.reason,
-      probability,
+      probability: 1 - noDefectProbability,
       index,
     });
   });
