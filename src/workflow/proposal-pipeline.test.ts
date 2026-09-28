@@ -86,7 +86,6 @@ describe("inspection -> proposal -> verification -> repair pipeline", () => {
       direction: "Explain ocean acidification basics",
       coveredPointIds: ["p1"],
       coveredBeatIds: [],
-      move: EditorialMove.Explain,
       audienceValue: AudienceValue.Understanding,
       desiredEnergy: EnergyLevel.Curious,
     });
@@ -112,7 +111,7 @@ describe("inspection -> proposal -> verification -> repair pipeline", () => {
     const turnBrief = {
       speakerId: proposal.speakerId,
       goal: proposal.direction,
-      move: proposal.move ?? EditorialMove.Explain,
+      move: EditorialMove.Explain,
       cardIds: proposal.cardIds,
       audienceValue: proposal.audienceValue ?? AudienceValue.Understanding,
       desiredEnergy: proposal.desiredEnergy ?? EnergyLevel.Curious,

@@ -29,7 +29,7 @@ describe.skipIf(!process.env.TYPESAFE_API_KEY)("TypeSafe editorial move (live)",
         direction,
         acceptable,
         decision: await chooseEditorialMoveWithTypeSafe(
-          { recentSpeeches: recent, direction, current: async () => Move.Explain },
+          { recentSpeeches: recent, direction },
           provider
         ),
       }))

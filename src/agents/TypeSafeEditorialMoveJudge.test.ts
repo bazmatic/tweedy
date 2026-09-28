@@ -4,9 +4,8 @@ import {
   chooseEditorialMoveWithTypeSafe,
 } from "./TypeSafeEditorialMoveJudge";
 import { IJudgmentProvider } from "../providers/judgment-questions";
-import { JudgmentRunner } from "../services/JudgmentRunner";
-import { IJudgmentLog, JudgmentRecord } from "../services/JudgmentLog";
-import { parseJudgmentModes } from "../services/judgment-modes";
+import { setJudgmentProvider } from "../services/judgment-runtime";
+import { scriptedProvider, unavailableProvider } from "../test-support/judgments";
 import { EditorialMove, Speech } from "../types";
 
 const said = (name: string, message: string) =>
@@ -32,7 +31,6 @@ const request = {
   nextSpeaker: { name: "Ada", personality: "curious host" },
   direction: "Ask what the crew did next.",
   rhythmGuidance: "Rhythm guidance: vary with a question.",
-  current: async () => EditorialMove.Explain,
 };
 
 describe("chooseEditorialMoveWithTypeSafe", () => {
@@ -59,30 +57,21 @@ describe("chooseEditorialMoveWithTypeSafe", () => {
 });
 
 describe("chooseEditorialMove", () => {
-  it("shadow: keeps the director's move and logs the comparison", async () => {
-    const records: JudgmentRecord[] = [];
-    const log: IJudgmentLog = { append: async (r) => void records.push(r), readAll: async () => records };
-    const runner = new JudgmentRunner(parseJudgmentModes("editorial-move=shadow"), log);
+  it("uses the judged move", async () => {
+    const provider = choosing(EditorialMove.Question);
 
-    const move = await chooseEditorialMove(request, { runner, provider: choosing(EditorialMove.Question) });
-
-    expect(move).toBe(EditorialMove.Explain);
-    expect(records[0]).toMatchObject({
-      judgment: "editorial-move",
-      current: EditorialMove.Explain,
-      typesafe: EditorialMove.Question,
-      agreed: false,
-    });
+    expect(await chooseEditorialMove(request, { provider })).toBe(EditorialMove.Question);
   });
 
-  it("on: uses the judged move", async () => {
-    const runner = new JudgmentRunner(parseJudgmentModes("editorial-move=on"), {
-      append: async () => {},
-      readAll: async () => [],
-    });
+  it("falls back to Explain when the provider is unavailable", async () => {
+    setJudgmentProvider(unavailableProvider());
 
-    expect(await chooseEditorialMove(request, { runner, provider: choosing(EditorialMove.Question) })).toBe(
-      EditorialMove.Question
-    );
+    expect(await chooseEditorialMove(request)).toBe(EditorialMove.Explain);
+  });
+
+  it("falls back to Explain when the provider is unavailable (scripted, unrelated question)", async () => {
+    setJudgmentProvider(scriptedProvider(() => undefined));
+
+    expect(await chooseEditorialMove(request)).toBe(EditorialMove.Explain);
   });
 });

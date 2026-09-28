@@ -1,10 +1,7 @@
 import { EditorialMove, Speaker, Speech } from "../types";
 import { choice, IJudgmentProvider } from "../providers/judgment-questions";
-import { JudgmentRunner, TypeSafeDecision } from "../services/JudgmentRunner";
-import {
-  getJudgmentProvider,
-  getJudgmentRunner,
-} from "../services/judgment-runtime";
+import { decide, JudgmentDecision } from "../services/decide";
+import { getJudgmentProvider } from "../services/judgment-runtime";
 
 export const EDITORIAL_MOVE_JUDGMENT = "editorial-move";
 
@@ -34,25 +31,22 @@ export interface EditorialMoveRequest {
   /** The director's generated direction for this turn. */
   direction: string;
   rhythmGuidance?: string;
-  /** The move the director model proposed alongside its direction. */
-  current: () => Promise<EditorialMove>;
 }
 
 /**
  * Chooses the turn's editorial move through the `editorial-move` judgment.
  * The direction stays generative; this only classifies which move the next
- * turn should make, which in turn drives the speaker's allowed tools.
+ * turn should make, which in turn drives the speaker's allowed tools. Fails
+ * safe to Explain when the provider is unavailable.
  */
 export function chooseEditorialMove(
   request: EditorialMoveRequest,
-  deps: { runner?: JudgmentRunner; provider?: IJudgmentProvider } = {}
+  deps: { provider?: IJudgmentProvider } = {}
 ): Promise<EditorialMove> {
-  const runner = deps.runner ?? getJudgmentRunner();
-  return runner.run({
+  return decide({
     judgment: EDITORIAL_MOVE_JUDGMENT,
-    current: request.current,
-    typesafe: () =>
-      chooseEditorialMoveWithTypeSafe(request, deps.provider ?? getJudgmentProvider()),
+    ask: () => chooseEditorialMoveWithTypeSafe(request, deps.provider ?? getJudgmentProvider()),
+    fallback: EditorialMove.Explain,
     state: { direction: request.direction },
   });
 }
@@ -60,7 +54,7 @@ export function chooseEditorialMove(
 export async function chooseEditorialMoveWithTypeSafe(
   request: EditorialMoveRequest,
   provider: IJudgmentProvider
-): Promise<TypeSafeDecision<EditorialMove>> {
+): Promise<JudgmentDecision<EditorialMove>> {
   const result = await provider.judge(
     {
       recent_conversation: request.recentSpeeches.map(

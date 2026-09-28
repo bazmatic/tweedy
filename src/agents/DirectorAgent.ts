@@ -582,12 +582,6 @@ Conversation so far (each line tagged with the tool used to deliver it — "spea
               .map((claim) => claim.text)
               .join(" ")} Do not introduce a payoff or advanced detail yet.`.trim()
           : result.direction ?? '';
-      if (result.moveRationale) {
-        logger.debug(
-          `Director move rationale (${result.move ?? 'unspecified'}): ${result.moveRationale}`
-        );
-      }
-
       const confirmedPointIds = await this.verifyCoveredPoints(
         coveredPointIds,
         script
@@ -603,14 +597,12 @@ Conversation so far (each line tagged with the tool used to deliver it — "spea
       const turnBrief = this.toTurnBrief(result, direction);
       // A targeted discourse claim sets its move deterministically below.
       if (!targetDiscourseClaim) {
-        const proposedMove = turnBrief.move;
         turnBrief.move = await chooseEditorialMove({
           recentSpeeches: script.speeches.slice(-4),
           nextSpeaker:
             knownNextSpeaker ?? this.resolveSpeakerReference(script, speakerId),
           direction,
           rhythmGuidance: rhythmNote.trim() || undefined,
-          current: async () => proposedMove,
         });
       }
       if (targetPoint) {
@@ -1971,7 +1963,7 @@ ${claimsList}`,
       speakerId: input.speakerId,
       beatId: input.beatId,
       goal: input.goal ?? direction,
-      move: input.move ?? EditorialMove.Explain,
+      move: EditorialMove.Explain,
       cardIds: input.cardIds ?? [],
       audienceValue: input.audienceValue ?? AudienceValue.Understanding,
       desiredEnergy: input.desiredEnergy ?? EnergyLevel.Curious,

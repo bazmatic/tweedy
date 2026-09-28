@@ -36,6 +36,13 @@ describe("director structured-output schemas", () => {
     ).toEqual({ speakerId: "Speaker s1", direction: "Open the episode" });
   });
 
+  it("no longer accepts move or moveRationale — the editorial move is judged, not proposed", () => {
+    const schema = createSelectNextSpeakerSchema([makeSpeaker("s1")]);
+
+    expect(Object.keys(schema.shape)).not.toContain("move");
+    expect(Object.keys(schema.shape)).not.toContain("moveRationale");
+  });
+
   it("requires both the plan narrative and discussion points", () => {
     expect(
       createPodcastPlanSchema.parse({

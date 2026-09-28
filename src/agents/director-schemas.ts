@@ -4,7 +4,6 @@ import {
   BeatPurpose,
   ConversationalDevice,
   DiscussionPointPriority,
-  EditorialMove,
   EnergyLevel,
   EpistemicRole,
   Speaker,
@@ -214,17 +213,6 @@ export function createSelectNextSpeakerSchema(speakers: Speaker[]) {
         .string()
         .optional()
         .describe("What this turn should contribute to the listener's journey."),
-      moveRationale: z
-        .string()
-        .optional()
-        .describe(
-          "One short sentence on why this specific move fits the actual conversation so far — e.g. what, concretely, is being reacted to, questioned, or reframed. Not shown to the speaker; for internal debugging only."
-        ),
-      move: z
-        .nativeEnum(EditorialMove)
-        .optional()
-        .catch(fallbackWithWarning("move", EditorialMove.Explain))
-        .describe("The subject-neutral editorial move for this turn."),
       cardIds: z
         .array(z.string())
         .optional()

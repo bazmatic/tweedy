@@ -3,7 +3,6 @@ import {
   AudienceValue,
   ConversationalDevice,
   DiscussionPoint,
-  EditorialMove,
   EnergyLevel,
   PodcastScript,
 } from "../types";
@@ -14,7 +13,6 @@ import {
 } from "./director-schemas";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
 import { StructuredModelCaller } from "./structured-model-caller";
-import { logger } from "../utils/logger";
 
 const MAX_TURN_DIRECTION_TOKENS = 600;
 
@@ -24,12 +22,10 @@ export interface TurnProposal {
   claimedCoveredPointIds: string[];
   claimedCoveredBeatIds: string[];
   beatId?: string;
-  move?: EditorialMove;
   cardIds: string[];
   audienceValue?: AudienceValue;
   desiredEnergy?: EnergyLevel;
   device?: ConversationalDevice;
-  moveRationale?: string;
 }
 
 export function buildOpenPointsSection(points: DiscussionPoint[]): string {
@@ -128,7 +124,7 @@ ${speakerDescriptions}
 Conversation so far (each line tagged with the tool used to deliver it — "speak" is substantive content; "interject", "filler_comment", "one_liner", and "short_question" are brief reactions, not real answers or new points):
 ${history || "(nothing said yet — this is the opening of the episode)"}
 
-Decide which speaker should talk next. Only give them direction if it's actually needed — a brief goal or topic, not a script. Also choose a subject-neutral editorial move, the primary audience value, desired energy, relevant beat and prepared card ids. Mark genuinely completed beat ids in coveredBeatIds. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text. Use Australian/British spelling.${wrapUpNote}${velocityNote}${guidanceNote}`,
+Decide which speaker should talk next. Only give them direction if it's actually needed — a brief goal or topic, not a script. Also choose the primary audience value, desired energy, relevant beat and prepared card ids. Mark genuinely completed beat ids in coveredBeatIds. If the open discussion points list above shows points already addressed by recent turns, mark their ids in coveredPointIds — only mark a point covered if it was explicitly and substantively discussed with specific detail from the point's text. Use Australian/British spelling.${wrapUpNote}${velocityNote}${guidanceNote}`,
     },
   ];
 
@@ -139,23 +135,15 @@ Decide which speaker should talk next. Only give them direction if it's actually
     MAX_TURN_DIRECTION_TOKENS
   );
 
-  if (result.moveRationale) {
-    logger.debug(
-      `Director move rationale (${result.move ?? "unspecified"}): ${result.moveRationale}`
-    );
-  }
-
   return {
     speakerId: result.speakerId,
     direction: result.direction ?? "",
     claimedCoveredPointIds: result.coveredPointIds ?? [],
     claimedCoveredBeatIds: result.coveredBeatIds ?? [],
     beatId: result.beatId,
-    move: result.move,
     cardIds: result.cardIds ?? [],
     audienceValue: result.audienceValue,
     desiredEnergy: result.desiredEnergy,
     device: result.device,
-    moveRationale: result.moveRationale,
   };
 }

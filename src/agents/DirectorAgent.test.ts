@@ -476,12 +476,18 @@ describe("DirectorAgent editorial turn briefs", () => {
       speakerId: "s1",
       direction: "Tell the short backstage story.",
       goal: "Humanise the subject.",
-      move: EditorialMove.TellStory,
       audienceValue: AudienceValue.Connection,
       desiredEnergy: EnergyLevel.Warm,
       cardIds: ["m1-card-1"],
       coveredPointIds: [],
     });
+    setJudgmentProvider(
+      scriptedProvider((id) =>
+        id === "editorial_move_for_next_turn"
+          ? { type: "choice", choice: "question", probabilities: {}, confidence: 0.9 }
+          : undefined
+      )
+    );
 
     const result = await agent.chooseNextSpeaker(script);
 
@@ -489,7 +495,7 @@ describe("DirectorAgent editorial turn briefs", () => {
       expect.objectContaining({
         speakerId: "s1",
         goal: "Humanise the subject.",
-        move: EditorialMove.TellStory,
+        move: EditorialMove.Question,
         audienceValue: AudienceValue.Connection,
         desiredEnergy: EnergyLevel.Warm,
       })
