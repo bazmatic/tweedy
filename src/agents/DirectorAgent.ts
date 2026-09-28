@@ -2094,7 +2094,7 @@ ${claimsList}`,
   }
 
   private async getRhythmNote(script: PodcastScript): Promise<string> {
-    const recommendation = await this.rhythmPolicy.recommendJudged(
+    const recommendation = await this.rhythmPolicy.recommend(
       script.speeches
     );
     if (!recommendation) return '';

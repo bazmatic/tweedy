@@ -2,7 +2,6 @@ import "dotenv/config";
 import { describe, expect, it } from "vitest";
 import { judgeRhythmWithTypeSafe } from "./TypeSafeRhythmJudge";
 import {
-  ConversationRhythmPolicy,
   RECENT_TURNS_ALL_BRIEF_REACTIONS,
   RECENT_TURNS_INFORMATION_HEAVY,
 } from "./ConversationRhythmPolicy";
@@ -52,23 +51,20 @@ const cases: [string, Speech[], unknown][] = [
 
 describe.skipIf(!process.env.TYPESAFE_API_KEY)("TypeSafe conversation rhythm (live)", () => {
   const provider = new TypeSafeJudgmentProvider({ timeoutMs: 15000 });
-  const rule = new ConversationRhythmPolicy();
 
   it("judges rhythm from what was said", async () => {
     const results = await Promise.all(
       cases.map(async ([name, speeches, expected]) => ({
         name,
         expected,
-        rule: rule.recommend(speeches)?.reason.slice(0, 30) ?? "varied",
-        decision: await judgeRhythmWithTypeSafe({ recentSpeeches: speeches, current: async () => undefined }, provider),
+        decision: await judgeRhythmWithTypeSafe({ recentSpeeches: speeches }, provider),
       }))
     );
     console.log(
       "rhythm results:",
       JSON.stringify(
-        results.map(({ name, rule, decision }) => ({
+        results.map(({ name, decision }) => ({
           name,
-          rule,
           typesafe: decision.status === "ok" ? (decision.detail as any).choice : decision.reason,
           confidence: decision.status === "ok" ? (decision.detail as any).confidence : undefined,
         }))

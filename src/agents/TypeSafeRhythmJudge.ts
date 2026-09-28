@@ -1,10 +1,7 @@
 import { Speech } from "../types";
 import { choice, IJudgmentProvider } from "../providers/judgment-questions";
-import { JudgmentRunner, TypeSafeDecision } from "../services/JudgmentRunner";
-import {
-  getJudgmentProvider,
-  getJudgmentRunner,
-} from "../services/judgment-runtime";
+import { decide, JudgmentDecision } from "../services/decide";
+import { getJudgmentProvider } from "../services/judgment-runtime";
 // ConversationRhythmPolicy imports this module, so its exports are only read
 // inside functions (by then both modules have loaded), never at load time.
 import {
@@ -29,29 +26,25 @@ type RhythmOption = keyof typeof CRITERIA;
 export interface RhythmRequest {
   /** The last two or three turns, oldest first. */
   recentSpeeches: Speech[];
-  /** Today's tool-name heuristic. */
-  current: () => Promise<RhythmRecommendation | undefined>;
 }
 
 export function judgeRhythm(
   request: RhythmRequest,
-  deps: { runner?: JudgmentRunner; provider?: IJudgmentProvider } = {}
+  deps: { provider?: IJudgmentProvider } = {}
 ): Promise<RhythmRecommendation | undefined> {
-  const runner = deps.runner ?? getJudgmentRunner();
-  return runner.run({
+  return decide({
     judgment: CONVERSATION_RHYTHM_JUDGMENT,
-    current: request.current,
-    typesafe: () =>
+    ask: () =>
       judgeRhythmWithTypeSafe(request, deps.provider ?? getJudgmentProvider()),
+    fallback: undefined,
     state: { recentTurns: toLines(request.recentSpeeches) },
-    agrees: (current, typesafe) => current?.reason === typesafe?.reason,
   });
 }
 
 export async function judgeRhythmWithTypeSafe(
   request: RhythmRequest,
   provider: IJudgmentProvider
-): Promise<TypeSafeDecision<RhythmRecommendation | undefined>> {
+): Promise<JudgmentDecision<RhythmRecommendation | undefined>> {
   const result = await provider.judge(
     { recent_turns: toLines(request.recentSpeeches) },
     {

@@ -1,66 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { EditorialMove, Speech, VocalProviderName } from "../types";
-import { ConversationRhythmPolicy } from "./ConversationRhythmPolicy";
-import { SpeakerAgentToolName } from "./speaker-tools";
+import {
+  ConversationRhythmPolicy,
+  RECENT_TURNS_ALL_BRIEF_REACTIONS,
+  RECENT_TURNS_INFORMATION_HEAVY,
+} from "./ConversationRhythmPolicy";
+import { setJudgmentProvider } from "../services/judgment-runtime";
+import { scriptedProvider, unavailableProvider } from "../test-support/judgments";
+import { Speech } from "../types";
 
-const speaker = {
-  id: "s1",
-  slug: "s1",
-  name: "Ada",
-  personality: "curious",
-  voice: {
-    id: "v1",
-    name: "Voice",
-    description: "",
-    provider: VocalProviderName.ElevenLabs,
-    providerId: "voice",
-    settings: {},
-  },
-  voiceStyle: "natural",
-};
+const said = (message: string) => ({ speaker: { id: "a", name: "Ada" }, message }) as unknown as Speech;
+const speeches = [said("Wow."), said("No way!")];
+const rhythm = (choice: string) =>
+  scriptedProvider(() => ({ type: "choice", choice, probabilities: {}, confidence: 0.9 }));
 
-function speech(tool: SpeakerAgentToolName): Speech {
-  return {
-    id: Math.random().toString(),
-    speaker,
-    message: "A turn",
-    instructions: "",
-    voice: speaker.voice,
-    voiceStyle: speaker.voiceStyle,
-    timestamp: new Date(),
-    tool,
-  };
-}
+describe("ConversationRhythmPolicy.recommend", () => {
+  const policy = new ConversationRhythmPolicy();
 
-describe("ConversationRhythmPolicy", () => {
-  it("asks for substance after a run of reactions", () => {
-    const recommendation = new ConversationRhythmPolicy().recommend([
-      speech(SpeakerAgentToolName.INTERJECT),
-      speech(SpeakerAgentToolName.FILLER_COMMENT),
-    ]);
-
-    expect(recommendation?.preferredMoves).toContain(EditorialMove.TellStory);
-    expect(recommendation?.avoidedMoves).toContain(EditorialMove.React);
+  it.each([
+    ["recent_turns_were_all_brief_reactions", RECENT_TURNS_ALL_BRIEF_REACTIONS],
+    ["recent_turns_were_information_heavy", RECENT_TURNS_INFORMATION_HEAVY],
+    ["recent_rhythm_is_varied", undefined],
+  ])("maps %s to its recommendation", async (choice, expected) => {
+    setJudgmentProvider(rhythm(choice));
+    expect(await policy.recommend(speeches)).toBe(expected);
   });
 
-  it("asks for variation after consecutive substantive turns", () => {
-    const recommendation = new ConversationRhythmPolicy().recommend([
-      speech(SpeakerAgentToolName.SPEAK),
-      speech(SpeakerAgentToolName.SPEAK),
-    ]);
-
-    expect(recommendation?.preferredMoves).toContain(EditorialMove.Question);
-    expect(recommendation?.avoidedMoves).toContain(EditorialMove.Explain);
-    expect(recommendation?.avoidedMoves).toContain(EditorialMove.Reframe);
+  it("gives no guidance when the provider is unavailable", async () => {
+    setJudgmentProvider(unavailableProvider());
+    expect(await policy.recommend(speeches)).toBeUndefined();
   });
 
-  it("counts long-form explanations as substantive when varying rhythm", () => {
-    const recommendation = new ConversationRhythmPolicy().recommend([
-      speech(SpeakerAgentToolName.EXPLAIN),
-      speech(SpeakerAgentToolName.SPEAK),
-    ]);
-
-    expect(recommendation?.preferredMoves).toContain(EditorialMove.React);
-    expect(recommendation?.preferredMoves).toContain(EditorialMove.Question);
+  it("does not ask with fewer than two turns", async () => {
+    const provider = rhythm("recent_rhythm_is_varied");
+    setJudgmentProvider(provider);
+    expect(await policy.recommend([said("Hi.")])).toBeUndefined();
+    expect(provider.calls).toEqual([]);
   });
 });
