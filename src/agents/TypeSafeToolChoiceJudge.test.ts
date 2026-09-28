@@ -1,14 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  chooseSpeakerTool,
   chooseSpeakerToolWithTypeSafe,
-  predictSpeakerTool,
   ToolChoiceRequest,
 } from "./TypeSafeToolChoiceJudge";
 import { SpeakerAgentToolName } from "./speaker-tools";
 import { IJudgmentProvider } from "../providers/judgment-questions";
-import { JudgmentRunner } from "../services/JudgmentRunner";
-import { IJudgmentLog, JudgmentRecord } from "../services/JudgmentLog";
-import { parseJudgmentModes } from "../services/judgment-modes";
+import { setJudgmentProvider } from "../services/judgment-runtime";
+import { unavailableProvider } from "../test-support/judgments";
 import { Speech } from "../types";
 
 const said = (name: string, message: string) =>
@@ -27,15 +26,6 @@ function choosing(option: string) {
     },
   }));
   return { judge } as unknown as IJudgmentProvider & { judge: typeof judge };
-}
-
-function memoryRunner(modes: string) {
-  const records: JudgmentRecord[] = [];
-  const log: IJudgmentLog = {
-    append: async (r) => void records.push(r),
-    readAll: async () => records,
-  };
-  return { records, runner: new JudgmentRunner(parseJudgmentModes(modes), log) };
 }
 
 const request: ToolChoiceRequest = {
@@ -97,48 +87,23 @@ describe("chooseSpeakerToolWithTypeSafe", () => {
   });
 });
 
-describe("predictSpeakerTool", () => {
+describe("chooseSpeakerTool", () => {
+  it("narrows to the chosen tool", async () => {
+    setJudgmentProvider(choosing("push_back_with_an_objection"));
+    expect(await chooseSpeakerTool(request)).toEqual([SpeakerAgentToolName.CHALLENGE]);
+  });
+
+  it("offers the full allowed set when the provider is unavailable", async () => {
+    setJudgmentProvider(unavailableProvider());
+    expect(await chooseSpeakerTool(request)).toEqual(request.allowedTools);
+  });
+
   it("does not ask when only one tool is allowed", async () => {
-    const { runner, records } = memoryRunner("*=on");
     const provider = choosing("make_one_short_point");
-
-    const prediction = await predictSpeakerTool(
-      { ...request, allowedTools: [SpeakerAgentToolName.SPEAK] },
-      { runner, provider }
-    );
-    await prediction.settle(SpeakerAgentToolName.SPEAK);
-
-    expect(prediction.actOn).toBeUndefined();
+    setJudgmentProvider(provider);
+    expect(
+      await chooseSpeakerTool({ ...request, allowedTools: [SpeakerAgentToolName.SPEAK] })
+    ).toEqual([SpeakerAgentToolName.SPEAK]);
     expect(provider.judge).not.toHaveBeenCalled();
-    expect(records).toEqual([]);
-  });
-
-  it("shadow: logs agreement against the tool the model picked, per kind", async () => {
-    const { runner, records } = memoryRunner("speaker-tool=shadow");
-
-    const prediction = await predictSpeakerTool(request, {
-      runner,
-      provider: choosing("land_one_sharp_sentence"),
-    });
-    await prediction.settle(SpeakerAgentToolName.ONE_LINER);
-
-    expect(prediction.actOn).toBeUndefined();
-    expect(records[0]).toMatchObject({
-      judgment: "speaker-tool.turn",
-      current: SpeakerAgentToolName.ONE_LINER,
-      typesafe: SpeakerAgentToolName.ONE_LINER,
-      agreed: true,
-    });
-  });
-
-  it("on: returns the tool to force generation to", async () => {
-    const { runner } = memoryRunner("speaker-tool.interjection=on");
-
-    const prediction = await predictSpeakerTool(
-      { ...request, kind: "interjection" },
-      { runner, provider: choosing("push_back_with_an_objection") }
-    );
-
-    expect(prediction.actOn).toBe(SpeakerAgentToolName.CHALLENGE);
   });
 });

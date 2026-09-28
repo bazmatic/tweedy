@@ -34,7 +34,7 @@ import {
 import { NaturalSpeechStylePolicy } from "./NaturalSpeechStylePolicy";
 import { SpeakerRoleProfileResolver } from "./SpeakerRoleProfileResolver";
 import { ResponseModePolicy } from "./ResponseModePolicy";
-import { predictSpeakerTool } from "./TypeSafeToolChoiceJudge";
+import { chooseSpeakerTool } from "./TypeSafeToolChoiceJudge";
 import { AudienceAccessibilityPolicy } from "./AudienceAccessibilityPolicy";
 import { SpeechIntegrityPolicy } from "./SpeechIntegrityPolicy";
 import {
@@ -282,7 +282,7 @@ Give a brief, natural reaction to the following spoken message — a quick inter
         },
       ];
 
-      const toolPrediction = await predictSpeakerTool({
+      const tools = await chooseSpeakerTool({
         kind: "interjection",
         allowedTools: INTERJECTION_TOOLS,
         recentSpeeches: [lastSpeech],
@@ -295,12 +295,9 @@ Give a brief, natural reaction to the following spoken message — a quick inter
       const result = await this.callModelWithTools(
         ModelTask.Interjection,
         messages,
-        toLlmTools(
-          toolPrediction.actOn ? [toolPrediction.actOn] : INTERJECTION_TOOLS
-        ),
+        toLlmTools(tools),
         getToolMaxTokens(SpeakerAgentToolName.INTERJECT)
       );
-      await toolPrediction.settle(result.toolName as SpeakerAgentToolName);
 
       if (!this.speechIntegrityPolicy.isSpeakable(result.message)) {
         throw new Error(
@@ -422,9 +419,9 @@ Give a brief, natural reaction to the following spoken message — a quick inter
       obligation:
         await this.responseModePolicy.resolveObligation(responseModeContext),
     });
-    // In "on" mode the turn is narrowed to one pre-chosen tool (tightening
-    // its token limit too); otherwise the model still picks from the set.
-    const toolPrediction = await predictSpeakerTool({
+    // The chosen tool narrows the turn to one pre-chosen tool (tightening its
+    // token limit too); on fallback the model still picks from the full set.
+    const toolSet = await chooseSpeakerTool({
       kind: "turn",
       allowedTools,
       recentSpeeches: speeches.slice(-4),
@@ -436,7 +433,6 @@ Give a brief, natural reaction to the following spoken message — a quick inter
       directorGuidance: direction || undefined,
       turnGoal: turnBrief?.goal,
     });
-    const toolSet = toolPrediction.actOn ? [toolPrediction.actOn] : allowedTools;
 
     // Closing statements and catch-up summaries are deliberately exempt from
     // the normal per-turn length limit — they need room to land a proper
@@ -539,7 +535,6 @@ Give a brief, natural reaction to the following spoken message — a quick inter
       tools,
       maxTokens
     );
-    await toolPrediction.settle(result.toolName as SpeakerAgentToolName);
 
     // maxTokens is only a soft guide to the model — some AI providers pad it
     // with their own overhead buffer, so it isn't a hard guarantee. Enforce

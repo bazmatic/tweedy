@@ -1,14 +1,8 @@
 import { Speech } from "../types";
 import { choice, IJudgmentProvider } from "../providers/judgment-questions";
-import {
-  JudgmentPrediction,
-  JudgmentRunner,
-  TypeSafeDecision,
-} from "../services/JudgmentRunner";
-import {
-  getJudgmentProvider,
-  getJudgmentRunner,
-} from "../services/judgment-runtime";
+import { TypeSafeDecision } from "../services/JudgmentRunner";
+import { decide } from "../services/decide";
+import { getJudgmentProvider } from "../services/judgment-runtime";
 import { SpeakerAgentToolName } from "./speaker-tools";
 
 export const SPEAKER_TOOL_JUDGMENT = "speaker-tool";
@@ -98,23 +92,23 @@ export interface ToolChoiceRequest {
 }
 
 /**
- * Predicts which allowed tool the next turn should use, through the
- * `speaker-tool.<kind>` judgment. In "on" mode the generation call can be
- * forced to the predicted tool; in shadow mode the model still chooses and
- * settle() compares its pick. A single allowed tool needs no prediction.
+ * Chooses which allowed tool the next turn should use, through the
+ * `speaker-tool.<kind>` judgment, narrowing the turn to that one tool. Falls
+ * back to the full allowed set when the provider is unavailable. A single
+ * allowed tool needs no judgment call.
  */
-export function predictSpeakerTool(
+export function chooseSpeakerTool(
   request: ToolChoiceRequest,
-  deps: { runner?: JudgmentRunner; provider?: IJudgmentProvider } = {}
-): Promise<JudgmentPrediction<SpeakerAgentToolName>> {
-  if (request.allowedTools.length <= 1) {
-    return Promise.resolve({ settle: async () => {} });
-  }
-  const runner = deps.runner ?? getJudgmentRunner();
-  return runner.predict({
+  deps: { provider?: IJudgmentProvider } = {}
+): Promise<SpeakerAgentToolName[]> {
+  if (request.allowedTools.length <= 1) return Promise.resolve(request.allowedTools);
+  return decide({
     judgment: `${SPEAKER_TOOL_JUDGMENT}.${request.kind}`,
-    typesafe: () =>
-      chooseSpeakerToolWithTypeSafe(request, deps.provider ?? getJudgmentProvider()),
+    ask: async () => {
+      const decision = await chooseSpeakerToolWithTypeSafe(request, deps.provider ?? getJudgmentProvider());
+      return decision.status === "ok" ? { ...decision, value: [decision.value] } : decision;
+    },
+    fallback: request.allowedTools,
     state: { allowedTools: request.allowedTools, directorGuidance: request.directorGuidance },
   });
 }

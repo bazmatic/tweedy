@@ -8,25 +8,11 @@ import {
   UncertaintyStyle,
   VocalProviderName,
 } from "../types";
-import { JudgmentRunner } from "../services/JudgmentRunner";
-import { parseJudgmentModes } from "../services/judgment-modes";
+import { setJudgmentProvider } from "../services/judgment-runtime";
 import { SpeakerAgent } from "./SpeakerAgent";
 import { getToolMaxTokens, SpeakerAgentToolName } from "./speaker-tools";
 
-// Route the speaker's tool pre-choice through "on" mode with a scripted
-// TypeSafe provider (other judgments stay off); vi.mock is hoisted.
-const { judgeMock } = vi.hoisted(() => ({ judgeMock: vi.fn() }));
-vi.mock("../services/judgment-runtime", () => ({
-  getJudgmentRunner: () =>
-    new JudgmentRunner(parseJudgmentModes("speaker-tool=on"), {
-      append: async () => {},
-      readAll: async () => [],
-    }),
-  getJudgmentProvider: () => ({ judge: judgeMock }),
-  // decide() (used by the now-migrated response-obligation judgment that
-  // ResponseModePolicy consults inside SpeakerAgent.speak) reads this too.
-  getDecisionLog: () => undefined,
-}));
+const judgeMock = vi.fn();
 
 const speaker = (id: string): Speaker => ({
   id,
@@ -91,9 +77,10 @@ function typesafeChooses(option: string) {
   );
 }
 
-describe("SpeakerAgent with speaker-tool=on", () => {
+describe("SpeakerAgent with speaker-tool choice", () => {
   beforeEach(() => {
     judgeMock.mockReset();
+    setJudgmentProvider({ judge: judgeMock });
   });
 
   it("forces generation to the pre-chosen tool and its token limit", async () => {
