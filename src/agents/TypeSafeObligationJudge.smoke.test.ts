@@ -32,7 +32,6 @@ describe.skipIf(!process.env.TYPESAFE_API_KEY)(
             {
               recentSpeeches: [setup, said("Ben", message)],
               nextSpeakerName: "Ada",
-              current: async () => expected,
             },
             provider
           );

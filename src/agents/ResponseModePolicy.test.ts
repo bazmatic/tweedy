@@ -11,7 +11,7 @@ import {
   UncertaintyStyle,
   VocalProviderName,
 } from "../types";
-import { ResponseModePolicy } from "./ResponseModePolicy";
+import { ConversationalObligation, ResponseModePolicy } from "./ResponseModePolicy";
 import { SpeakerAgentToolName } from "./speaker-tools";
 
 function makeSpeaker(id: string, isExpert: boolean): Speaker {
@@ -108,6 +108,7 @@ describe("ResponseModePolicy", () => {
       isFinalTurn: false,
       forceNearlyOutOfTime: false,
       requestSummary: false,
+      obligation: ConversationalObligation.AnswerQuestion,
     });
 
     expect(tools).toContain(SpeakerAgentToolName.SPEAK);

@@ -5,10 +5,9 @@ import {
 } from "./TypeSafeObligationJudge";
 import { ConversationalObligation } from "./ResponseModePolicy";
 import { IJudgmentProvider } from "../providers/judgment-questions";
-import { JudgmentRunner } from "../services/JudgmentRunner";
-import { IJudgmentLog, JudgmentRecord } from "../services/JudgmentLog";
-import { parseJudgmentModes } from "../services/judgment-modes";
 import { Speech } from "../types";
+import { setJudgmentProvider } from "../services/judgment-runtime";
+import { unavailableProvider } from "../test-support/judgments";
 
 const said = (name: string, message: string) =>
   ({ speaker: { id: name, name }, message }) as unknown as Speech;
@@ -28,22 +27,12 @@ function choosing(option: string) {
   return { judge } as unknown as IJudgmentProvider & { judge: typeof judge };
 }
 
-function memoryRunner(modes: string) {
-  const records: JudgmentRecord[] = [];
-  const log: IJudgmentLog = {
-    append: async (r) => void records.push(r),
-    readAll: async () => records,
-  };
-  return { records, runner: new JudgmentRunner(parseJudgmentModes(modes), log) };
-}
-
 const request = {
   recentSpeeches: [
     said("Ada", "The oxygen tank exploded two days out."),
     said("Ben", "Tell me how they kept breathing after that"),
   ],
   nextSpeakerName: "Ada",
-  current: async () => ConversationalObligation.ExecuteBrief,
 };
 
 describe("judgeResponseObligationWithTypeSafe", () => {
@@ -98,21 +87,17 @@ describe("judgeResponseObligationWithTypeSafe", () => {
 });
 
 describe("judgeResponseObligation", () => {
-  it("shadow: acts on the rule and logs the TypeSafe choice", async () => {
-    const { runner, records } = memoryRunner("response-obligation=shadow");
+  it("returns the provider's obligation", async () => {
+    setJudgmentProvider(choosing("respond_to_the_pushback"));
+    expect(await judgeResponseObligation(request)).toBe(
+      ConversationalObligation.AnswerChallenge
+    );
+  });
 
-    const obligation = await judgeResponseObligation(request, {
-      runner,
-      provider: choosing("answer_the_question_just_asked"),
-    });
-
-    expect(obligation).toBe(ConversationalObligation.ExecuteBrief);
-    expect(records[0]).toMatchObject({
-      judgment: "response-obligation",
-      current: ConversationalObligation.ExecuteBrief,
-      typesafe: ConversationalObligation.AnswerQuestion,
-      agreed: false,
-      typesafeDetail: { choice: "answer_the_question_just_asked" },
-    });
+  it("returns ExecuteBrief when the provider is unavailable", async () => {
+    setJudgmentProvider(unavailableProvider());
+    expect(await judgeResponseObligation(request)).toBe(
+      ConversationalObligation.ExecuteBrief
+    );
   });
 });

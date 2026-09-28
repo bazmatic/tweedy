@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Speech } from "../types";
-import { JudgmentRunner } from "../services/JudgmentRunner";
-import { parseJudgmentModes } from "../services/judgment-modes";
+import { setJudgmentProvider } from "../services/judgment-runtime";
 import {
   ConversationalObligation,
   ResponseModeContext,
@@ -9,17 +8,7 @@ import {
 } from "./ResponseModePolicy";
 import { SpeakerAgentToolName } from "./speaker-tools";
 
-// Route the policy's obligation judgment through "on" mode with a scripted
-// TypeSafe provider; vi.mock is hoisted above the imports.
-const { judgeMock } = vi.hoisted(() => ({ judgeMock: vi.fn() }));
-vi.mock("../services/judgment-runtime", () => ({
-  getJudgmentRunner: () =>
-    new JudgmentRunner(parseJudgmentModes("response-obligation=on"), {
-      append: async () => {},
-      readAll: async () => [],
-    }),
-  getJudgmentProvider: () => ({ judge: judgeMock }),
-}));
+const judgeMock = vi.fn();
 
 const ada = { id: "ada", name: "Ada", personality: "curious host" } as any;
 const ben = { id: "ben", name: "Ben", personality: "space historian" } as any;
@@ -50,10 +39,11 @@ function typesafeChooses(option: string) {
   });
 }
 
-describe("ResponseModePolicy.resolveObligation with response-obligation=on", () => {
+describe("ResponseModePolicy.resolveObligation", () => {
   const policy = new ResponseModePolicy();
   beforeEach(() => {
     judgeMock.mockReset();
+    setJudgmentProvider({ judge: judgeMock });
   });
 
   it("treats an unpunctuated request as a question to answer", async () => {
@@ -105,7 +95,7 @@ describe("ResponseModePolicy.resolveObligation with response-obligation=on", () 
     expect(judgeMock).not.toHaveBeenCalled();
   });
 
-  it("selectTools uses a resolved obligation over the question-mark rule", () => {
+  it("selectTools uses a resolved obligation over the synchronous default", () => {
     const speeches = [said(ada, "Isn't that incredible? Duct tape saved three lives.")];
 
     const byRule = policy.selectTools(context(speeches));

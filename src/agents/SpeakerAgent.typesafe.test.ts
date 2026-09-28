@@ -23,6 +23,9 @@ vi.mock("../services/judgment-runtime", () => ({
       readAll: async () => [],
     }),
   getJudgmentProvider: () => ({ judge: judgeMock }),
+  // decide() (used by the now-migrated response-obligation judgment that
+  // ResponseModePolicy consults inside SpeakerAgent.speak) reads this too.
+  getDecisionLog: () => undefined,
 }));
 
 const speaker = (id: string): Speaker => ({

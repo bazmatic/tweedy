@@ -35,8 +35,6 @@ export interface ResponseModeContext {
   obligation?: ConversationalObligation;
 }
 
-const QUESTION_MARK = "?";
-
 const MOVES_THAT_MUST_NOT_BECOME_SUMMARIES = Object.freeze([
   EditorialMove.Question,
   EditorialMove.React,
@@ -204,8 +202,6 @@ export class ResponseModePolicy {
     return judgeResponseObligation({
       recentSpeeches: context.speeches.slice(-2),
       nextSpeakerName: context.speaker.name,
-      current: async () =>
-        this.getObligation(context.speeches, context.speaker),
     });
   }
 
@@ -239,15 +235,9 @@ export class ResponseModePolicy {
     speeches: Speech[],
     speaker: Speaker
   ): ConversationalObligation {
-    const structural = this.getStructuralObligation(speeches, speaker);
-    if (structural) return structural;
-    const previousSpeech = speeches.at(-1);
-    if (
-      previousSpeech?.tool === SpeakerAgentToolName.SHORT_QUESTION ||
-      previousSpeech?.message.trim().endsWith(QUESTION_MARK)
-    ) {
-      return ConversationalObligation.AnswerQuestion;
-    }
-    return ConversationalObligation.ExecuteBrief;
+    return (
+      this.getStructuralObligation(speeches, speaker) ??
+      ConversationalObligation.ExecuteBrief
+    );
   }
 }

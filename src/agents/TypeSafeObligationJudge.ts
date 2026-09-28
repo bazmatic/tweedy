@@ -1,10 +1,7 @@
 import { Speech } from "../types";
 import { choice, IJudgmentProvider } from "../providers/judgment-questions";
-import { JudgmentRunner, TypeSafeDecision } from "../services/JudgmentRunner";
-import {
-  getJudgmentProvider,
-  getJudgmentRunner,
-} from "../services/judgment-runtime";
+import { decide, JudgmentDecision } from "../services/decide";
+import { getJudgmentProvider } from "../services/judgment-runtime";
 // Type-only: ResponseModePolicy imports this module, so a runtime import of
 // its enum would be circular. The literals below are the enum's values.
 import type { ConversationalObligation } from "./ResponseModePolicy";
@@ -40,12 +37,9 @@ export interface ObligationRequest {
   /** The last spoken turns, oldest first; at least one. */
   recentSpeeches: Speech[];
   nextSpeakerName: string;
-  /** Today's rule: the question tool or a trailing "?". */
-  current: () => Promise<ConversationalObligation>;
 }
 
 export interface ObligationJudgeDeps {
-  runner?: JudgmentRunner;
   provider?: IJudgmentProvider;
 }
 
@@ -54,15 +48,14 @@ export function judgeResponseObligation(
   request: ObligationRequest,
   deps: ObligationJudgeDeps = {}
 ): Promise<ConversationalObligation> {
-  const runner = deps.runner ?? getJudgmentRunner();
-  return runner.run({
+  return decide({
     judgment: RESPONSE_OBLIGATION_JUDGMENT,
-    current: request.current,
-    typesafe: () =>
+    ask: () =>
       judgeResponseObligationWithTypeSafe(
         request,
         deps.provider ?? getJudgmentProvider()
       ),
+    fallback: "execute_brief" as ConversationalObligation,
     state: toState(request),
   });
 }
@@ -70,7 +63,7 @@ export function judgeResponseObligation(
 export async function judgeResponseObligationWithTypeSafe(
   request: ObligationRequest,
   provider: IJudgmentProvider
-): Promise<TypeSafeDecision<ConversationalObligation>> {
+): Promise<JudgmentDecision<ConversationalObligation>> {
   const result = await provider.judge(toState(request), {
     reply_owed_to_previous_turn: choice(
       "In this podcast conversation, what does `next_speaker` owe `previous_turn` in their reply?",
