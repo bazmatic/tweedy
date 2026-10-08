@@ -4,11 +4,8 @@ import {
   ChoiceQuestion,
   IJudgmentProvider,
 } from "../providers/judgment-questions";
-import { JudgmentRunner, TypeSafeDecision } from "../services/JudgmentRunner";
-import {
-  getJudgmentProvider,
-  getJudgmentRunner,
-} from "../services/judgment-runtime";
+import { decide, JudgmentDecision } from "../services/decide";
+import { getJudgmentProvider } from "../services/judgment-runtime";
 import { EpisodeAuditInput } from "./editorial-schemas";
 
 export const EPISODE_AUDIT_JUDGMENT = "episode-audit";
@@ -80,12 +77,9 @@ const NO_DEFECT = "no_local_defect";
 export interface EpisodeAuditRequest {
   speeches: Speech[];
   maxIssues: number;
-  /** Today's whole-transcript LLM audit. */
-  current: () => Promise<AuditIssue[]>;
 }
 
 export interface EpisodeAuditDeps {
-  runner?: JudgmentRunner;
   provider?: IJudgmentProvider;
   threshold?: number;
 }
@@ -99,27 +93,24 @@ export function auditEpisodeTurns(
   request: EpisodeAuditRequest,
   deps: EpisodeAuditDeps = {}
 ): Promise<AuditIssue[]> {
-  const runner = deps.runner ?? getJudgmentRunner();
-  return runner.run({
+  return decide({
     judgment: EPISODE_AUDIT_JUDGMENT,
-    current: request.current,
-    typesafe: () =>
+    ask: () =>
       auditEpisodeTurnsWithTypeSafe(
         request,
         deps.provider ?? getJudgmentProvider(),
         deps.threshold ?? DEFAULT_EPISODE_AUDIT_THRESHOLD
       ),
+    fallback: [],
     state: { turns: request.speeches.length },
-    // Agreement on which turns need repair; categories often overlap.
-    agrees: (current, typesafe) => sameTurns(current, typesafe),
   });
 }
 
 export async function auditEpisodeTurnsWithTypeSafe(
-  request: Pick<EpisodeAuditRequest, "speeches" | "maxIssues">,
+  request: EpisodeAuditRequest,
   provider: IJudgmentProvider,
   threshold: number
-): Promise<TypeSafeDecision<AuditIssue[]>> {
+): Promise<JudgmentDecision<AuditIssue[]>> {
   const { speeches } = request;
   if (speeches.length === 0) return { status: "ok", value: [] };
 
@@ -177,10 +168,4 @@ export async function auditEpisodeTurnsWithTypeSafe(
       .map(({ speechId, category, reason }) => ({ speechId, category, reason })),
     detail: { perTurn },
   };
-}
-
-function sameTurns(a: AuditIssue[], b: AuditIssue[]): boolean {
-  const ids = (issues: AuditIssue[]) =>
-    [...new Set(issues.map((issue) => issue.speechId))].sort().join(",");
-  return ids(a) === ids(b);
 }

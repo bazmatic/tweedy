@@ -1,17 +1,13 @@
-import { LlmMessage, PodcastScript, Speech } from "../types";
+import { PodcastScript, Speech } from "../types";
 import { ModelTask } from "../providers/ModelRoutingPolicy";
-import { logger } from "../utils/logger";
 import { BaseAgent } from "./BaseAgent";
 import { auditEpisodeTurns } from "./TypeSafeEpisodeAuditJudge";
 import {
-  EpisodeAuditInput,
   EpisodeAuditIssue,
-  episodeAuditSchema,
   RewriteRejectedTurnInput,
   rewriteRejectedTurnSchema,
 } from "./editorial-schemas";
 
-const MAX_AUDIT_TOKENS = 450;
 const MAX_REWRITE_TOKENS = 220;
 const MAX_ISSUES = 3;
 
@@ -27,54 +23,20 @@ export class EpisodeAuditAgent extends BaseAgent {
     if (deterministic.length >= MAX_ISSUES) {
       return deterministic.slice(0, MAX_ISSUES);
     }
-    const transcript = script.speeches
-      .map(
-        (speech) =>
-          `[${speech.id}] ${speech.speaker.name}: ${speech.message}`
-      )
-      .join("\n");
-    const auditMessages: LlmMessage[] = [
-      {
-        role: "user",
-        content: `Audit this completed podcast as a listener who knows only the spoken transcript.
-
-Transcript:
-${transcript}
-
-Report only local defects repairable by rewriting one existing turn: missing audible context or antecedents, a consequence spoken before its setup, substantial repetition, speaker-role inversion, broken adjacent continuity, an inaccurate closing summary, implausible duration language, or malformed speech. Do not report a planned topic merely because it was omitted. Do not propose rewrites. Return at most ${MAX_ISSUES} issues, each with the exact bracketed speechId, one category, and a plain reason fragment of at most 12 words. Prefer the earliest turn responsible for a problem.`,
-      },
-    ];
-    try {
-      const issues = await auditEpisodeTurns({
-        speeches: script.speeches,
-        maxIssues: MAX_ISSUES - deterministic.length,
-        current: async () =>
-          (
-            await this.callModelForStructuredOutput<EpisodeAuditInput>(
-              ModelTask.TurnReview,
-              auditMessages,
-              episodeAuditSchema,
-              MAX_AUDIT_TOKENS
-            )
-          ).issues,
-      });
-      const validIds = new Set(script.speeches.map((speech) => speech.id));
-      const combined = [...deterministic, ...issues]
-        .filter((issue) => validIds.has(issue.speechId))
-        .map((issue) => ({
-          ...issue,
-          id: `${issue.category}:${issue.speechId}`,
-        }));
-      return Array.from(
-        new Map(combined.map((issue) => [issue.id, issue])).values()
-      ).slice(0, MAX_ISSUES);
-    } catch (error) {
-      logger.warn(
-        "Episode audit model unavailable; using deterministic findings only",
-        error
-      );
-      return deterministic.slice(0, MAX_ISSUES);
-    }
+    const issues = await auditEpisodeTurns({
+      speeches: script.speeches,
+      maxIssues: MAX_ISSUES - deterministic.length,
+    });
+    const validIds = new Set(script.speeches.map((speech) => speech.id));
+    const combined = [...deterministic, ...issues]
+      .filter((issue) => validIds.has(issue.speechId))
+      .map((issue) => ({
+        ...issue,
+        id: `${issue.category}:${issue.speechId}`,
+      }));
+    return Array.from(
+      new Map(combined.map((issue) => [issue.id, issue])).values()
+    ).slice(0, MAX_ISSUES);
   }
 
   async rewrite(

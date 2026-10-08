@@ -4,9 +4,8 @@ import {
   auditEpisodeTurnsWithTypeSafe,
 } from "./TypeSafeEpisodeAuditJudge";
 import { IJudgmentProvider, JudgmentQuestions } from "../providers/judgment-questions";
-import { JudgmentRunner } from "../services/JudgmentRunner";
-import { IJudgmentLog, JudgmentRecord } from "../services/JudgmentLog";
-import { parseJudgmentModes } from "../services/judgment-modes";
+import { setJudgmentProvider } from "../services/judgment-runtime";
+import { unavailableProvider } from "../test-support/judgments";
 import { Speech } from "../types";
 
 const said = (id: string, message: string) =>
@@ -37,7 +36,7 @@ function defects(choices: Record<number, string>, noDefectProbability: Record<nu
   return { judge } as unknown as IJudgmentProvider & { judge: typeof judge };
 }
 
-const request = { speeches, maxIssues: 3, current: async () => [] };
+const request = { speeches, maxIssues: 3 };
 
 describe("auditEpisodeTurnsWithTypeSafe", () => {
   it("asks one Choice per turn, with the closing option only on the final turn", async () => {
@@ -90,18 +89,17 @@ describe("auditEpisodeTurnsWithTypeSafe", () => {
 });
 
 describe("auditEpisodeTurns", () => {
-  it("shadow: acts on the LLM audit and compares which turns were flagged", async () => {
-    const records: JudgmentRecord[] = [];
-    const log: IJudgmentLog = { append: async (r) => void records.push(r), readAll: async () => records };
-    const runner = new JudgmentRunner(parseJudgmentModes("episode-audit=shadow"), log);
-    const llmIssues = [{ speechId: "a2", category: "continuity" as const, reason: "x" }];
+  it("returns the judged issues", async () => {
+    const provider = defects({ 2: "consequence_before_its_setup" });
 
-    const issues = await auditEpisodeTurns(
-      { ...request, current: async () => llmIssues },
-      { runner, provider: defects({ 2: "consequence_before_its_setup" }) }
-    );
+    const issues = await auditEpisodeTurns(request, { provider });
 
-    expect(issues).toBe(llmIssues);
-    expect(records[0]).toMatchObject({ judgment: "episode-audit", agreed: true });
+    expect(issues.map((issue) => issue.speechId)).toEqual(["a2"]);
+  });
+
+  it("falls back to no issues when the provider is unavailable", async () => {
+    setJudgmentProvider(unavailableProvider());
+
+    expect(await auditEpisodeTurns(request)).toEqual([]);
   });
 });
